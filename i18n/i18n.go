@@ -20,7 +20,7 @@ const (
 	LangZhTW    = "zh-TW"
 	LangEn      = "en"
 	LangPtBR    = "pt-BR"
-	DefaultLang = LangEn // Fallback to English if language not supported
+	DefaultLang = LangPtBR // Local build: default to Brazilian Portuguese
 )
 
 //go:embed locales/*.yaml
