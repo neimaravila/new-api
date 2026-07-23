@@ -22,7 +22,11 @@ RUN go mod download
 
 COPY . .
 COPY --from=builder /build/web/dist ./web/dist
-RUN apk add --no-cache patch && sh scripts/apply-patches.sh
+# `patch` is not in the base image and busybox has no patch applet, so it has to
+# be fetched. Retry it: a transient DNS/mirror blip here would otherwise fail an
+# otherwise-fine production build.
+RUN for i in 1 2 3; do apk add --no-cache patch && break || sleep 3; done && \
+    command -v patch >/dev/null && sh scripts/apply-patches.sh
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
