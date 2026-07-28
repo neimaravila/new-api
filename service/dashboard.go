@@ -149,7 +149,17 @@ func loadDashboardAggregates(userID int, username string, role int, start int64,
 
 func loadDashboardQuotaRows(userID int, username string, role int, start int64, end int64) ([]*model.QuotaData, error) {
 	if role >= common.RoleAdminUser {
-		return model.GetAllQuotaDates(start, end, "")
+		var quotaRows []*model.QuotaData
+		err := model.DB.Table("quota_data").
+			Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
+			Where("created_at >= ? and created_at <= ?", start, end).
+			Group("user_id, username, model_name, created_at").
+			Find(&quotaRows).Error
+		if err != nil {
+			return nil, err
+		}
+		model.FillQuotaDataDisplayNames(quotaRows)
+		return quotaRows, nil
 	}
 	if userID > 0 {
 		return model.GetQuotaDataByUserId(userID, start, end)
@@ -171,7 +181,8 @@ func loadDashboardRecentFailures(userID int, role int, start int64, end int64) (
 
 func loadDashboardRecentActivity(userID int, role int) ([]dto.DashboardRecentActivity, error) {
 	tx := model.LOG_DB.Model(&model.Log{})
-	if role < common.RoleAdminUser {
+	isAdmin := role >= common.RoleAdminUser
+	if !isAdmin {
 		tx = tx.Where("user_id = ?", userID)
 	}
 	order := "created_at desc, id desc"
@@ -184,18 +195,21 @@ func loadDashboardRecentActivity(userID int, role int) ([]dto.DashboardRecentAct
 	}
 	items := make([]dto.DashboardRecentActivity, 0, len(logs))
 	for _, log := range logs {
-		items = append(items, dto.DashboardRecentActivity{
-			ID:          log.Id,
-			CreatedAt:   log.CreatedAt,
-			Type:        log.Type,
-			Content:     log.Content,
-			ModelName:   log.ModelName,
-			TokenName:   log.TokenName,
-			ChannelID:   log.ChannelId,
-			ChannelName: log.ChannelName,
-			Quota:       log.Quota,
-			UseTime:     log.UseTime,
-		})
+		item := dto.DashboardRecentActivity{
+			ID:        log.Id,
+			CreatedAt: log.CreatedAt,
+			Type:      log.Type,
+			Content:   log.Content,
+			ModelName: log.ModelName,
+			TokenName: log.TokenName,
+			Quota:     log.Quota,
+			UseTime:   log.UseTime,
+		}
+		if isAdmin {
+			item.ChannelID = log.ChannelId
+			item.ChannelName = log.ChannelName
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }

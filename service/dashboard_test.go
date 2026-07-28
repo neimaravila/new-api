@@ -40,6 +40,7 @@ func TestGetDashboardSummaryScopesRegularUserData(t *testing.T) {
 	now := time.Now().Unix()
 	require.NoError(t, model.DB.Create(&model.QuotaData{UserID: 1, Username: "alice", ModelName: "gpt-4o", CreatedAt: now - 3600, Count: 2, Quota: 30, TokenUsed: 90}).Error)
 	require.NoError(t, model.DB.Create(&model.QuotaData{UserID: 2, Username: "bob", ModelName: "claude", CreatedAt: now - 3600, Count: 5, Quota: 500, TokenUsed: 1000}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, CreatedAt: now, Type: model.LogTypeConsume, Content: "user request", ChannelId: 7, ChannelName: "admin-channel"}).Error)
 
 	summary, err := GetDashboardSummary(1, "alice", common.RoleCommonUser, 100)
 
@@ -48,12 +49,18 @@ func TestGetDashboardSummaryScopesRegularUserData(t *testing.T) {
 	assert.NotEmpty(t, summary.Metrics)
 	assert.Empty(t, summary.TopUsers)
 	assert.NotContains(t, dashboardMetricValues(summary.Metrics), "500")
+	require.Len(t, summary.RecentActivity, 1)
+	assert.Zero(t, summary.RecentActivity[0].ChannelID)
+	assert.Empty(t, summary.RecentActivity[0].ChannelName)
 }
 
 func TestGetDashboardSummaryAdminIncludesOperationalData(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	now := time.Now().Unix()
+	require.NoError(t, model.DB.Create(&model.User{Id: 1, Username: "alice", DisplayName: "Alice Ops", AffCode: "alice-aff"}).Error)
+	require.NoError(t, model.DB.Create(&model.User{Id: 2, Username: "bob", DisplayName: "Bob Ops", AffCode: "bob-aff"}).Error)
 	require.NoError(t, model.DB.Create(&model.QuotaData{UserID: 1, Username: "alice", ModelName: "gpt-4o", CreatedAt: now - 3600, Count: 3, Quota: 100, TokenUsed: 200}).Error)
+	require.NoError(t, model.DB.Create(&model.QuotaData{UserID: 2, Username: "bob", ModelName: "claude", CreatedAt: now - 3600, Count: 5, Quota: 300, TokenUsed: 600}).Error)
 	require.NoError(t, model.DB.Create(&model.Channel{Name: "slow", Status: common.ChannelStatusEnabled, ResponseTime: 6000, UsedQuota: 100}).Error)
 
 	summary, err := GetDashboardSummary(99, "admin", common.RoleAdminUser, 0)
@@ -61,7 +68,13 @@ func TestGetDashboardSummaryAdminIncludesOperationalData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, dto.DashboardRoleAdmin, summary.Role)
 	assert.NotEmpty(t, summary.Channels)
-	assert.NotEmpty(t, summary.TopUsers)
+	require.NotEmpty(t, summary.TopUsers)
+	assert.Equal(t, "2", summary.TopUsers[0].ID)
+	assert.Equal(t, "bob", summary.TopUsers[0].Name)
+	assert.Equal(t, "Bob Ops", summary.TopUsers[0].DisplayName)
+	assert.Equal(t, 300, summary.TopUsers[0].Quota)
+	assert.Equal(t, 5, summary.TopUsers[0].Requests)
+	assert.Equal(t, 600, summary.TopUsers[0].Tokens)
 }
 
 func TestGetDashboardInsightsReturnsDeterministicDefaults(t *testing.T) {
