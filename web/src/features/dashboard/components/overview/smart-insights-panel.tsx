@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import { AlertTriangle, CheckCircle2, Info, Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,6 +30,10 @@ interface SmartInsightsPanelProps {
   insights: DashboardInsight[]
   loading: boolean
   error?: boolean
+}
+
+interface InsightItemProps {
+  insight: DashboardInsight
 }
 
 const severityConfig: Record<
@@ -127,7 +132,7 @@ function PanelHeader() {
   )
 }
 
-function InsightItem(props: { insight: DashboardInsight }) {
+function InsightItem(props: InsightItemProps) {
   const { t } = useTranslation()
   const config = severityConfig[props.insight.severity]
   const Icon = config.icon
@@ -167,7 +172,7 @@ function InsightItem(props: { insight: DashboardInsight }) {
               size='sm'
               variant='link'
               className='mt-2 h-auto px-0 text-xs'
-              render={<a href={props.insight.action.path} role={undefined} />}
+              render={<Link to={props.insight.action.path} role={undefined} />}
             >
               {t(props.insight.action.label)}
             </Button>

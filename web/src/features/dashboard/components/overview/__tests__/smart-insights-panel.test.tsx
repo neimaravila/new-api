@@ -1,4 +1,3 @@
-import '@testing-library/jest-dom/vitest'
 import { Window } from 'happy-dom'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 
@@ -19,6 +18,8 @@ const domGlobals = [
   'requestAnimationFrame',
   'cancelAnimationFrame',
   'getComputedStyle',
+  'history',
+  'location',
 ] as const
 
 for (const key of domGlobals) {
@@ -37,9 +38,12 @@ afterAll(() => {
 })
 
 const { render } = await import('@testing-library/react')
+const { createMemoryHistory, createRootRoute, createRouter, RouterProvider } =
+  await import('@tanstack/react-router')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { SmartInsightsPanel } = await import('../smart-insights-panel')
+
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({
   lng: 'en',
@@ -47,11 +51,23 @@ await i18n.use(initReactI18next).init({
 })
 
 function renderPanel(props: React.ComponentProps<typeof SmartInsightsPanel>) {
-  return render(
-    <I18nextProvider i18n={i18n}>
-      <SmartInsightsPanel {...props} />
-    </I18nextProvider>
-  )
+  const routeTree = createRootRoute({
+    component: () => (
+      <I18nextProvider i18n={i18n}>
+        <SmartInsightsPanel
+          insights={props.insights}
+          loading={props.loading}
+          error={props.error}
+        />
+      </I18nextProvider>
+    ),
+  })
+  const router = createRouter({
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+
+  return render(<RouterProvider router={router} />)
 }
 
 const insights: DashboardInsight[] = [
@@ -68,27 +84,26 @@ const insights: DashboardInsight[] = [
 ]
 
 describe('SmartInsightsPanel', () => {
-  it('renders insight title, metric, and action link when data exists', () => {
+  it('renders insight title, metric, and action link when data exists', async () => {
     const view = renderPanel({ insights, loading: false })
 
-    expect(view.getByText('Balance may run out soon')).toBeInTheDocument()
-    expect(view.getByText('Runway')).toBeInTheDocument()
-    expect(view.getByText('2 days')).toBeInTheDocument()
-    expect(view.getByRole('link', { name: 'Open Wallet' })).toHaveAttribute(
-      'href',
-      '/wallet'
-    )
+    expect(await view.findByText('Balance may run out soon')).toBeTruthy()
+    expect(view.getByText('Runway')).toBeTruthy()
+    expect(view.getByText('2 days')).toBeTruthy()
+    expect(
+      view.getByRole('link', { name: 'Open Wallet' }).getAttribute('href')
+    ).toBe('/wallet')
   })
 
-  it('renders an empty state when there are no insights', () => {
+  it('renders an empty state when there are no insights', async () => {
     const view = renderPanel({ insights: [], loading: false })
 
-    expect(view.getByText('No urgent insights')).toBeInTheDocument()
+    expect(await view.findByText('No urgent insights')).toBeTruthy()
   })
 
-  it('renders a loading state while insights are loading', () => {
+  it('renders a loading state while insights are loading', async () => {
     const view = renderPanel({ insights: [], loading: true })
 
-    expect(view.getByLabelText('Loading smart insights')).toBeInTheDocument()
+    expect(await view.findByLabelText('Loading smart insights')).toBeTruthy()
   })
 })
