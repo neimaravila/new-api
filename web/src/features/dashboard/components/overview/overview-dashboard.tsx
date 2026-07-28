@@ -56,16 +56,22 @@ import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { getDashboardInsights, getDashboardSummary } from '../../api'
 import {
   useApiInfo,
   useDashboardContentVisibility,
 } from '../../hooks/use-status-data'
+import { AdminOperationsPanel } from './admin-operations-panel'
 import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
+import { DashboardHero } from './dashboard-hero'
+import { DashboardMetricGrid } from './dashboard-metric-grid'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
+import { SmartInsightsPanel } from './smart-insights-panel'
 import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
+import { UserDeveloperPanel } from './user-developer-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
   'dashboard_overview_setup_guide_expanded'
@@ -492,6 +498,30 @@ export function OverviewDashboard() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const dashboardSummaryQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'summary'],
+    queryFn: async () => {
+      const result = await getDashboardSummary()
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to load dashboard summary')
+      }
+      return result.data
+    },
+    staleTime: 60 * 1000,
+  })
+
+  const dashboardInsightsQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'insights'],
+    queryFn: async () => {
+      const result = await getDashboardInsights()
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to load dashboard insights')
+      }
+      return result.data
+    },
+    staleTime: 60 * 1000,
+  })
+
   const preferredKey = useMemo(
     () => getPreferredKey(apiKeysQuery.data ?? []),
     [apiKeysQuery.data]
@@ -619,6 +649,39 @@ export function OverviewDashboard() {
 
   return (
     <div className='flex flex-col gap-4'>
+      {dashboardSummaryQuery.data && (
+        <CardStaggerContainer className='grid gap-4'>
+          <CardStaggerItem>
+            <DashboardHero summary={dashboardSummaryQuery.data} />
+          </CardStaggerItem>
+          <CardStaggerItem>
+            <DashboardMetricGrid metrics={dashboardSummaryQuery.data.metrics} />
+          </CardStaggerItem>
+          <CardStaggerItem>
+            <SmartInsightsPanel
+              insights={dashboardInsightsQuery.data ?? []}
+              loading={dashboardInsightsQuery.isLoading}
+              error={dashboardInsightsQuery.isError}
+            />
+          </CardStaggerItem>
+          <CardStaggerItem>
+            {dashboardSummaryQuery.data.role === 'admin' ? (
+              <AdminOperationsPanel summary={dashboardSummaryQuery.data} />
+            ) : (
+              <UserDeveloperPanel summary={dashboardSummaryQuery.data} />
+            )}
+          </CardStaggerItem>
+        </CardStaggerContainer>
+      )}
+
+      {dashboardSummaryQuery.isError && (
+        <div className='bg-card text-muted-foreground rounded-2xl border border-dashed p-4 text-sm shadow-xs'>
+          {t(
+            'The enhanced dashboard summary is temporarily unavailable. Existing dashboard panels are still available below.'
+          )}
+        </div>
+      )}
+
       {setupGuideExpanded ? (
         <CardStaggerContainer className='grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
           <CardStaggerItem className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
