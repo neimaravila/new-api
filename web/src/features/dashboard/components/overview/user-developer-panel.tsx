@@ -124,7 +124,7 @@ export function UserDeveloperPanel(props: {
               >
                 <div className='truncate text-sm font-medium'>{model.name}</div>
                 <div className='text-muted-foreground mt-0.5 text-xs'>
-                  {model.requests} requests · {formatQuota(model.quota)}
+                  {model.requests} {t('requests')} · {formatQuota(model.quota)}
                 </div>
               </div>
             ))

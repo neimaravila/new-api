@@ -152,14 +152,36 @@ describe('dashboard role panels', () => {
     expect(screen.queryByText('Channel health')).toBeNull()
   })
 
-  it('renders hero action based on role', async () => {
+  it('renders admin hero action based on role', async () => {
     renderWithProviders(<DashboardHero summary={baseSummary} />)
 
     expect(await screen.findByText('Platform command center')).toBeTruthy()
+    expect(screen.getByText('10 requests · 20 quota used')).toBeTruthy()
+    expect(
+      screen.getByText('1 recent failures · 1 channels need review')
+    ).toBeTruthy()
     expect(
       screen
         .getByRole('link', { name: /Review Channels/i })
         .getAttribute('href')
     ).toBe('/channels')
+  })
+
+  it('renders user hero action based on role', async () => {
+    renderWithProviders(
+      <DashboardHero summary={{ ...baseSummary, role: 'user' }} />
+    )
+
+    expect(await screen.findByText('Platform command center')).toBeTruthy()
+    expect(
+      screen
+        .getByRole('link', { name: /Review API Keys/i })
+        .getAttribute('href')
+    ).toBe('/keys')
+    expect(
+      screen
+        .getByRole('link', { name: /Open Playground/i })
+        .getAttribute('href')
+    ).toBe('/playground')
   })
 })

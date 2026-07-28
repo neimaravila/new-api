@@ -64,7 +64,7 @@ export function AdminOperationsPanel(props: {
                     {channel.name}
                   </div>
                   <div className='text-muted-foreground text-xs'>
-                    {channel.response_time} ms
+                    {channel.response_time} {t('ms')}
                   </div>
                 </div>
                 <Badge variant='outline'>
@@ -156,6 +156,7 @@ function TopList(props: {
   items: NonNullable<DashboardSummary['top_models']>
   emptyText: string
 }): React.JSX.Element {
+  const { t } = useTranslation()
   const Icon = props.icon
   return (
     <div>
@@ -177,7 +178,7 @@ function TopList(props: {
                   {item.display_name || item.name}
                 </div>
                 <div className='text-muted-foreground text-xs'>
-                  {item.requests} requests · {item.tokens} tokens
+                  {item.requests} {t('requests')} · {item.tokens} {t('tokens')}
                 </div>
               </div>
               <div className='font-mono text-xs font-semibold'>

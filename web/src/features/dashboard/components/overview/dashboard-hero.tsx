@@ -52,7 +52,7 @@ export function DashboardHero(props: DashboardHeroProps): React.JSX.Element {
           </div>
           <div className='flex flex-wrap items-center gap-2'>
             <h2 className='text-2xl font-semibold tracking-tight sm:text-3xl'>
-              {props.summary.hero.title}
+              {t(props.summary.hero.title)}
             </h2>
             <Badge
               variant='outline'
@@ -67,7 +67,7 @@ export function DashboardHero(props: DashboardHeroProps): React.JSX.Element {
             </Badge>
           </div>
           <p className='text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed'>
-            {props.summary.hero.description}
+            {t(props.summary.hero.description)}
           </p>
         </div>
 
