@@ -260,16 +260,16 @@ func buildDashboardHero(role dto.DashboardRole, remainQuota int, agg dashboardAg
 	if role == dto.DashboardRoleAdmin {
 		return dto.DashboardHero{
 			Eyebrow:     dashboardMessage("Platform command center"),
-			Title:       dashboardMessage("{{requests}} requests · {{quota}} quota used", "requests", agg.RecentRequests, "quota", agg.RecentQuota),
-			Description: dashboardMessage("{{failures}} recent failures · {{channels}} channels need review", "failures", agg.RecentFailures, "channels", len(agg.Channels)),
+			Title:       dashboardMessage("{{requests}} requests · {{failures}} recent failures", "requests", agg.RecentRequests, "failures", agg.RecentFailures),
+			Description: dashboardMessage("{{channels}} channels need review · {{quotaRaw}} quota used", "channels", len(agg.Channels), "quotaRaw", agg.RecentQuota),
 			StatusLabel: dashboardMessage(dashboardAdminStatusLabel(agg)),
 			StatusTone:  dashboardAdminStatusTone(agg),
 		}
 	}
 	return dto.DashboardHero{
 		Eyebrow:     dashboardMessage("Developer home"),
-		Title:       dashboardMessage("{{quota}} quota remaining", "quota", remainQuota),
-		Description: dashboardMessage("{{requests}} requests in the last 24 hours · {{keys}} active keys", "requests", agg.RecentRequests, "keys", agg.ActiveKeyCount),
+		Title:       dashboardMessage("{{requests}} requests in the last 24 hours · {{failures}} recent failures", "requests", agg.RecentRequests, "failures", agg.RecentFailures),
+		Description: dashboardMessage("{{keys}} active keys · {{quotaRaw}} quota remaining", "keys", agg.ActiveKeyCount, "quotaRaw", remainQuota),
 		StatusLabel: dashboardMessage(dashboardUserStatusLabel(remainQuota, agg)),
 		StatusTone:  dashboardUserStatusTone(remainQuota, agg),
 	}

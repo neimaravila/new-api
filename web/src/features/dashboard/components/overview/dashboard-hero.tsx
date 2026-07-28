@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { DashboardMessage, DashboardSummary } from '../../types'
@@ -41,7 +42,13 @@ function translateDashboardMessage(
   t: ReturnType<typeof useTranslation>['t'],
   message: DashboardMessage
 ): string {
-  return t(message.key, message.values)
+  const values = { ...message.values }
+  if (Object.prototype.hasOwnProperty.call(values, 'quotaRaw')) {
+    const raw = values.quotaRaw
+    values.quotaRaw =
+      typeof raw === 'number' ? formatQuota(raw) : String(raw ?? '')
+  }
+  return t(message.key, values)
 }
 
 export function DashboardHero(props: DashboardHeroProps): React.JSX.Element {
