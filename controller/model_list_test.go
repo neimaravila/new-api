@@ -228,11 +228,11 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	})
 
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["vip","default","unavailable"]`))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"auto":"自动分组","default":"默认分组","unavailable":"不可用分组"}`))
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"auto":"Auto Group","default":"Default Group","unavailable":"Unavailable Group"}`))
 	specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
 	specialGroups.Clear()
 	specialGroups.Set("default", map[string]string{
-		"+:vip":         "VIP 分组",
+		"+:vip":         "VIP Group",
 		"-:unavailable": "",
 	})
 

@@ -56,7 +56,7 @@ func GenerateOAuthCode(c *gin.Context) {
 	if request.Intent == model.AuthFlowIntentBind {
 		identity, ok := middleware.GetSessionAuthIdentity(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "绑定操作需要登录"})
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Login is required for the binding operation"})
 			return
 		}
 		userID = identity.UserID

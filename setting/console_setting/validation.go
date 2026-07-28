@@ -25,17 +25,17 @@ var (
 func parseJSONArray(jsonStr string, typeName string) ([]map[string]interface{}, error) {
 	var list []map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &list); err != nil {
-		return nil, fmt.Errorf("%s格式错误：%s", typeName, err.Error())
+		return nil, fmt.Errorf("%s invalid format: %s", typeName, err.Error())
 	}
 	return list, nil
 }
 
 func validateURL(urlStr string, index int, itemType string) error {
 	if !urlRegex.MatchString(urlStr) {
-		return fmt.Errorf("第%d个%s的URL格式不正确", index, itemType)
+		return fmt.Errorf("item #%d %s URL is invalid", index, itemType)
 	}
 	if _, err := url.Parse(urlStr); err != nil {
-		return fmt.Errorf("第%d个%s的URL无法解析：%s", index, itemType, err.Error())
+		return fmt.Errorf("item #%d %s URL could not be parsed: %s", index, itemType, err.Error())
 	}
 	return nil
 }
@@ -44,7 +44,7 @@ func checkDangerousContent(content string, index int, itemType string) error {
 	lower := strings.ToLower(content)
 	for _, d := range dangerousChars {
 		if strings.Contains(lower, d) {
-			return fmt.Errorf("第%d个%s包含不允许的内容", index, itemType)
+			return fmt.Errorf("item #%d %s contains disallowed content", index, itemType)
 		}
 	}
 	return nil
@@ -74,60 +74,60 @@ func ValidateConsoleSettings(settingsStr string, settingType string) error {
 	case "UptimeKumaGroups":
 		return validateUptimeKumaGroups(settingsStr)
 	default:
-		return fmt.Errorf("未知的设置类型：%s", settingType)
+		return fmt.Errorf("unknown setting type: %s", settingType)
 	}
 }
 
 func validateApiInfo(apiInfoStr string) error {
-	apiInfoList, err := parseJSONArray(apiInfoStr, "API信息")
+	apiInfoList, err := parseJSONArray(apiInfoStr, "API info")
 	if err != nil {
 		return err
 	}
 
 	if len(apiInfoList) > 50 {
-		return fmt.Errorf("API信息数量不能超过50个")
+		return fmt.Errorf("the number of API info entries cannot exceed 50")
 	}
 
 	for i, apiInfo := range apiInfoList {
 		urlStr, ok := apiInfo["url"].(string)
 		if !ok || urlStr == "" {
-			return fmt.Errorf("第%d个API信息缺少URL字段", i+1)
+			return fmt.Errorf("API info item #%d is missing the URL field", i+1)
 		}
 		route, ok := apiInfo["route"].(string)
 		if !ok || route == "" {
-			return fmt.Errorf("第%d个API信息缺少线路描述字段", i+1)
+			return fmt.Errorf("API info item #%d is missing the route description field", i+1)
 		}
 		description, ok := apiInfo["description"].(string)
 		if !ok || description == "" {
-			return fmt.Errorf("第%d个API信息缺少说明字段", i+1)
+			return fmt.Errorf("API info item #%d is missing the description field", i+1)
 		}
 		color, ok := apiInfo["color"].(string)
 		if !ok || color == "" {
-			return fmt.Errorf("第%d个API信息缺少颜色字段", i+1)
+			return fmt.Errorf("API info item #%d is missing the color field", i+1)
 		}
 
-		if err := validateURL(urlStr, i+1, "API信息"); err != nil {
+		if err := validateURL(urlStr, i+1, "API info"); err != nil {
 			return err
 		}
 
 		if len(urlStr) > 500 {
-			return fmt.Errorf("第%d个API信息的URL长度不能超过500字符", i+1)
+			return fmt.Errorf("API info item #%d URL length cannot exceed 500 characters", i+1)
 		}
 		if len(route) > 100 {
-			return fmt.Errorf("第%d个API信息的线路描述长度不能超过100字符", i+1)
+			return fmt.Errorf("API info item #%d route description length cannot exceed 100 characters", i+1)
 		}
 		if len(description) > 200 {
-			return fmt.Errorf("第%d个API信息的说明长度不能超过200字符", i+1)
+			return fmt.Errorf("API info item #%d description length cannot exceed 200 characters", i+1)
 		}
 
 		if !validColors[color] {
-			return fmt.Errorf("第%d个API信息的颜色值不合法", i+1)
+			return fmt.Errorf("API info item #%d has an invalid color value", i+1)
 		}
 
-		if err := checkDangerousContent(description, i+1, "API信息"); err != nil {
+		if err := checkDangerousContent(description, i+1, "API info"); err != nil {
 			return err
 		}
-		if err := checkDangerousContent(route, i+1, "API信息"); err != nil {
+		if err := checkDangerousContent(route, i+1, "API info"); err != nil {
 			return err
 		}
 	}
@@ -139,12 +139,12 @@ func GetApiInfo() []map[string]interface{} {
 }
 
 func validateAnnouncements(announcementsStr string) error {
-	list, err := parseJSONArray(announcementsStr, "系统公告")
+	list, err := parseJSONArray(announcementsStr, "system announcement")
 	if err != nil {
 		return err
 	}
 	if len(list) > 100 {
-		return fmt.Errorf("系统公告数量不能超过100个")
+		return fmt.Errorf("the number of system announcements cannot exceed 100")
 	}
 	validTypes := map[string]bool{
 		"default": true, "ongoing": true, "success": true, "warning": true, "error": true,
@@ -152,32 +152,32 @@ func validateAnnouncements(announcementsStr string) error {
 	for i, ann := range list {
 		content, ok := ann["content"].(string)
 		if !ok || content == "" {
-			return fmt.Errorf("第%d个公告缺少内容字段", i+1)
+			return fmt.Errorf("announcement item #%d is missing the content field", i+1)
 		}
 		publishDateAny, exists := ann["publishDate"]
 		if !exists {
-			return fmt.Errorf("第%d个公告缺少发布日期字段", i+1)
+			return fmt.Errorf("announcement item #%d is missing the publish date field", i+1)
 		}
 		publishDateStr, ok := publishDateAny.(string)
 		if !ok || publishDateStr == "" {
-			return fmt.Errorf("第%d个公告的发布日期不能为空", i+1)
+			return fmt.Errorf("announcement item #%d publish date cannot be empty", i+1)
 		}
 		if _, err := time.Parse(time.RFC3339, publishDateStr); err != nil {
-			return fmt.Errorf("第%d个公告的发布日期格式错误", i+1)
+			return fmt.Errorf("announcement item #%d publish date has an invalid format", i+1)
 		}
 		if t, exists := ann["type"]; exists {
 			if typeStr, ok := t.(string); ok {
 				if !validTypes[typeStr] {
-					return fmt.Errorf("第%d个公告的类型值不合法", i+1)
+					return fmt.Errorf("announcement item #%d has an invalid type value", i+1)
 				}
 			}
 		}
 		if len(content) > 500 {
-			return fmt.Errorf("第%d个公告的内容长度不能超过500字符", i+1)
+			return fmt.Errorf("announcement item #%d content length cannot exceed 500 characters", i+1)
 		}
 		if extra, exists := ann["extra"]; exists {
 			if extraStr, ok := extra.(string); ok && len(extraStr) > 200 {
-				return fmt.Errorf("第%d个公告的说明长度不能超过200字符", i+1)
+				return fmt.Errorf("announcement item #%d description length cannot exceed 200 characters", i+1)
 			}
 		}
 	}
@@ -185,27 +185,27 @@ func validateAnnouncements(announcementsStr string) error {
 }
 
 func validateFAQ(faqStr string) error {
-	list, err := parseJSONArray(faqStr, "FAQ信息")
+	list, err := parseJSONArray(faqStr, "FAQ")
 	if err != nil {
 		return err
 	}
 	if len(list) > 100 {
-		return fmt.Errorf("FAQ数量不能超过100个")
+		return fmt.Errorf("the number of FAQ entries cannot exceed 100")
 	}
 	for i, faq := range list {
 		question, ok := faq["question"].(string)
 		if !ok || question == "" {
-			return fmt.Errorf("第%d个FAQ缺少问题字段", i+1)
+			return fmt.Errorf("FAQ item #%d is missing the question field", i+1)
 		}
 		answer, ok := faq["answer"].(string)
 		if !ok || answer == "" {
-			return fmt.Errorf("第%d个FAQ缺少答案字段", i+1)
+			return fmt.Errorf("FAQ item #%d is missing the answer field", i+1)
 		}
 		if len(question) > 200 {
-			return fmt.Errorf("第%d个FAQ的问题长度不能超过200字符", i+1)
+			return fmt.Errorf("FAQ item #%d question length cannot exceed 200 characters", i+1)
 		}
 		if len(answer) > 1000 {
-			return fmt.Errorf("第%d个FAQ的答案长度不能超过1000字符", i+1)
+			return fmt.Errorf("FAQ item #%d answer length cannot exceed 1000 characters", i+1)
 		}
 	}
 	return nil
@@ -235,13 +235,13 @@ func GetFAQ() []map[string]interface{} {
 }
 
 func validateUptimeKumaGroups(groupsStr string) error {
-	groups, err := parseJSONArray(groupsStr, "Uptime Kuma分组配置")
+	groups, err := parseJSONArray(groupsStr, "Uptime Kuma group config")
 	if err != nil {
 		return err
 	}
 
 	if len(groups) > 20 {
-		return fmt.Errorf("Uptime Kuma分组数量不能超过20个")
+		return fmt.Errorf("the number of Uptime Kuma groups cannot exceed 20")
 	}
 
 	nameSet := make(map[string]bool)
@@ -249,50 +249,50 @@ func validateUptimeKumaGroups(groupsStr string) error {
 	for i, group := range groups {
 		categoryName, ok := group["categoryName"].(string)
 		if !ok || categoryName == "" {
-			return fmt.Errorf("第%d个分组缺少分类名称字段", i+1)
+			return fmt.Errorf("group item #%d is missing the category name field", i+1)
 		}
 		if nameSet[categoryName] {
-			return fmt.Errorf("第%d个分组的分类名称与其他分组重复", i+1)
+			return fmt.Errorf("group item #%d category name is duplicated with another group", i+1)
 		}
 		nameSet[categoryName] = true
 		urlStr, ok := group["url"].(string)
 		if !ok || urlStr == "" {
-			return fmt.Errorf("第%d个分组缺少URL字段", i+1)
+			return fmt.Errorf("group item #%d is missing the URL field", i+1)
 		}
 		slug, ok := group["slug"].(string)
 		if !ok || slug == "" {
-			return fmt.Errorf("第%d个分组缺少Slug字段", i+1)
+			return fmt.Errorf("group item #%d is missing the Slug field", i+1)
 		}
 		description, ok := group["description"].(string)
 		if !ok {
 			description = ""
 		}
 
-		if err := validateURL(urlStr, i+1, "分组"); err != nil {
+		if err := validateURL(urlStr, i+1, "group"); err != nil {
 			return err
 		}
 
 		if len(categoryName) > 50 {
-			return fmt.Errorf("第%d个分组的分类名称长度不能超过50字符", i+1)
+			return fmt.Errorf("group item #%d category name length cannot exceed 50 characters", i+1)
 		}
 		if len(urlStr) > 500 {
-			return fmt.Errorf("第%d个分组的URL长度不能超过500字符", i+1)
+			return fmt.Errorf("group item #%d URL length cannot exceed 500 characters", i+1)
 		}
 		if len(slug) > 100 {
-			return fmt.Errorf("第%d个分组的Slug长度不能超过100字符", i+1)
+			return fmt.Errorf("group item #%d Slug length cannot exceed 100 characters", i+1)
 		}
 		if len(description) > 200 {
-			return fmt.Errorf("第%d个分组的描述长度不能超过200字符", i+1)
+			return fmt.Errorf("group item #%d description length cannot exceed 200 characters", i+1)
 		}
 
 		if !slugRegex.MatchString(slug) {
-			return fmt.Errorf("第%d个分组的Slug只能包含字母、数字、下划线和连字符", i+1)
+			return fmt.Errorf("group item #%d Slug can only contain letters, numbers, underscores and hyphens", i+1)
 		}
 
-		if err := checkDangerousContent(description, i+1, "分组"); err != nil {
+		if err := checkDangerousContent(description, i+1, "group"); err != nil {
 			return err
 		}
-		if err := checkDangerousContent(categoryName, i+1, "分组"); err != nil {
+		if err := checkDangerousContent(categoryName, i+1, "group"); err != nil {
 			return err
 		}
 	}

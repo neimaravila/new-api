@@ -1,131 +1,80 @@
-From 3c25052e59eb204b9c872de4c13e38f4b35848bd Mon Sep 17 00:00:00 2001
-From: "weizhi.li" <weizhi.li@spacemit.com>
-Date: Tue, 21 Jul 2026 08:31:44 -0700
-Subject: [PATCH] fix: preserve parallel Claude tool block lifecycle
-
----
- relay/common/relay_info.go                    |  4 ++
- service/convert_stream_test.go                | 66 +++++++++++++++++++
- .../oai_chat/to_claude_messages_resp.go       | 66 ++++++++++---------
- 3 files changed, 104 insertions(+), 32 deletions(-)
- create mode 100644 service/convert_stream_test.go
-
-diff --git a/relay/common/relay_info.go b/relay/common/relay_info.go
-index 9f460ce5c6a..f03ba0aa801 100644
---- a/relay/common/relay_info.go
-+++ b/relay/common/relay_info.go
-@@ -43,6 +43,10 @@ type ClaudeConvertInfo struct {
+diff --git a/relaykit/relayconvert/convmeta/meta.go b/relaykit/relayconvert/convmeta/meta.go
+index 68848af9715..dddbadff9ef 100644
+--- a/relaykit/relayconvert/convmeta/meta.go
++++ b/relaykit/relayconvert/convmeta/meta.go
+@@ -60,6 +60,10 @@ type ClaudeConvertInfo struct {
  
  	ToolCallBaseIndex      int
  	ToolCallMaxIndexOffset int
 +	// ToolCallOpenIndexes tracks started-but-not-stopped parallel tool_use
 +	// block indexes; nil outside a tools run. Guards delta/stop so they never
 +	// target an index without an active content_block_start (#4389).
-+	ToolCallOpenIndexes    map[int]bool
++	ToolCallOpenIndexes map[int]bool
  }
  
- type RerankerInfo struct {
-diff --git a/service/convert_stream_test.go b/service/convert_stream_test.go
-new file mode 100644
-index 00000000000..8ece118c860
---- /dev/null
-+++ b/service/convert_stream_test.go
-@@ -0,0 +1,66 @@
-+package service
+ const (
+diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
+index 554e70a9d5e..91cef03220b 100644
+--- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
++++ b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
+@@ -1,6 +1,7 @@
+ package oaichat
+ 
+ import (
++	"sort"
+ 	"strings"
+ 
+ 	"github.com/QuantumNous/new-api/relaykit/dto"
+@@ -10,6 +11,12 @@ import (
+ 	"github.com/samber/lo"
+ )
+ 
++// maxToolCallBlockIndex bounds upstream-provided tool_call.index values so a
++// malicious or malformed huge index cannot drive a non-terminating stop scan
++// or pollute state.Index with an absurd content block index. Real tool_call
++// indexes are 0-based and small; this is a defensive ceiling only.
++const maxToolCallBlockIndex = 1024
 +
-+import (
-+	"testing"
-+
-+	"github.com/QuantumNous/new-api/dto"
-+	relaycommon "github.com/QuantumNous/new-api/relay/common"
-+	"github.com/stretchr/testify/assert"
-+	"github.com/stretchr/testify/require"
-+)
-+
-+func TestStreamResponseOpenAI2ClaudeParallelToolCallsHaveValidBlockLifecycle(t *testing.T) {
-+	info := &relaycommon.RelayInfo{SendResponseCount: 1, ClaudeConvertInfo: &relaycommon.ClaudeConvertInfo{}}
-+	first := &dto.ChatCompletionsStreamResponse{
-+		Id: "chatcmpl_1", Model: "glm",
-+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
-+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
-+				{Index: pointerTo(0), ID: "call_weather", Function: dto.FunctionResponse{Name: "get_weather"}},
-+				{Index: pointerTo(1), ID: "call_time", Function: dto.FunctionResponse{Name: "get_time"}},
-+			}},
-+		}},
-+	}
-+
-+	events := StreamResponseOpenAI2Claude(first, info)
-+	info.SendResponseCount++
-+	events = append(events, StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
-+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
-+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
-+				{Index: pointerTo(0), Function: dto.FunctionResponse{Arguments: `{"city":"Tokyo"}`}},
-+				{Index: pointerTo(1), Function: dto.FunctionResponse{Arguments: `{}`}},
-+			}},
-+		}},
-+	}, info)...)
-+	info.SendResponseCount++
-+	finishReason := "tool_calls"
-+	events = append(events, StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
-+		Choices: []dto.ChatCompletionsStreamResponseChoice{{FinishReason: &finishReason}},
-+		Usage:   &dto.Usage{},
-+	}, info)...)
-+
-+	started := map[int]bool{}
-+	stopped := map[int]bool{}
-+	for _, event := range events {
-+		if event.Index == nil {
-+			continue
+ func generateStopBlock(index int) *dto.ClaudeResponse {
+ 	return &dto.ClaudeResponse{
+ 		Type:  "content_block_stop",
+@@ -25,9 +32,21 @@ func stopOpenBlocks(state *convmeta.ClaudeConvertInfo) []*dto.ClaudeResponse {
+ 	case convmeta.LastMessageTypeText, convmeta.LastMessageTypeThinking:
+ 		return []*dto.ClaudeResponse{generateStopBlock(state.Index)}
+ 	case convmeta.LastMessageTypeTools:
+-		responses := make([]*dto.ClaudeResponse, 0, state.ToolCallMaxIndexOffset+1)
+-		for offset := 0; offset <= state.ToolCallMaxIndexOffset; offset++ {
+-			responses = append(responses, generateStopBlock(state.ToolCallBaseIndex+offset))
++		// Iterate the tracked open indexes directly rather than scanning
++		// 0..ToolCallMaxIndexOffset: O(active blocks) instead of O(max index),
++		// immune to sparse/huge indexes, and every started block is stopped
++		// (negative indexes that slipped past validation are still tracked here).
++		if len(state.ToolCallOpenIndexes) == 0 {
++			return nil
 +		}
-+		switch event.Type {
-+		case "content_block_start":
-+			require.False(t, started[*event.Index], "block %d started twice", *event.Index)
-+			started[*event.Index] = true
-+		case "content_block_delta":
-+			assert.True(t, started[*event.Index], "block %d received delta before start", *event.Index)
-+			assert.False(t, stopped[*event.Index], "block %d received delta after stop", *event.Index)
-+		case "content_block_stop":
-+			assert.True(t, started[*event.Index], "block %d stopped before start", *event.Index)
-+			stopped[*event.Index] = true
++		indexes := make([]int, 0, len(state.ToolCallOpenIndexes))
++		for idx := range state.ToolCallOpenIndexes {
++			indexes = append(indexes, idx)
 +		}
-+	}
-+
-+	assert.Equal(t, map[int]bool{0: true, 1: true}, started)
-+	assert.Equal(t, started, stopped)
-+}
-+
-+func pointerTo[T any](value T) *T {
-+	return &value
-+}
-diff --git a/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go b/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go
-index 7f0c6b8be5f..592bfcce67f 100644
---- a/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go
-+++ b/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go
-@@ -100,7 +100,11 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
- 		case relaycommon.LastMessageTypeTools:
- 			base := info.ClaudeConvertInfo.ToolCallBaseIndex
- 			for offset := 0; offset <= info.ClaudeConvertInfo.ToolCallMaxIndexOffset; offset++ {
--				claudeResponses = append(claudeResponses, generateStopBlock(base+offset))
-+				blockIndex := base + offset
-+				// skip gaps or never-started offsets to avoid stop-only ghost blocks
-+				if info.ClaudeConvertInfo.ToolCallOpenIndexes[blockIndex] {
-+					claudeResponses = append(claudeResponses, generateStopBlock(blockIndex))
-+				}
- 			}
++		sort.Ints(indexes)
++		responses := make([]*dto.ClaudeResponse, 0, len(indexes))
++		for _, idx := range indexes {
++			responses = append(responses, generateStopBlock(idx))
  		}
- 	}
-@@ -119,6 +123,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
- 			info.ClaudeConvertInfo.Index = info.ClaudeConvertInfo.ToolCallBaseIndex + info.ClaudeConvertInfo.ToolCallMaxIndexOffset + 1
- 			info.ClaudeConvertInfo.ToolCallBaseIndex = 0
- 			info.ClaudeConvertInfo.ToolCallMaxIndexOffset = 0
-+			info.ClaudeConvertInfo.ToolCallOpenIndexes = nil
+ 		return responses
+ 	default:
+@@ -125,6 +144,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 			state.Index = state.ToolCallBaseIndex + state.ToolCallMaxIndexOffset + 1
+ 			state.ToolCallBaseIndex = 0
+ 			state.ToolCallMaxIndexOffset = 0
++			state.ToolCallOpenIndexes = nil
  		default:
- 			info.ClaudeConvertInfo.Index++
+ 			state.Index++
  		}
-@@ -147,39 +152,31 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
- 			info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeTools
- 			info.ClaudeConvertInfo.ToolCallBaseIndex = 0
- 			info.ClaudeConvertInfo.ToolCallMaxIndexOffset = 0
+@@ -153,39 +173,54 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 			state.LastMessagesType = convmeta.LastMessageTypeTools
+ 			state.ToolCallBaseIndex = 0
+ 			state.ToolCallMaxIndexOffset = 0
 -			var toolCall dto.ToolCallResponse
 -			if len(openAIResponse.Choices) > 0 && len(openAIResponse.Choices[0].Delta.ToolCalls) > 0 {
 -				toolCall = openAIResponse.Choices[0].Delta.ToolCalls[0]
@@ -135,13 +84,13 @@ index 7f0c6b8be5f..592bfcce67f 100644
 -					toolCall = *first
 -				} else {
 -					toolCall = dto.ToolCallResponse{}
-+			info.ClaudeConvertInfo.ToolCallOpenIndexes = make(map[int]bool)
-+			for i, toolCall := range openAIResponse.Choices[0].Delta.ToolCalls {
-+				offset := i
-+				if toolCall.Index != nil {
-+					offset = *toolCall.Index
++			state.ToolCallOpenIndexes = make(map[int]bool)
++			toolCalls := openAIResponse.Choices[0].Delta.ToolCalls
++			if len(toolCalls) == 0 {
++				if first := openAIResponse.GetFirstToolCall(); first != nil {
++					toolCalls = []dto.ToolCallResponse{*first}
  				}
--			}
+ 			}
 -			resp := &dto.ClaudeResponse{
 -				Type: "content_block_start",
 -				ContentBlock: &dto.ClaudeMediaMessage{
@@ -156,22 +105,46 @@ index 7f0c6b8be5f..592bfcce67f 100644
 -			// 首块包含工具 delta，则追加 input_json_delta
 -			if toolCall.Function.Arguments != "" {
 -				idx := 0
-+				if offset > info.ClaudeConvertInfo.ToolCallMaxIndexOffset {
-+					info.ClaudeConvertInfo.ToolCallMaxIndexOffset = offset
-+				}
-+				idx := offset
- 				claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
+-				claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
 -					Index: &idx,
 -					Type:  "content_block_delta",
 -					Delta: &dto.ClaudeMediaMessage{
 -						Type:        "input_json_delta",
 -						PartialJson: &toolCall.Function.Arguments,
 -					},
-+					Index: &idx, Type: "content_block_start",
-+					ContentBlock: &dto.ClaudeMediaMessage{Id: toolCall.ID, Type: "tool_use", Name: toolCall.Function.Name, Input: map[string]interface{}{}},
- 				})
-+				info.ClaudeConvertInfo.ToolCallOpenIndexes[idx] = true
-+				if toolCall.Function.Arguments != "" {
+-				})
++			for i, toolCall := range toolCalls {
++				offset := i
++				if toolCall.Index != nil {
++					offset = *toolCall.Index
++				}
++				if offset < 0 || offset > maxToolCallBlockIndex {
++					// reject malformed upstream indexes: a negative or huge index
++					// would emit an invalid Claude block index and, pre-fix, drove
++					// a non-terminating stop scan. Skip the tool call entirely.
++					continue
++				}
++				if offset > state.ToolCallMaxIndexOffset {
++					state.ToolCallMaxIndexOffset = offset
++				}
++				idx := offset
++				// start only when the block carries a name and is not already open,
++				// mirroring the later-chunk path; a replayed name must not emit a
++				// second content_block_start for an open index.
++				if toolCall.Function.Name != "" && !state.ToolCallOpenIndexes[idx] {
++					claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
++						Index: &idx,
++						Type:  "content_block_start",
++						ContentBlock: &dto.ClaudeMediaMessage{
++							Id:    toolCall.ID,
++							Type:  "tool_use",
++							Name:  toolCall.Function.Name,
++							Input: map[string]interface{}{},
++						},
++					})
++					state.ToolCallOpenIndexes[idx] = true
++				}
++				if toolCall.Function.Arguments != "" && state.ToolCallOpenIndexes[idx] {
 +					claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
 +						Index: &idx,
 +						Type:  "content_block_delta",
@@ -184,26 +157,179 @@ index 7f0c6b8be5f..592bfcce67f 100644
  			}
  		} else {
  
-@@ -311,6 +308,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+@@ -318,6 +353,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
  				stopOpenBlocksAndAdvance()
- 				info.ClaudeConvertInfo.ToolCallBaseIndex = info.ClaudeConvertInfo.Index
- 				info.ClaudeConvertInfo.ToolCallMaxIndexOffset = 0
-+				info.ClaudeConvertInfo.ToolCallOpenIndexes = make(map[int]bool)
+ 				state.ToolCallBaseIndex = state.Index
+ 				state.ToolCallMaxIndexOffset = 0
++				state.ToolCallOpenIndexes = make(map[int]bool)
  			}
- 			info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeTools
- 			base := info.ClaudeConvertInfo.ToolCallBaseIndex
-@@ -340,9 +338,13 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 			state.LastMessagesType = convmeta.LastMessageTypeTools
+ 			base := state.ToolCallBaseIndex
+@@ -330,13 +366,20 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 				} else {
+ 					offset = i
+ 				}
++				if offset < 0 || offset > maxToolCallBlockIndex {
++					// reject malformed upstream indexes (see maxToolCallBlockIndex).
++					continue
++				}
+ 				if offset > maxOffset {
+ 					maxOffset = offset
+ 				}
+ 				blockIndex := base + offset
+ 
+ 				idx := blockIndex
+-				if toolCall.Function.Name != "" {
++				// start only when a name is present and the index is not already
++				// open; providers that echo the full tool_call each delta would
++				// otherwise emit a duplicate content_block_start.
++				if toolCall.Function.Name != "" && !state.ToolCallOpenIndexes[idx] {
+ 					claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
+ 						Index: &idx,
+ 						Type:  "content_block_start",
+@@ -347,9 +390,13 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
  							Input: map[string]interface{}{},
  						},
  					})
-+					info.ClaudeConvertInfo.ToolCallOpenIndexes[idx] = true
++					state.ToolCallOpenIndexes[idx] = true
  				}
  
 -				if len(toolCall.Function.Arguments) > 0 {
 +				// guard the ghost delta: when args arrive packed in the final
 +				// chunk (e.g. GLM-5.2) after a sibling block was stopped, a
 +				// delta here targets a closed/never-started block (#4389)
-+				if len(toolCall.Function.Arguments) > 0 && info.ClaudeConvertInfo.ToolCallOpenIndexes[idx] {
++				if len(toolCall.Function.Arguments) > 0 && state.ToolCallOpenIndexes[idx] {
  					claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
  						Index: &idx,
  						Type:  "content_block_delta",
+diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
+index 1ccdd00b256..8cea5ef51ed 100644
+--- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
++++ b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
+@@ -214,6 +214,126 @@ func TestNormalizeCacheCreationSplit(t *testing.T) {
+ 	assert.Equal(t, 1, cache1h)
+ }
+ 
++// TestStreamResponseOpenAI2ClaudeParallelToolCallsHaveValidBlockLifecycle
++// drives two parallel tool_use blocks (e.g. GLM-5.2 packing multiple tool
++// calls per chunk) through the OpenAI→Claude stream converter and asserts the
++// Anthropic SSE state machine stays valid: every content_block_delta/stop
++// targets an actively-open block index, no block starts twice, and every
++// started block is stopped (#4389).
++func TestStreamResponseOpenAI2ClaudeParallelToolCallsHaveValidBlockLifecycle(t *testing.T) {
++	info := &convmeta.Values{
++		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{},
++	}
++
++	info.SendResponseCount = 1
++	events := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id: "chatcmpl_1", Model: "glm",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{{
++			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
++				{Index: ptr(0), ID: "call_weather", Function: dto.FunctionResponse{Name: "get_weather"}},
++				{Index: ptr(1), ID: "call_time", Function: dto.FunctionResponse{Name: "get_time"}},
++			}},
++		}},
++	}, info)
++
++	info.SendResponseCount = 2
++	events = append(events, StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Choices: []dto.ChatCompletionsStreamResponseChoice{{
++			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
++				{Index: ptr(0), Function: dto.FunctionResponse{Arguments: `{"city":"Tokyo"}`}},
++				{Index: ptr(1), Function: dto.FunctionResponse{Arguments: `{}`}},
++			}},
++		}},
++	}, info)...)
++
++	info.SendResponseCount = 3
++	finishReason := "tool_calls"
++	events = append(events, StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Choices: []dto.ChatCompletionsStreamResponseChoice{{FinishReason: &finishReason}},
++		Usage:   &dto.Usage{},
++	}, info)...)
++
++	started := map[int]bool{}
++	stopped := map[int]bool{}
++	// capture argument payloads by block index so a converter that drops deltas
++	// (not just reorders them) still fails the test.
++	deltas := map[int][]string{}
++	for _, event := range events {
++		if event.Index == nil {
++			continue
++		}
++		idx := *event.Index
++		switch event.Type {
++		case "content_block_start":
++			require.False(t, started[idx], "block %d started twice", idx)
++			started[idx] = true
++		case "content_block_delta":
++			assert.True(t, started[idx], "block %d received delta before start", idx)
++			assert.False(t, stopped[idx], "block %d received delta after stop", idx)
++			if event.Delta != nil && event.Delta.PartialJson != nil {
++				deltas[idx] = append(deltas[idx], *event.Delta.PartialJson)
++			}
++		case "content_block_stop":
++			assert.True(t, started[idx], "block %d stopped before start", idx)
++			require.False(t, stopped[idx], "block %d stopped twice", idx)
++			stopped[idx] = true
++		}
++	}
++
++	assert.Equal(t, map[int]bool{0: true, 1: true}, started)
++	assert.Equal(t, started, stopped)
++	assert.Equal(t, []string{`{"city":"Tokyo"}`}, deltas[0], "block 0 must deliver its argument payload")
++	assert.Equal(t, []string{`{}`}, deltas[1], "block 1 must deliver its argument payload")
++}
++
++// TestStreamResponseOpenAI2ClaudeReplayedToolNameDoesNotDuplicateStart covers
++// providers that echo the full tool_call (id+name) in every delta instead of
++// streaming incremental fragments: a replayed name for an already-open index
++// must not emit a second content_block_start.
++func TestStreamResponseOpenAI2ClaudeReplayedToolNameDoesNotDuplicateStart(t *testing.T) {
++	info := &convmeta.Values{
++		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{},
++	}
++
++	info.SendResponseCount = 1
++	first := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id: "chatcmpl_1", Model: "glm",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{{
++			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
++				{Index: ptr(0), ID: "call_weather", Function: dto.FunctionResponse{Name: "get_weather"}},
++			}},
++		}},
++	}, info)
++
++	info.SendResponseCount = 2
++	// upstream re-echoes name+id alongside an arguments fragment
++	second := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Choices: []dto.ChatCompletionsStreamResponseChoice{{
++			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ToolCalls: []dto.ToolCallResponse{
++				{Index: ptr(0), ID: "call_weather", Function: dto.FunctionResponse{Name: "get_weather", Arguments: `{"city":"Tokyo"}`}},
++			}},
++		}},
++	}, info)
++
++	info.SendResponseCount = 3
++	finishReason := "tool_calls"
++	third := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Choices: []dto.ChatCompletionsStreamResponseChoice{{FinishReason: &finishReason}},
++		Usage:   &dto.Usage{},
++	}, info)
++
++	// collect every content_block_start index; a replayed name must not start a
++	// new block at any index (e.g. a spurious index 1), so assert the exact set.
++	var startIndexes []int
++	for _, event := range append(append(first, second...), third...) {
++		if event.Type != "content_block_start" || event.Index == nil {
++			continue
++		}
++		startIndexes = append(startIndexes, *event.Index)
++	}
++	assert.Equal(t, []int{0}, startIndexes, "only block 0 may start despite replayed name")
++}
++
+ func ptr[T any](value T) *T {
+ 	return &value
+ }

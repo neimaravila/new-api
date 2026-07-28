@@ -298,7 +298,7 @@ func Register(c *gin.Context) {
 		// 生成默认令牌
 		token := model.Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
-			Name:               cleanUser.Username + "的初始令牌",
+			Name:               cleanUser.Username + "'s initial token",
 			Key:                key,
 			CreatedTime:        common.GetTimestamp(),
 			AccessedTime:       common.GetTimestamp(),
@@ -628,7 +628,7 @@ func generateDefaultSidebarConfig(userRole int) string {
 	// 转换为JSON字符串
 	configBytes, err := common.Marshal(defaultConfig)
 	if err != nil {
-		common.SysLog("生成默认边栏配置失败: " + err.Error())
+		common.SysLog("failed to generate default sidebar config: " + err.Error())
 		return ""
 	}
 
@@ -892,7 +892,7 @@ func UpdateSelf(c *gin.Context) {
 	if updatePassword {
 		identity, ok := middleware.GetSessionAuthIdentity(c)
 		if !ok {
-			common.ApiError(c, errors.New("当前认证方式不支持安全验证"))
+			common.ApiError(c, errors.New("current authentication method does not support secure verification"))
 			return
 		}
 		if err := model.DB.Transaction(func(tx *gorm.DB) error {

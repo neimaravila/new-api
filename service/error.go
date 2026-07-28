@@ -39,7 +39,7 @@ func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int)
 //	if !strings.HasPrefix(lowerText, "get file base64 from url") && !strings.HasPrefix(lowerText, "mime type is not supported") {
 //		if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
 //			common.SysLog(fmt.Sprintf("error: %s", text))
-//			text = "请求上游地址失败"
+//			text = "failed to request upstream address"
 //		}
 //	}
 //	openAIError := dto.OpenAIError{
@@ -65,7 +65,7 @@ func ClaudeErrorWrapper(err error, code string, statusCode int) *dto.ClaudeError
 	if !strings.HasPrefix(lowerText, "get file base64 from url") {
 		if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
 			common.SysLog(fmt.Sprintf("error: %s", text))
-			text = "请求上游地址失败"
+			text = "failed to request upstream address"
 		}
 	}
 	claudeError := types.ClaudeError{
@@ -202,7 +202,7 @@ func TaskErrorWrapper(err error, code string, statusCode int) *taskdto.TaskError
 	lowerText := strings.ToLower(text)
 	if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
 		common.SysLog(fmt.Sprintf("error: %s", text))
-		//text = "请求上游地址失败"
+		//text = "failed to request upstream address"
 		text = common.MaskSensitiveInfo(text)
 	}
 	//避免暴露内部错误

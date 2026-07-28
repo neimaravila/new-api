@@ -502,9 +502,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		ModelName:        info.OriginModelName,
-		TokenName:        "模型测试",
+		TokenName:        "model test",
 		Quota:            quota,
-		Content:          "模型测试",
+		Content:          "model test",
 		UseTimeSeconds:   int(consumedTime),
 		IsStream:         info.IsStream,
 		Group:            info.UsingGroup,
@@ -943,7 +943,7 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		// 当错误检查通过，才检查响应时间
 		if common.AutomaticDisableChannelEnabled && !shouldBanChannel {
 			if milliseconds > disableThreshold {
-				err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
+				err := fmt.Errorf("response time %.2fs exceeds threshold %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
 				newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
 				shouldBanChannel = true
 			}
@@ -1010,7 +1010,7 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
-		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
+		service.NotifyRootUser(dto.NotifyTypeChannelTest, "channel test completed", "all channel tests have completed")
 	}
 	return summary, nil
 }
@@ -1044,7 +1044,7 @@ func TestAllChannels(c *gin.Context) {
 	if !created {
 		c.JSON(http.StatusConflict, gin.H{
 			"success": false,
-			"message": "已有通道测试任务正在运行或等待中，不能启动本次手动任务",
+			"message": "a channel test task is already running or waiting, cannot start this manual task",
 			"data": gin.H{
 				"task_id": task.TaskID,
 				"status":  task.Status,

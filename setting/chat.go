@@ -17,7 +17,7 @@ var Chats = []map[string]string{
 		"AionUI": "aionui://provider/add?v=1&data={aionuiConfig}",
 	},
 	{
-		"流畅阅读": "fluentread",
+		"Fluent Reader": "fluentread",
 	},
 	{
 		"CC Switch": "ccswitch",

@@ -552,10 +552,10 @@ func TestBuildUpstreamModelUpdateTaskNotificationContent_OmitOverflowDetails(t *
 		},
 	)
 
-	require.Contains(t, content, "其余 4 个渠道已省略")
-	require.Contains(t, content, "其余 1 个已省略")
-	require.Contains(t, content, "失败渠道 ID（展示 10/12）")
-	require.Contains(t, content, "其余 2 个已省略")
+	require.Contains(t, content, "the remaining 4 channels were omitted")
+	require.Contains(t, content, "(the remaining 1 omitted)")
+	require.Contains(t, content, "failed channel IDs (showing 10/12)")
+	require.Contains(t, content, "(the remaining 2 omitted)")
 }
 
 func TestShouldSendUpstreamModelUpdateNotification(t *testing.T) {
@@ -593,5 +593,5 @@ func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testin
 
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)
-	require.Contains(t, recorder.Body.String(), "已有模型更新任务正在运行或等待中")
+	require.Contains(t, recorder.Body.String(), "a model update task is already running or waiting")
 }

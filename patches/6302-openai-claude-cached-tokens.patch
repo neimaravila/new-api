@@ -1,34 +1,7 @@
-From 8754416d9ff4554eee0865abd07dd8644460f841 Mon Sep 17 00:00:00 2001
-From: tutoupower <49771486+TuTouPower@users.noreply.github.com>
-Date: Sun, 19 Jul 2026 02:47:35 +0800
-Subject: [PATCH] fix(relayconvert): dedup cached tokens when converting OpenAI
- usage to Claude
-
-OpenAI's prompt_tokens is a superset that already includes cached_tokens
-(cache reads) and cache_write/cache_creation tokens, whereas Claude's
-input_tokens excludes both. The previous conversion in
-buildClaudeUsageFromOpenAIUsage only subtracted these subsets when
-CacheWriteTokens > 0, missing the pure-hit case where upstream providers
-(e.g. DeepSeek, LongCat via OpenAI protocol) report only cached_tokens on
-cache hits. In that case input_tokens retained the cached count, breaking
-Claude's mutual-exclusion semantics between input_tokens and
-cache_read_input_tokens. Downstream billing and statistics that assume
-Anthropic semantics then double-count the cached portion.
-
-Widen the subtraction trigger to fire whenever cached_tokens or
-cache_creation_tokens is present, so all three cases (pure hit, pure
-write, hit+write) yield a Claude-shaped input_tokens.
-
-Co-Authored-By: Claude <noreply@anthropic.com>
----
- .../oai_chat/to_claude_messages_resp.go       | 17 +++++----
- .../oai_chat/to_claude_messages_resp_test.go  | 37 +++++++++++++++++++
- 2 files changed, 47 insertions(+), 7 deletions(-)
-
-diff --git a/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go b/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go
+diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
 index 7f0c6b8be5f..c77bc8e631e 100644
---- a/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go
-+++ b/service/relayconvert/internal/oai_chat/to_claude_messages_resp.go
+--- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
++++ b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
 @@ -40,13 +40,16 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
  		oaiUsage.ClaudeCacheCreation1hTokens,
  	)
@@ -61,10 +34,10 @@ index 7f0c6b8be5f..c77bc8e631e 100644
  		BillingUsage:             billingUsage,
  	}
  	if cacheCreation5m > 0 || cacheCreation1h > 0 {
-diff --git a/service/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go b/service/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
+diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
 index facd873e709..8ec95f06f3a 100644
---- a/service/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
-+++ b/service/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
+--- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
++++ b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
 @@ -103,6 +103,43 @@ func TestBuildClaudeUsageFromOpenAICacheWriteUsage(t *testing.T) {
  	assert.Equal(t, 3616, usage.BillingUsage.OpenAIUsage.PromptTokensDetails.CacheWriteTokens)
  }
