@@ -481,6 +481,48 @@ func DeleteUserById(id int) (err error) {
 	return user.Delete()
 }
 
+// GetUserDisplayNameMap returns a user_id -> display-name map for the given
+// ids, resolved against the main users table (always on the main DB, even when
+// logs live in a separate database). The value prefers display_name and falls
+// back to username so callers always get a human-readable label.
+func GetUserDisplayNameMap(ids []int) map[int]string {
+	result := make(map[int]string, len(ids))
+	if len(ids) == 0 {
+		return result
+	}
+	// dedupe
+	unique := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id != 0 {
+			unique[id] = struct{}{}
+		}
+	}
+	if len(unique) == 0 {
+		return result
+	}
+	idList := make([]int, 0, len(unique))
+	for id := range unique {
+		idList = append(idList, id)
+	}
+	type userDisplay struct {
+		Id          int
+		DisplayName string
+		Username    string
+	}
+	var rows []userDisplay
+	if err := DB.Table("users").Select("id, display_name, username").Where("id IN ?", idList).Scan(&rows).Error; err != nil {
+		return result
+	}
+	for _, r := range rows {
+		if r.DisplayName != "" {
+			result[r.Id] = r.DisplayName
+		} else {
+			result[r.Id] = r.Username
+		}
+	}
+	return result
+}
+
 func HardDeleteUserById(id int) error {
 	if id == 0 {
 		return errors.New("id is empty!")

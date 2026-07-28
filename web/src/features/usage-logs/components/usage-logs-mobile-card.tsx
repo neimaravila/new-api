@@ -245,7 +245,8 @@ function MobileUserField({ log }: { log: UsageLog }) {
   const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
     useUsageLogsContext()
 
-  if (!log.username) return null
+  const displayName = log.display_name || log.username
+  if (!displayName) return null
 
   return (
     <button
@@ -264,14 +265,14 @@ function MobileUserField({ log }: { log: UsageLog }) {
             !sensitiveVisible && 'bg-muted text-muted-foreground'
           )}
           style={
-            sensitiveVisible ? getUserAvatarStyle(log.username) : undefined
+            sensitiveVisible ? getUserAvatarStyle(displayName) : undefined
           }
         >
-          {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
+          {sensitiveVisible ? getUserAvatarFallback(displayName) : '•'}
         </AvatarFallback>
       </Avatar>
       <span className='text-foreground min-w-0 truncate text-sm'>
-        {sensitiveVisible ? log.username : '••••'}
+        {sensitiveVisible ? displayName : '••••'}
       </span>
     </button>
   )

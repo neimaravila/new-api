@@ -73,6 +73,7 @@ type Log struct {
 	IsStream          bool   `json:"is_stream"`
 	ChannelId         int    `json:"channel" gorm:"index"`
 	ChannelName       string `json:"channel_name" gorm:"->"`
+	DisplayName       string `json:"display_name" gorm:"->"`
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
@@ -572,7 +573,30 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		}
 	}
 
+	fillLogDisplayNames(logs)
+
 	return logs, total, err
+}
+
+// fillLogDisplayNames populates Log.DisplayName from the users table. Done in
+// memory (batch lookup) because logs may live in a separate database from
+// users, which makes a SQL JOIN unreliable.
+func fillLogDisplayNames(logs []*Log) {
+	ids := make([]int, 0, len(logs))
+	for _, l := range logs {
+		if l != nil {
+			ids = append(ids, l.UserId)
+		}
+	}
+	nameMap := GetUserDisplayNameMap(ids)
+	for _, l := range logs {
+		if l == nil {
+			continue
+		}
+		if name, ok := nameMap[l.UserId]; ok {
+			l.DisplayName = name
+		}
+	}
 }
 
 const logSearchCountLimit = 10000
@@ -622,6 +646,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 
 	formatUserLogs(logs, startIdx)
+	fillLogDisplayNames(logs)
 	return logs, total, err
 }
 

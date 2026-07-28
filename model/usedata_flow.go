@@ -10,6 +10,7 @@ import (
 type FlowQuotaData struct {
 	UserID      int    `json:"user_id,omitempty" gorm:"column:user_id"`
 	Username    string `json:"username,omitempty" gorm:"column:username"`
+	DisplayName string `json:"display_name,omitempty" gorm:"-"`
 	NodeName    string `json:"node_name,omitempty" gorm:"column:node_name"`
 	TokenID     int    `json:"token_id,omitempty" gorm:"column:token_id"`
 	TokenName   string `json:"token_name,omitempty" gorm:"-"`
@@ -20,6 +21,26 @@ type FlowQuotaData struct {
 	TokenUsed   int    `json:"token_used" gorm:"column:token_used"`
 	Count       int    `json:"count" gorm:"column:count"`
 	Quota       int    `json:"quota" gorm:"column:quota"`
+}
+
+// FillFlowDisplayNames populates DisplayName from the users table (main DB).
+// Done in memory because quota_data/logs may live in a separate database.
+func FillFlowDisplayNames(rows []*FlowQuotaData) {
+	ids := make([]int, 0, len(rows))
+	for _, r := range rows {
+		if r != nil {
+			ids = append(ids, r.UserID)
+		}
+	}
+	nameMap := GetUserDisplayNameMap(ids)
+	for _, r := range rows {
+		if r == nil {
+			continue
+		}
+		if name, ok := nameMap[r.UserID]; ok {
+			r.DisplayName = name
+		}
+	}
 }
 
 func GetFlowQuotaData(startTime int64, endTime int64, username string, userID int, role int) ([]*FlowQuotaData, error) {

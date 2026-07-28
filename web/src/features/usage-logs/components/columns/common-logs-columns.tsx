@@ -481,13 +481,15 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       {
         id: 'user',
         header: t('User'),
-        accessorFn: (row) => row.username,
+        accessorFn: (row) => row.display_name || row.username,
         cell: function UserCell({ row }) {
           const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
             useUsageLogsContext()
           const log = row.original
 
-          if (!log.username) return null
+          // Prefer the human-friendly display name, fall back to username.
+          const displayName = log.display_name || log.username
+          if (!displayName) return null
 
           return (
             <button
@@ -507,11 +509,11 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   )}
                   style={
                     sensitiveVisible
-                      ? getUserAvatarStyle(log.username)
+                      ? getUserAvatarStyle(displayName)
                       : undefined
                   }
                 >
-                  {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
+                  {sensitiveVisible ? getUserAvatarFallback(displayName) : '•'}
                 </AvatarFallback>
               </Avatar>
               <TooltipProvider delay={300}>
@@ -521,10 +523,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                       <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
                     }
                   >
-                    {sensitiveVisible ? log.username : '••••'}
+                    {sensitiveVisible ? displayName : '••••'}
                   </TooltipTrigger>
-                  {sensitiveVisible && log.username.length > 12 && (
-                    <TooltipContent side='top'>{log.username}</TooltipContent>
+                  {sensitiveVisible && displayName.length > 12 && (
+                    <TooltipContent side='top'>{displayName}</TooltipContent>
                   )}
                 </Tooltip>
               </TooltipProvider>

@@ -751,10 +751,14 @@ export function processUserChartData(
   if (!data || data.length === 0) return emptyResult
 
   const userQuotaTotal = new Map<string, number>()
+  const userLabels = new Map<string, string>()
   data.forEach((item) => {
     const username = item.username || 'unknown'
-    const prev = userQuotaTotal.get(username) || 0
-    userQuotaTotal.set(username, prev + (Number(item.quota) || 0))
+    const userKey = item.user_id ? String(item.user_id) : username
+    const label = item.display_name || username
+    userLabels.set(userKey, label)
+    const prev = userQuotaTotal.get(userKey) || 0
+    userQuotaTotal.set(userKey, prev + (Number(item.quota) || 0))
   })
 
   const sorted = Array.from(userQuotaTotal.entries()).sort(
@@ -764,15 +768,15 @@ export function processUserChartData(
   const topUserSet = new Set(topUsers)
   const totalQuota = sorted.slice(0, limit).reduce((s, [, q]) => s + q, 0)
 
-  const rankValues = sorted.slice(0, limit).map(([username, quota]) => ({
-    User: username,
+  const rankValues = sorted.slice(0, limit).map(([userKey, quota]) => ({
+    User: userLabels.get(userKey) || userKey,
     rawQuota: quota,
     Usage: Number((quota / quotaPerUnit).toFixed(4)),
   }))
 
   const userColorMap = topUsers.reduce<Record<string, string>>(
     (acc, user, i) => {
-      acc[user] = USER_COLORS[i % USER_COLORS.length]
+      acc[userLabels.get(user) || user] = USER_COLORS[i % USER_COLORS.length]
       return acc
     },
     {}
@@ -785,7 +789,8 @@ export function processUserChartData(
     const ts = Number(item.created_at)
     const timeKey = formatChartTime(ts, timeGranularity)
     allTimePoints.add(timeKey)
-    const user = item.username || 'unknown'
+    const username = item.username || 'unknown'
+    const user = item.user_id ? String(item.user_id) : username
     if (!topUserSet.has(user)) return
     if (!timeUserMap.has(timeKey)) timeUserMap.set(timeKey, new Map())
     const map = timeUserMap.get(timeKey)!
@@ -805,7 +810,7 @@ export function processUserChartData(
       const q = timeUserMap.get(time)?.get(user) || 0
       trendValues.push({
         Time: time,
-        User: user,
+        User: userLabels.get(user) || user,
         rawQuota: q,
         Usage: Number((q / quotaPerUnit).toFixed(4)),
       })

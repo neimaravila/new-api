@@ -37,6 +37,7 @@ func GetAllQuotaDates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.FillQuotaDataDisplayNames(dates)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -53,6 +54,7 @@ func GetQuotaDatesByUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.FillQuotaDataDisplayNames(dates)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -77,6 +79,7 @@ func GetUserQuotaDates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.FillQuotaDataDisplayNames(dates)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -96,6 +99,7 @@ func GetAllFlowQuotaDates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.FillFlowDisplayNames(dates)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -122,6 +126,7 @@ func GetUserFlowQuotaDates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.FillFlowDisplayNames(dates)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
