@@ -209,6 +209,24 @@ export const STATIC_I18N_KEYS = [
   'Existing account will be reused',
   'Not set yet',
 
+  // Dashboard overview dynamic copy
+  'Channel health',
+  'Developer home',
+  'Manage channels',
+  'Model usage',
+  'Needs attention',
+  'No urgent insights',
+  'Platform command center',
+  'Ready-to-run request',
+  'Recent activity',
+  'Recent requests',
+  'Rule-based recommendations from recent platform activity',
+  'Smart insights',
+  'Smart insights are temporarily unavailable.',
+  'The dashboard did not find anything that needs immediate attention.',
+  'The enhanced dashboard summary is temporarily unavailable. Existing dashboard panels are still available below.',
+  'Top users',
+
   // Models section-registry nav (dynamic titleKey)
   'Grok',
 
