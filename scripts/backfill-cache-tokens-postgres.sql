@@ -1,13 +1,15 @@
--- Backfill logs.cache_tokens from the JSON `other` column.
+-- Backfill cache tokens for historical data so dashboard/rankings/logs all
+-- reflect total tokens (prompt + completion + cache).
 --
 -- Context: the cache_tokens column was added to the logs table so that
 -- dashboard/stat queries can sum cache tokens without parsing JSON on every
--- row. This script populates it retroactively for rows created BEFORE the
--- column existed (those rows still carry cache_tokens inside the `other`
--- JSON payload).
+-- row. This script populates it retroactively, then adds the historical
+-- cache to quota_data.token_used (which feeds dashboard/models + rankings).
 --
--- Run ONCE after deploying the column. Idempotent: only updates rows where
--- cache_tokens is currently 0 but the JSON carries a non-zero value.
+-- TWO PARTS, run in order:
+--   Part 1 (logs.cache_tokens):      idempotent — safe to run repeatedly.
+--   Part 2 (quota_data.token_used):  NOT idempotent — run exactly once,
+--                                    only after Part 1.
 --
 -- PostgreSQL version. For MySQL/SQLite, adapt the JSON access syntax
 -- (MySQL: JSON_EXTRACT(other, '$.cache_tokens'); SQLite: json_extract(...)).
@@ -30,14 +32,19 @@ WHERE cache_tokens = 0
 
 -- =====================================================================
 -- Part 2: Backfill quota_data.token_used so dashboard/models and rankings
--- also reflect cache. quota_data aggregates by (user, model, hour bucket).
--- We add the cache_tokens summed from logs (already backfilled in Part 1),
--- matched on the same hourly bucket, user and model.
+-- also reflect cache. quota_data aggregates by the tuple
+-- (user_id, username, model_name, hour_bucket, use_group, token_id,
+--  channel_id, node_name), so the cache must be aggregated on the SAME
+-- dimensions, otherwise multiple buckets sharing user+model+hour each get
+-- the full cache sum and the total is inflated.
 --
--- NOTE: only run AFTER Part 1. Idempotent via the guard on cache_tokens=0
--- being preserved in logs (Part 1 sets it once), but to be safe this UPDATE
--- is written as: token_used += aggregated cache from logs. If run twice it
--- would double-count, so run Part 2 only once.
+-- In the `logs` table the group column is named "group" (a reserved word in
+-- Postgres, hence the double quotes) and maps to quota_data.use_group.
+-- username and node_name are omitted because user_id+model_name already pin
+-- username, and node_name is constant per deployment in practice.
+--
+-- Run ONCE, AFTER Part 1, and only once: it is `token_used += cache`, so a
+-- second run double-counts.
 -- =====================================================================
 
 UPDATE quota_data qd
@@ -47,16 +54,22 @@ FROM (
     user_id,
     model_name,
     (created_at - (created_at % 3600)) AS hour_bucket,
+    "group" AS grp,
+    token_id,
+    channel_id,
     SUM(cache_tokens) AS cache_sum
   FROM logs
   WHERE type = 2          -- LogTypeConsume
     AND cache_tokens > 0
-  GROUP BY user_id, model_name, (created_at - (created_at % 3600))
+  GROUP BY user_id, model_name, (created_at - (created_at % 3600)), "group", token_id, channel_id
 ) agg
 WHERE qd.user_id = agg.user_id
   AND qd.model_name = agg.model_name
-  AND qd.created_at = agg.hour_bucket;
+  AND qd.created_at = agg.hour_bucket
+  AND COALESCE(qd.use_group, '') = COALESCE(agg.grp, '')
+  AND qd.token_id = agg.token_id
+  AND qd.channel_id = agg.channel_id;
 
--- Verify quota_data now includes cache (compare with logs totals):
+-- Verify quota_data now includes cache (should be within ~1% of logs totals):
 -- SELECT SUM(token_used) AS quota_data_tokens FROM quota_data;
 -- SELECT SUM(prompt_tokens + completion_tokens + cache_tokens) AS logs_tokens FROM logs;
