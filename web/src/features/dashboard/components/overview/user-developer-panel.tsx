@@ -21,7 +21,7 @@ import { ArrowRight, Code2, FileText, KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { formatQuota } from '@/lib/format'
+import { formatNumber, formatQuota } from '@/lib/format'
 
 import type { DashboardSummary } from '../../types'
 
@@ -124,7 +124,7 @@ export function UserDeveloperPanel(props: {
               >
                 <div className='truncate text-sm font-medium'>{model.name}</div>
                 <div className='text-muted-foreground mt-0.5 text-xs'>
-                  {model.requests} {t('requests')} · {formatQuota(model.quota)}
+                  {formatNumber(model.requests)} {t('requests')} · {formatQuota(model.quota)}
                 </div>
               </div>
             ))

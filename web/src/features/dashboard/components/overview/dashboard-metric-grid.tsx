@@ -29,7 +29,7 @@ import { useTranslation } from 'react-i18next'
 
 import type { DashboardMetric } from '../../types'
 import { StatCard } from '../ui/stat-card'
-import { formatQuota } from '@/lib/format'
+import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 
 interface DashboardMetricGridProps {
   metrics: DashboardMetric[]
@@ -79,9 +79,13 @@ function DashboardMetricItem(props: {
     metricIcons[props.metric.key as keyof typeof metricIcons] ?? Activity
 
   const isQuotaValue = props.metric.key === 'quota' || props.metric.key === 'balance'
+  const isTokensValue = props.metric.key === 'tokens'
+  const numericValue = Number(props.metric.value)
   const displayValue = isQuotaValue
-    ? formatQuota(Number(props.metric.value))
-    : props.metric.value
+    ? formatQuota(numericValue)
+    : isTokensValue
+      ? formatCompactNumber(numericValue)
+      : formatNumber(numericValue)
 
   return (
     <div className='bg-card rounded-2xl border p-3 shadow-xs'>

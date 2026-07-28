@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { formatQuota } from '@/lib/format'
+import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 
 import type { DashboardSummary } from '../../types'
 
@@ -178,7 +178,7 @@ function TopList(props: {
                   {item.display_name || item.name}
                 </div>
                 <div className='text-muted-foreground text-xs'>
-                  {item.requests} {t('requests')} · {item.tokens} {t('tokens')}
+                  {formatNumber(item.requests)} {t('requests')} · {formatCompactNumber(item.tokens)} {t('tokens')}
                 </div>
               </div>
               <div className='font-mono text-xs font-semibold'>
