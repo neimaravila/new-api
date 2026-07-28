@@ -35,6 +35,7 @@ token_estimator_test.go
 skills-lock.json
 .playwright-mcp
 .superpowers/
+.worktrees/
 
 # Local-only live probes and scratch test workspaces.
 .local-tests/
