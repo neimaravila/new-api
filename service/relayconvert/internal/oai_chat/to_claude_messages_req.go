@@ -20,6 +20,69 @@ const (
 	webSearchMaxUsesHigh   = 10
 )
 
+// isWebSearchToolName indica se uma tool-call (no formato OpenAI) deve ser
+// tratada como a server-tool web_search nativa da Anthropic. Cobrem os nomes
+// que clientes (ex.: Grok) costumam emitir quando querem busca web.
+func isWebSearchToolName(name string) bool {
+	switch name {
+	case "web_search", "web_search_preview":
+		return true
+	default:
+		return false
+	}
+}
+
+// buildWebSearchTool monta a server-tool Anthropic web_search_20250305. opts nil
+// cai em defaults (context size medium). Espelha o comportimento histórico do
+// bloco web_search_options, extraído p/ reuso no caminho de tool-call.
+func buildWebSearchTool(opts *dto.WebSearchOptions) *dto.ClaudeWebSearchTool {
+	webSearchTool := &dto.ClaudeWebSearchTool{
+		Type:    "web_search_20250305",
+		Name:    "web_search",
+		MaxUses: webSearchMaxUsesMedium,
+	}
+	if opts == nil {
+		return webSearchTool
+	}
+
+	if opts.UserLocation != nil {
+		anthropicUserLocation := &dto.ClaudeWebSearchUserLocation{
+			Type: "approximate",
+		}
+
+		var userLocationMap map[string]interface{}
+		if err := common.Unmarshal(opts.UserLocation, &userLocationMap); err == nil {
+			if approximateData, ok := userLocationMap["approximate"].(map[string]interface{}); ok {
+				if timezone, ok := approximateData["timezone"].(string); ok && timezone != "" {
+					anthropicUserLocation.Timezone = timezone
+				}
+				if country, ok := approximateData["country"].(string); ok && country != "" {
+					anthropicUserLocation.Country = country
+				}
+				if region, ok := approximateData["region"].(string); ok && region != "" {
+					anthropicUserLocation.Region = region
+				}
+				if city, ok := approximateData["city"].(string); ok && city != "" {
+					anthropicUserLocation.City = city
+				}
+			}
+		}
+
+		webSearchTool.UserLocation = anthropicUserLocation
+	}
+
+	switch opts.SearchContextSize {
+	case "low":
+		webSearchTool.MaxUses = webSearchMaxUsesLow
+	case "medium":
+		webSearchTool.MaxUses = webSearchMaxUsesMedium
+	case "high":
+		webSearchTool.MaxUses = webSearchMaxUsesHigh
+	}
+
+	return webSearchTool
+}
+
 type openRouterRequestReasoning struct {
 	Enabled   bool   `json:"enabled"`
 	Effort    string `json:"effort,omitempty"`
@@ -29,8 +92,17 @@ type openRouterRequestReasoning struct {
 
 func OpenAIChatRequestToClaudeMessages(c *gin.Context, textRequest dto.GeneralOpenAIRequest) (*dto.ClaudeRequest, error) {
 	claudeTools := make([]any, 0, len(textRequest.Tools))
+	webSearchAdded := false // evita emitir 2x a server-tool web_search (tool + web_search_options)
 
 	for _, tool := range textRequest.Tools {
+		// Uma tool chamada "web_search" (ex.: tool-call que o Grok emite) vira a
+		// server-tool nativa da Anthropic, que o upstream compatível (glm-coding-plan
+		// no endpoint /api/anthropic, ou o próprio Claude) executa server-side.
+		// Sem isto, ela chegaria como tool comum e ninguém a executaria.
+		if isWebSearchToolName(tool.Function.Name) {
+			webSearchAdded = true
+			continue // será adicionada como server-tool abaixo
+		}
 		if params, ok := tool.Function.Parameters.(map[string]any); ok {
 			claudeTool := dto.Tool{
 				Name:        tool.Function.Name,
@@ -52,48 +124,14 @@ func OpenAIChatRequestToClaudeMessages(c *gin.Context, textRequest dto.GeneralOp
 		}
 	}
 
+	// Server-tool web_search: ativada por web_search_options (caminho OpenAI) ou
+	// por uma tool chamada "web_search" (caminho tool-call). Apenas uma vez.
 	if textRequest.WebSearchOptions != nil {
-		webSearchTool := dto.ClaudeWebSearchTool{
-			Type: "web_search_20250305",
-			Name: "web_search",
-		}
-
-		if textRequest.WebSearchOptions.UserLocation != nil {
-			anthropicUserLocation := &dto.ClaudeWebSearchUserLocation{
-				Type: "approximate",
-			}
-
-			var userLocationMap map[string]interface{}
-			if err := common.Unmarshal(textRequest.WebSearchOptions.UserLocation, &userLocationMap); err == nil {
-				if approximateData, ok := userLocationMap["approximate"].(map[string]interface{}); ok {
-					if timezone, ok := approximateData["timezone"].(string); ok && timezone != "" {
-						anthropicUserLocation.Timezone = timezone
-					}
-					if country, ok := approximateData["country"].(string); ok && country != "" {
-						anthropicUserLocation.Country = country
-					}
-					if region, ok := approximateData["region"].(string); ok && region != "" {
-						anthropicUserLocation.Region = region
-					}
-					if city, ok := approximateData["city"].(string); ok && city != "" {
-						anthropicUserLocation.City = city
-					}
-				}
-			}
-
-			webSearchTool.UserLocation = anthropicUserLocation
-		}
-
-		switch textRequest.WebSearchOptions.SearchContextSize {
-		case "low":
-			webSearchTool.MaxUses = webSearchMaxUsesLow
-		case "medium":
-			webSearchTool.MaxUses = webSearchMaxUsesMedium
-		case "high":
-			webSearchTool.MaxUses = webSearchMaxUsesHigh
-		}
-
-		claudeTools = append(claudeTools, &webSearchTool)
+		claudeTools = append(claudeTools, buildWebSearchTool(textRequest.WebSearchOptions))
+		webSearchAdded = true
+	} else if webSearchAdded {
+		// tool "web_search" presente sem web_search_options: usa defaults (medium).
+		claudeTools = append(claudeTools, buildWebSearchTool(nil))
 	}
 
 	claudeRequest := dto.ClaudeRequest{
