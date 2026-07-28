@@ -42,3 +42,7 @@ service/openaicompat/chat_responses_live_local_test.go
 
 # local build override (auxiliary, not deployed)
 docker-compose.prod-local.yml
+
+# Go workspace files (relaykit multi-module setup)
+go.work
+go.work.sum
