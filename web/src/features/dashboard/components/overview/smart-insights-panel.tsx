@@ -24,7 +24,11 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-import type { DashboardInsight, DashboardInsightSeverity } from '../../types'
+import type {
+  DashboardInsight,
+  DashboardInsightSeverity,
+  DashboardMessage,
+} from '../../types'
 
 interface SmartInsightsPanelProps {
   insights: DashboardInsight[]
@@ -132,6 +136,13 @@ function PanelHeader() {
   )
 }
 
+function translateDashboardMessage(
+  t: ReturnType<typeof useTranslation>['t'],
+  message: DashboardMessage
+): string {
+  return t(message.key, message.values)
+}
+
 function InsightItem(props: InsightItemProps) {
   const { t } = useTranslation()
   const config = severityConfig[props.insight.severity]
@@ -151,21 +162,30 @@ function InsightItem(props: InsightItemProps) {
         <div className='min-w-0 flex-1'>
           <div className='flex flex-wrap items-start justify-between gap-2'>
             <div className='min-w-0'>
-              <h4 className='text-sm font-medium'>{t(props.insight.title)}</h4>
+              <h4 className='text-sm font-medium'>
+                {translateDashboardMessage(t, props.insight.title)}
+              </h4>
               <p className='text-muted-foreground mt-0.5 text-xs leading-relaxed'>
-                {t(props.insight.description)}
+                {translateDashboardMessage(t, props.insight.description)}
               </p>
             </div>
-            {props.insight.metric_label && props.insight.metric_value && (
-              <div className='bg-muted/60 rounded-lg px-2 py-1 text-right'>
-                <div className='text-muted-foreground text-[10px] font-medium tracking-wide uppercase'>
-                  {t(props.insight.metric_label)}
+            {props.insight.metric_label &&
+              (props.insight.metric_value ||
+                props.insight.metric_value_message) && (
+                <div className='bg-muted/60 rounded-lg px-2 py-1 text-right'>
+                  <div className='text-muted-foreground text-[10px] font-medium tracking-wide uppercase'>
+                    {translateDashboardMessage(t, props.insight.metric_label)}
+                  </div>
+                  <div className='text-xs font-semibold tabular-nums'>
+                    {props.insight.metric_value_message
+                      ? translateDashboardMessage(
+                          t,
+                          props.insight.metric_value_message
+                        )
+                      : props.insight.metric_value}
+                  </div>
                 </div>
-                <div className='text-xs font-semibold tabular-nums'>
-                  {props.insight.metric_value}
-                </div>
-              </div>
-            )}
+              )}
           </div>
           {props.insight.action && (
             <Button
@@ -174,7 +194,7 @@ function InsightItem(props: InsightItemProps) {
               className='mt-2 h-auto px-0 text-xs'
               render={<Link to={props.insight.action.path} role={undefined} />}
             >
-              {t(props.insight.action.label)}
+              {translateDashboardMessage(t, props.insight.action.label)}
             </Button>
           )}
         </div>

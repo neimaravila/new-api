@@ -42,21 +42,27 @@ const (
 	DashboardInsightCritical DashboardInsightSeverity = "critical"
 )
 
+type DashboardMessage struct {
+	Key    string         `json:"key"`
+	Values map[string]any `json:"values,omitempty"`
+}
+
 type DashboardInsightAction struct {
-	Label string `json:"label"`
-	Path  string `json:"path"`
+	Label DashboardMessage `json:"label"`
+	Path  string           `json:"path"`
 }
 
 type DashboardInsight struct {
-	ID          string                   `json:"id"`
-	Severity    DashboardInsightSeverity `json:"severity"`
-	Title       string                   `json:"title"`
-	Description string                   `json:"description"`
-	MetricLabel string                   `json:"metric_label,omitempty"`
-	MetricValue string                   `json:"metric_value,omitempty"`
-	Action      *DashboardInsightAction  `json:"action,omitempty"`
-	EntityType  string                   `json:"entity_type,omitempty"`
-	EntityID    string                   `json:"entity_id,omitempty"`
+	ID                 string                   `json:"id"`
+	Severity           DashboardInsightSeverity `json:"severity"`
+	Title              DashboardMessage         `json:"title"`
+	Description        DashboardMessage         `json:"description"`
+	MetricLabel        *DashboardMessage        `json:"metric_label,omitempty"`
+	MetricValue        string                   `json:"metric_value,omitempty"`
+	MetricValueMessage *DashboardMessage        `json:"metric_value_message,omitempty"`
+	Action             *DashboardInsightAction  `json:"action,omitempty"`
+	EntityType         string                   `json:"entity_type,omitempty"`
+	EntityID           string                   `json:"entity_id,omitempty"`
 }
 
 type DashboardMetric struct {
@@ -100,11 +106,11 @@ type DashboardRecentActivity struct {
 }
 
 type DashboardHero struct {
-	Eyebrow     string `json:"eyebrow"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	StatusLabel string `json:"status_label"`
-	StatusTone  string `json:"status_tone"`
+	Eyebrow     DashboardMessage `json:"eyebrow"`
+	Title       DashboardMessage `json:"title"`
+	Description DashboardMessage `json:"description"`
+	StatusLabel DashboardMessage `json:"status_label"`
+	StatusTone  string           `json:"status_tone"`
 }
 
 type DashboardSummary struct {

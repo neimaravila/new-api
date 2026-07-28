@@ -89,10 +89,16 @@ const baseSummary: DashboardSummary = {
   period_start: 1,
   period_end: 2,
   hero: {
-    eyebrow: 'Platform command center',
-    title: '10 requests · 20 quota used',
-    description: '1 recent failures · 1 channels need review',
-    status_label: 'Needs attention',
+    eyebrow: { key: 'Platform command center' },
+    title: {
+      key: '{{requests}} requests · {{quota}} quota used',
+      values: { requests: 10, quota: 20 },
+    },
+    description: {
+      key: '{{failures}} recent failures · {{channels}} channels need review',
+      values: { failures: 1, channels: 1 },
+    },
+    status_label: { key: 'Needs attention' },
     status_tone: 'warning',
   },
   metrics: [],

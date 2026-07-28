@@ -259,20 +259,36 @@ func loadDashboardTokenCounts(userID int) (int, int, error) {
 func buildDashboardHero(role dto.DashboardRole, remainQuota int, agg dashboardAggregates) dto.DashboardHero {
 	if role == dto.DashboardRoleAdmin {
 		return dto.DashboardHero{
-			Eyebrow:     "Platform command center",
-			Title:       fmt.Sprintf("%d requests · %d quota used", agg.RecentRequests, agg.RecentQuota),
-			Description: fmt.Sprintf("%d recent failures · %d channels need review", agg.RecentFailures, len(agg.Channels)),
-			StatusLabel: dashboardAdminStatusLabel(agg),
+			Eyebrow:     dashboardMessage("Platform command center"),
+			Title:       dashboardMessage("{{requests}} requests · {{quota}} quota used", "requests", agg.RecentRequests, "quota", agg.RecentQuota),
+			Description: dashboardMessage("{{failures}} recent failures · {{channels}} channels need review", "failures", agg.RecentFailures, "channels", len(agg.Channels)),
+			StatusLabel: dashboardMessage(dashboardAdminStatusLabel(agg)),
 			StatusTone:  dashboardAdminStatusTone(agg),
 		}
 	}
 	return dto.DashboardHero{
-		Eyebrow:     "Developer home",
-		Title:       fmt.Sprintf("%d quota remaining", remainQuota),
-		Description: fmt.Sprintf("%d requests in the last 24 hours · %d active keys", agg.RecentRequests, agg.ActiveKeyCount),
-		StatusLabel: dashboardUserStatusLabel(remainQuota, agg),
+		Eyebrow:     dashboardMessage("Developer home"),
+		Title:       dashboardMessage("{{quota}} quota remaining", "quota", remainQuota),
+		Description: dashboardMessage("{{requests}} requests in the last 24 hours · {{keys}} active keys", "requests", agg.RecentRequests, "keys", agg.ActiveKeyCount),
+		StatusLabel: dashboardMessage(dashboardUserStatusLabel(remainQuota, agg)),
 		StatusTone:  dashboardUserStatusTone(remainQuota, agg),
 	}
+}
+
+func dashboardMessage(key string, valuePairs ...any) dto.DashboardMessage {
+	message := dto.DashboardMessage{Key: key}
+	if len(valuePairs) == 0 {
+		return message
+	}
+	message.Values = map[string]any{}
+	for i := 0; i+1 < len(valuePairs); i += 2 {
+		name, ok := valuePairs[i].(string)
+		if !ok || name == "" {
+			continue
+		}
+		message.Values[name] = valuePairs[i+1]
+	}
+	return message
 }
 
 func buildDashboardMetrics(role dto.DashboardRole, remainQuota int, agg dashboardAggregates) []dto.DashboardMetric {

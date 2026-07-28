@@ -281,18 +281,24 @@ export type DashboardMetricTone = 'info' | 'success' | 'warning' | 'destructive'
 
 export type DashboardInsightSeverity = 'info' | 'warning' | 'critical'
 
+export interface DashboardMessage {
+  key: string
+  values?: Record<string, string | number | boolean>
+}
+
 export interface DashboardInsightAction {
-  label: string
+  label: DashboardMessage
   path: string
 }
 
 export interface DashboardInsight {
   id: string
   severity: DashboardInsightSeverity
-  title: string
-  description: string
-  metric_label?: string
+  title: DashboardMessage
+  description: DashboardMessage
+  metric_label?: DashboardMessage
   metric_value?: string
+  metric_value_message?: DashboardMessage
   action?: DashboardInsightAction
   entity_type?: string
   entity_id?: string
@@ -339,10 +345,10 @@ export interface DashboardRecentActivity {
 }
 
 export interface DashboardHero {
-  eyebrow: string
-  title: string
-  description: string
-  status_label: string
+  eyebrow: DashboardMessage
+  title: DashboardMessage
+  description: DashboardMessage
+  status_label: DashboardMessage
   status_tone: string
 }
 

@@ -74,12 +74,13 @@ const insights: DashboardInsight[] = [
   {
     id: 'user-low-runway',
     severity: 'warning',
-    title: 'Balance may run out soon',
-    description:
-      'Your recent usage suggests the current balance may not last three days.',
-    metric_label: 'Runway',
-    metric_value: '2 days',
-    action: { label: 'Open Wallet', path: '/wallet' },
+    title: { key: 'Balance may run out soon' },
+    description: {
+      key: 'Your recent usage suggests the current balance may not last three days.',
+    },
+    metric_label: { key: 'Runway' },
+    metric_value_message: { key: '{{days}} days', values: { days: 2 } },
+    action: { label: { key: 'Open Wallet' }, path: '/wallet' },
   },
 ]
 

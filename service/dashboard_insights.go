@@ -57,19 +57,19 @@ func buildUserDashboardInsights(input DashboardInsightInput) []dto.DashboardInsi
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "user-no-api-key",
 			Severity:    dto.DashboardInsightWarning,
-			Title:       "Create your first API key",
-			Description: "Create an API key before sending production traffic through the gateway.",
-			Action:      &dto.DashboardInsightAction{Label: "Create API Key", Path: "/keys"},
+			Title:       dashboardMessage("Create your first API key"),
+			Description: dashboardMessage("Create an API key before sending production traffic through the gateway."),
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("Create API Key"), Path: "/keys"},
 		})
 	} else if input.UnusedKeyCount > 0 {
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "user-unused-api-key",
 			Severity:    dto.DashboardInsightInfo,
-			Title:       "One API key has no recent traffic",
-			Description: "Send a test request or remove unused keys to keep your integration tidy.",
-			MetricLabel: "Unused keys",
+			Title:       dashboardMessage("One API key has no recent traffic"),
+			Description: dashboardMessage("Send a test request or remove unused keys to keep your integration tidy."),
+			MetricLabel: dashboardMessagePtr("Unused keys"),
 			MetricValue: fmt.Sprintf("%d", input.UnusedKeyCount),
-			Action:      &dto.DashboardInsightAction{Label: "Review API Keys", Path: "/keys"},
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("Review API Keys"), Path: "/keys"},
 		})
 	}
 
@@ -77,22 +77,22 @@ func buildUserDashboardInsights(input DashboardInsightInput) []dto.DashboardInsi
 		runwayDays := input.RemainQuota / input.RecentQuota
 		if runwayDays < dashboardLowRunwayDaysThreshold {
 			insights = append(insights, dto.DashboardInsight{
-				ID:          "user-low-runway",
-				Severity:    dto.DashboardInsightWarning,
-				Title:       "Balance may run out soon",
-				Description: "Your recent usage suggests the current balance may not last three days.",
-				MetricLabel: "Runway",
-				MetricValue: fmt.Sprintf("%d days", runwayDays),
-				Action:      &dto.DashboardInsightAction{Label: "Open Wallet", Path: "/wallet"},
+				ID:                 "user-low-runway",
+				Severity:           dto.DashboardInsightWarning,
+				Title:              dashboardMessage("Balance may run out soon"),
+				Description:        dashboardMessage("Your recent usage suggests the current balance may not last three days."),
+				MetricLabel:        dashboardMessagePtr("Runway"),
+				MetricValueMessage: dashboardMessagePtr("{{days}} days", "days", runwayDays),
+				Action:             &dto.DashboardInsightAction{Label: dashboardMessage("Open Wallet"), Path: "/wallet"},
 			})
 		}
 	} else if input.RemainQuota <= 0 {
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "user-balance-depleted",
 			Severity:    dto.DashboardInsightCritical,
-			Title:       "Balance depleted",
-			Description: "Add credits before sending more paid requests.",
-			Action:      &dto.DashboardInsightAction{Label: "Open Wallet", Path: "/wallet"},
+			Title:       dashboardMessage("Balance depleted"),
+			Description: dashboardMessage("Add credits before sending more paid requests."),
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("Open Wallet"), Path: "/wallet"},
 		})
 	}
 
@@ -100,11 +100,11 @@ func buildUserDashboardInsights(input DashboardInsightInput) []dto.DashboardInsi
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "user-recent-failures",
 			Severity:    dto.DashboardInsightWarning,
-			Title:       "Recent requests failed",
-			Description: "Review failed requests to fix model, key, or request payload issues.",
-			MetricLabel: "Failures",
+			Title:       dashboardMessage("Recent requests failed"),
+			Description: dashboardMessage("Review failed requests to fix model, key, or request payload issues."),
+			MetricLabel: dashboardMessagePtr("Failures"),
 			MetricValue: fmt.Sprintf("%d", input.RecentFailureCount),
-			Action:      &dto.DashboardInsightAction{Label: "View Logs", Path: "/usage-logs"},
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("View Logs"), Path: "/usage-logs"},
 		})
 	}
 
@@ -112,9 +112,9 @@ func buildUserDashboardInsights(input DashboardInsightInput) []dto.DashboardInsi
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "user-usage-spike",
 			Severity:    dto.DashboardInsightInfo,
-			Title:       "Usage increased versus the previous period",
-			Description: "Check model usage and recent logs to confirm the increase is expected.",
-			Action:      &dto.DashboardInsightAction{Label: "View Usage", Path: "/usage-logs"},
+			Title:       dashboardMessage("Usage increased versus the previous period"),
+			Description: dashboardMessage("Check model usage and recent logs to confirm the increase is expected."),
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("View Usage"), Path: "/usage-logs"},
 		})
 	}
 
@@ -122,11 +122,11 @@ func buildUserDashboardInsights(input DashboardInsightInput) []dto.DashboardInsi
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "user-model-cost-concentration",
 			Severity:    dto.DashboardInsightInfo,
-			Title:       "One model dominates recent cost",
-			Description: "Consider using a cheaper model for test traffic if quality requirements allow it.",
-			MetricLabel: "Top model",
+			Title:       dashboardMessage("One model dominates recent cost"),
+			Description: dashboardMessage("Consider using a cheaper model for test traffic if quality requirements allow it."),
+			MetricLabel: dashboardMessagePtr("Top model"),
 			MetricValue: input.TopModel.Name,
-			Action:      &dto.DashboardInsightAction{Label: "Compare Pricing", Path: "/pricing"},
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("Compare Pricing"), Path: "/pricing"},
 			EntityType:  "model",
 			EntityID:    input.TopModel.ID,
 		})
@@ -140,15 +140,15 @@ func buildAdminDashboardInsights(input DashboardInsightInput) []dto.DashboardIns
 
 	if input.HighestLatencyChannel.ID > 0 && input.HighestLatencyChannel.ResponseTime >= dashboardHighLatencyMsThreshold {
 		insights = append(insights, dto.DashboardInsight{
-			ID:          "admin-high-channel-latency",
-			Severity:    dto.DashboardInsightWarning,
-			Title:       "A channel has high latency",
-			Description: "Investigate upstream availability or routing priority for this provider.",
-			MetricLabel: "Latency",
-			MetricValue: fmt.Sprintf("%d ms", input.HighestLatencyChannel.ResponseTime),
-			Action:      &dto.DashboardInsightAction{Label: "Review Channels", Path: "/channels"},
-			EntityType:  "channel",
-			EntityID:    fmt.Sprintf("%d", input.HighestLatencyChannel.ID),
+			ID:                 "admin-high-channel-latency",
+			Severity:           dto.DashboardInsightWarning,
+			Title:              dashboardMessage("A channel has high latency"),
+			Description:        dashboardMessage("Investigate upstream availability or routing priority for this provider."),
+			MetricLabel:        dashboardMessagePtr("Latency"),
+			MetricValueMessage: dashboardMessagePtr("{{latency}} ms", "latency", input.HighestLatencyChannel.ResponseTime),
+			Action:             &dto.DashboardInsightAction{Label: dashboardMessage("Review Channels"), Path: "/channels"},
+			EntityType:         "channel",
+			EntityID:           fmt.Sprintf("%d", input.HighestLatencyChannel.ID),
 		})
 	}
 
@@ -156,11 +156,11 @@ func buildAdminDashboardInsights(input DashboardInsightInput) []dto.DashboardIns
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "admin-high-error-rate",
 			Severity:    dto.DashboardInsightCritical,
-			Title:       "Error rate is elevated",
-			Description: "Recent failed requests crossed the operational warning threshold.",
-			MetricLabel: "Failures",
+			Title:       dashboardMessage("Error rate is elevated"),
+			Description: dashboardMessage("Recent failed requests crossed the operational warning threshold."),
+			MetricLabel: dashboardMessagePtr("Failures"),
 			MetricValue: fmt.Sprintf("%d", input.RecentFailureCount),
-			Action:      &dto.DashboardInsightAction{Label: "View Logs", Path: "/usage-logs"},
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("View Logs"), Path: "/usage-logs"},
 		})
 	}
 
@@ -168,9 +168,9 @@ func buildAdminDashboardInsights(input DashboardInsightInput) []dto.DashboardIns
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "admin-usage-spike",
 			Severity:    dto.DashboardInsightInfo,
-			Title:       "Usage is up versus the previous period",
-			Description: "Review top users and models to confirm the increase is expected.",
-			Action:      &dto.DashboardInsightAction{Label: "Open Analytics", Path: "/dashboard/models"},
+			Title:       dashboardMessage("Usage is up versus the previous period"),
+			Description: dashboardMessage("Review top users and models to confirm the increase is expected."),
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("Open Analytics"), Path: "/dashboard/models"},
 		})
 	}
 
@@ -178,11 +178,11 @@ func buildAdminDashboardInsights(input DashboardInsightInput) []dto.DashboardIns
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "admin-user-cost-concentration",
 			Severity:    dto.DashboardInsightWarning,
-			Title:       "Spend is concentrated in one user",
-			Description: "A single user accounts for most recent quota consumption.",
-			MetricLabel: "Top user",
+			Title:       dashboardMessage("Spend is concentrated in one user"),
+			Description: dashboardMessage("A single user accounts for most recent quota consumption."),
+			MetricLabel: dashboardMessagePtr("Top user"),
 			MetricValue: input.TopUser.Name,
-			Action:      &dto.DashboardInsightAction{Label: "Review Users", Path: "/users"},
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("Review Users"), Path: "/users"},
 			EntityType:  "user",
 			EntityID:    input.TopUser.ID,
 		})
@@ -192,17 +192,22 @@ func buildAdminDashboardInsights(input DashboardInsightInput) []dto.DashboardIns
 		insights = append(insights, dto.DashboardInsight{
 			ID:          "admin-model-cost-concentration",
 			Severity:    dto.DashboardInsightInfo,
-			Title:       "One model dominates recent spend",
-			Description: "Review pricing and routing rules for the most expensive model traffic.",
-			MetricLabel: "Top model",
+			Title:       dashboardMessage("One model dominates recent spend"),
+			Description: dashboardMessage("Review pricing and routing rules for the most expensive model traffic."),
+			MetricLabel: dashboardMessagePtr("Top model"),
 			MetricValue: input.TopModel.Name,
-			Action:      &dto.DashboardInsightAction{Label: "View Models", Path: "/dashboard/models"},
+			Action:      &dto.DashboardInsightAction{Label: dashboardMessage("View Models"), Path: "/dashboard/models"},
 			EntityType:  "model",
 			EntityID:    input.TopModel.ID,
 		})
 	}
 
 	return insights
+}
+
+func dashboardMessagePtr(key string, valuePairs ...any) *dto.DashboardMessage {
+	message := dashboardMessage(key, valuePairs...)
+	return &message
 }
 
 func insightSeverityRank(severity dto.DashboardInsightSeverity) int {

@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import type { DashboardSummary } from '../../types'
+import type { DashboardMessage, DashboardSummary } from '../../types'
 
 interface DashboardHeroProps {
   summary: DashboardSummary
@@ -37,6 +37,13 @@ const statusToneClass = {
   info: 'border-info/30 bg-info/10 text-info',
 } as const
 
+function translateDashboardMessage(
+  t: ReturnType<typeof useTranslation>['t'],
+  message: DashboardMessage
+): string {
+  return t(message.key, message.values)
+}
+
 export function DashboardHero(props: DashboardHeroProps): React.JSX.Element {
   const { t } = useTranslation()
   const isAdmin = props.summary.role === 'admin'
@@ -48,11 +55,11 @@ export function DashboardHero(props: DashboardHeroProps): React.JSX.Element {
       <div className='relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end'>
         <div className='min-w-0'>
           <div className='text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase'>
-            {t(props.summary.hero.eyebrow)}
+            {translateDashboardMessage(t, props.summary.hero.eyebrow)}
           </div>
           <div className='flex flex-wrap items-center gap-2'>
             <h2 className='text-2xl font-semibold tracking-tight sm:text-3xl'>
-              {t(props.summary.hero.title)}
+              {translateDashboardMessage(t, props.summary.hero.title)}
             </h2>
             <Badge
               variant='outline'
@@ -63,11 +70,11 @@ export function DashboardHero(props: DashboardHeroProps): React.JSX.Element {
                 ] ?? statusToneClass.info
               )}
             >
-              {t(props.summary.hero.status_label)}
+              {translateDashboardMessage(t, props.summary.hero.status_label)}
             </Badge>
           </div>
           <p className='text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed'>
-            {t(props.summary.hero.description)}
+            {translateDashboardMessage(t, props.summary.hero.description)}
           </p>
         </div>
 
