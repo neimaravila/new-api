@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  DashboardInsight,
+  DashboardSummary,
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
@@ -89,5 +91,23 @@ export async function getUptimeStatus() {
   const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
     '/api/uptime/status'
   )
+  return res.data
+}
+
+export async function getDashboardSummary() {
+  const res = await api.get<{
+    success: boolean
+    data: DashboardSummary
+    message?: string
+  }>('/api/dashboard/summary')
+  return res.data
+}
+
+export async function getDashboardInsights() {
+  const res = await api.get<{
+    success: boolean
+    data: DashboardInsight[]
+    message?: string
+  }>('/api/dashboard/insights')
   return res.data
 }

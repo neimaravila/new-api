@@ -274,3 +274,87 @@ export interface FAQItem {
   question: string
   answer: string
 }
+
+export type DashboardRole = 'admin' | 'user'
+
+export type DashboardMetricTone = 'info' | 'success' | 'warning' | 'destructive'
+
+export type DashboardInsightSeverity = 'info' | 'warning' | 'critical'
+
+export interface DashboardInsightAction {
+  label: string
+  path: string
+}
+
+export interface DashboardInsight {
+  id: string
+  severity: DashboardInsightSeverity
+  title: string
+  description: string
+  metric_label?: string
+  metric_value?: string
+  action?: DashboardInsightAction
+  entity_type?: string
+  entity_id?: string
+}
+
+export interface DashboardMetric {
+  key: string
+  title: string
+  value: string
+  description?: string
+  tone: DashboardMetricTone
+  trend?: number[]
+}
+
+export interface DashboardChannelHealth {
+  id: number
+  name: string
+  status: number
+  response_time: number
+  used_quota: number
+  reason?: string
+}
+
+export interface DashboardTopEntity {
+  id: string
+  name: string
+  display_name?: string
+  quota: number
+  requests: number
+  tokens: number
+}
+
+export interface DashboardRecentActivity {
+  id: number
+  created_at: number
+  type: number
+  content: string
+  model_name?: string
+  token_name?: string
+  channel_id?: number
+  channel_name?: string
+  quota?: number
+  use_time?: number
+}
+
+export interface DashboardHero {
+  eyebrow: string
+  title: string
+  description: string
+  status_label: string
+  status_tone: string
+}
+
+export interface DashboardSummary {
+  role: DashboardRole
+  generated_at: number
+  period_start: number
+  period_end: number
+  hero: DashboardHero
+  metrics: DashboardMetric[]
+  channels?: DashboardChannelHealth[]
+  top_users?: DashboardTopEntity[]
+  top_models?: DashboardTopEntity[]
+  recent_activity?: DashboardRecentActivity[]
+}
