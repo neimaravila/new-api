@@ -2,16 +2,24 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+
 	"github.com/gin-gonic/gin"
 )
 
 func GetDashboardSummary(c *gin.Context) {
+	userID := c.GetInt("id")
+	remainQuota, err := model.GetUserQuota(userID, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	summary, err := service.GetDashboardSummary(
-		c.GetInt("id"),
+		userID,
 		c.GetString("username"),
 		c.GetInt("role"),
-		c.GetInt("quota"),
+		remainQuota,
 	)
 	if err != nil {
 		common.ApiError(c, err)
@@ -21,11 +29,17 @@ func GetDashboardSummary(c *gin.Context) {
 }
 
 func GetDashboardInsights(c *gin.Context) {
+	userID := c.GetInt("id")
+	remainQuota, err := model.GetUserQuota(userID, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	insights, err := service.GetDashboardInsights(
-		c.GetInt("id"),
+		userID,
 		c.GetString("username"),
 		c.GetInt("role"),
-		c.GetInt("quota"),
+		remainQuota,
 	)
 	if err != nil {
 		common.ApiError(c, err)
