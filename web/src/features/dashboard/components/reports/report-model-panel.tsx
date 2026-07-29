@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { formatNumber, formatQuota } from '@/lib/format'
+
 import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
 import type { ReportModelRow } from '../../types'
 
@@ -45,9 +47,9 @@ export function ReportModelPanel(props: ReportModelPanelProps): React.JSX.Elemen
               label={m.model_name}
               value={m.quota}
               maxValue={max}
-              displayValue={String(m.quota)}
+              displayValue={formatQuota(m.quota)}
               tone='accent-2'
-              sublabel={`${m.requests} ${t('requests')} · ${Math.round(m.error_rate * 1000) / 10}% ${t('errors')} · ${m.avg_latency_ms} ms`}
+              sublabel={`${formatNumber(m.requests)} ${t('requests')} · ${Math.round(m.error_rate * 1000) / 10}% ${t('errors')} · ${formatNumber(m.avg_latency_ms)} ms`}
             />
           ))}
         </div>

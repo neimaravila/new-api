@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { formatNumber } from '@/lib/format'
+
 import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
 import type { ReportPerformanceRow } from '../../types'
 
@@ -46,9 +48,9 @@ export function ReportPerformancePanel(props: ReportPerformancePanelProps): Reac
               label={r.name}
               value={r.p95_latency_ms}
               maxValue={max}
-              displayValue={`p95 ${r.p95_latency_ms} ms`}
+              displayValue={`p95 ${formatNumber(r.p95_latency_ms)} ms`}
               tone='accent-1'
-              sublabel={`${t('avg')} ${r.avg_latency_ms} ms · ${r.throughput} ${t('tok/s')}`}
+              sublabel={`${t('avg')} ${formatNumber(r.avg_latency_ms)} ms · ${formatNumber(r.throughput)} ${t('tok/s')}`}
             />
           ))}
         </div>

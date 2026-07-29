@@ -38,6 +38,7 @@ afterAll(() => {
 const { render } = await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
+const { formatQuota } = await import('@/lib/format')
 const { ReportModelPanel } = await import('../report-model-panel')
 const { ReportErrorsPanel } = await import('../report-errors-panel')
 const { ReportChannelPanel } = await import('../report-channel-panel')
@@ -68,7 +69,9 @@ describe('report sub-panels', () => {
 
     expect(queryByText('gpt-4o')).not.toBeNull()
     expect(queryByText('claude')).not.toBeNull()
-    expect(queryByText('350')).not.toBeNull()
+    // quota values are rendered through formatQuota (currency rules), not raw integers
+    expect(queryByText(formatQuota(350))).not.toBeNull()
+    expect(queryByText(formatQuota(100))).not.toBeNull()
   })
 
   it('renders an empty state when there are no models', () => {
@@ -98,7 +101,7 @@ describe('report sub-panels', () => {
       />
     )
     expect(queryByText('OpenAI')).not.toBeNull()
-    expect(queryByText('500')).not.toBeNull()
+    expect(queryByText(formatQuota(500))).not.toBeNull()
   })
 
   it('token anatomy panel renders prompt/completion/cache sublabels', () => {

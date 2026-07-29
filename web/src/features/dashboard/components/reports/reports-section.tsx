@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { ROLE } from '@/lib/roles'
+import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getReportExportUrl, getReportSummary } from '../../api'
@@ -180,10 +181,10 @@ function ReportTotalsPanel(props: ReportTotalsPanelProps): React.JSX.Element {
   const totals = props.summary.trend.totals
   const max = Math.max(totals.quota, 1)
   const rows = [
-    { label: t('Quota used'), value: totals.quota, display: String(totals.quota), tone: 'accent-2' as const },
-    { label: t('Requests'), value: totals.requests, display: String(totals.requests), tone: 'accent-1' as const },
-    { label: t('Tokens'), value: totals.tokens, display: String(totals.tokens), tone: 'accent-1' as const },
-    { label: t('Failures'), value: totals.failures, display: String(totals.failures), tone: 'accent-3' as const },
+    { label: t('Quota used'), value: totals.quota, display: formatQuota(totals.quota), tone: 'accent-2' as const },
+    { label: t('Requests'), value: totals.requests, display: formatNumber(totals.requests), tone: 'accent-1' as const },
+    { label: t('Tokens'), value: totals.tokens, display: formatCompactNumber(totals.tokens), tone: 'accent-1' as const },
+    { label: t('Failures'), value: totals.failures, display: formatNumber(totals.failures), tone: 'accent-3' as const },
   ]
   return (
     <PanelShell
@@ -229,16 +230,16 @@ function ReportStreamPanel(props: ReportStreamPanelProps): React.JSX.Element {
           label={t('Stream')}
           value={props.stream.stream_avg_latency_ms}
           maxValue={maxLatency}
-          displayValue={`${props.stream.stream_avg_latency_ms} ms`}
-          sublabel={`${props.stream.stream_requests} ${t('requests')}`}
+          displayValue={`${formatNumber(props.stream.stream_avg_latency_ms)} ms`}
+          sublabel={`${formatNumber(props.stream.stream_requests)} ${t('requests')}`}
           tone='accent-1'
         />
         <BarChartRow
           label={t('Non-stream')}
           value={props.stream.non_stream_avg_latency_ms}
           maxValue={maxLatency}
-          displayValue={`${props.stream.non_stream_avg_latency_ms} ms`}
-          sublabel={`${props.stream.non_stream_requests} ${t('requests')}`}
+          displayValue={`${formatNumber(props.stream.non_stream_avg_latency_ms)} ms`}
+          sublabel={`${formatNumber(props.stream.non_stream_requests)} ${t('requests')}`}
           tone='accent-2'
         />
       </div>

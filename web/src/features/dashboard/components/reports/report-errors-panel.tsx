@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { formatNumber } from '@/lib/format'
+
 import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
 import type { ReportErrorRow } from '../../types'
 
@@ -45,7 +47,7 @@ export function ReportErrorsPanel(props: ReportErrorsPanelProps): React.JSX.Elem
               label={e.model_name}
               value={e.failures}
               maxValue={max}
-              displayValue={String(e.failures)}
+              displayValue={formatNumber(e.failures)}
               tone='accent-3'
               sublabel={`${e.share}% ${t('share')}`}
             />

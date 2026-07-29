@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { formatCompactNumber, formatNumber } from '@/lib/format'
+
 import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
 import type { ReportTokenAnatomyRow } from '../../types'
 
@@ -45,9 +47,9 @@ export function ReportTokenAnatomyPanel(props: ReportTokenAnatomyPanelProps): Re
               label={r.model_name}
               value={r.total}
               maxValue={max}
-              displayValue={String(r.total)}
+              displayValue={formatCompactNumber(r.total)}
               tone='accent-2'
-              sublabel={`${t('prompt')} ${r.prompt_tokens} · ${t('completion')} ${r.completion_tokens} · ${t('cache')} ${r.cache_tokens}`}
+              sublabel={`${t('prompt')} ${formatNumber(r.prompt_tokens)} · ${t('completion')} ${formatNumber(r.completion_tokens)} · ${t('cache')} ${formatNumber(r.cache_tokens)}`}
             />
           ))}
         </div>

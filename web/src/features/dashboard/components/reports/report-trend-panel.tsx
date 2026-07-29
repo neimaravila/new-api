@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { formatNumber, formatQuota } from '@/lib/format'
+
 import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
 import type { ReportTrendPoint } from '../../types'
 
@@ -45,9 +47,9 @@ export function ReportTrendPanel(props: ReportTrendPanelProps): React.JSX.Elemen
               label={p.bucket_label}
               value={p.quota}
               maxValue={max}
-              displayValue={String(p.quota)}
+              displayValue={formatQuota(p.quota)}
               tone='accent-1'
-              sublabel={`${p.requests} ${t('requests')} · ${p.failures} ${t('failures')}`}
+              sublabel={`${formatNumber(p.requests)} ${t('requests')} · ${formatNumber(p.failures)} ${t('failures')}`}
             />
           ))}
         </div>
