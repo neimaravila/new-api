@@ -305,6 +305,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			dashboardRoute.GET("/summary", controller.GetDashboardSummary)
 			dashboardRoute.GET("/insights", controller.GetDashboardInsights)
+			dashboardRoute.GET("/report", controller.GetReportSummary)
+			dashboardRoute.GET("/report/export", controller.GetReportExport)
 		}
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
