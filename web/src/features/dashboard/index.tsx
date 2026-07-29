@@ -113,6 +113,12 @@ const LazyFlowCharts = lazy(() =>
   }))
 )
 
+const LazyReportsSection = lazy(() =>
+  import('./components/reports/reports-section').then((m) => ({
+    default: m.ReportsSection,
+  }))
+)
+
 function LogStatCardsFallback() {
   return (
     <div className='overflow-hidden rounded-lg border'>
@@ -185,6 +191,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
   flow: {
     titleKey: 'Flow',
+  },
+  reports: {
+    titleKey: 'Reports',
   },
   users: {
     titleKey: 'User Analytics',
@@ -407,6 +416,13 @@ export function Dashboard() {
                   filters={modelFilters}
                   sensitiveVisible={flowSensitiveVisible}
                 />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'reports' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyReportsSection />
               </Suspense>
             </FadeIn>
           )}

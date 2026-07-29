@@ -364,3 +364,103 @@ export interface DashboardSummary {
   top_models?: DashboardTopEntity[]
   recent_activity?: DashboardRecentActivity[]
 }
+
+// ============================================================================
+// Reports Types
+// ============================================================================
+
+export type ReportTimeRange = 'today' | 'yesterday' | '7d' | '30d' | 'month'
+export type ReportGranularity = 'hour' | 'day'
+
+export interface ReportTrendPoint {
+  bucket_label: string
+  bucket_timestamp: number
+  quota: number
+  requests: number
+  tokens: number
+  failures: number
+  avg_latency_ms: number
+  consuming_requests: number
+}
+
+export interface ReportTotals {
+  quota: number
+  requests: number
+  tokens: number
+  failures: number
+  consumers: number
+  avg_latency_ms: number
+}
+
+export interface ReportTrend {
+  granularity: ReportGranularity
+  points: ReportTrendPoint[]
+  totals: ReportTotals
+}
+
+export interface ReportModelRow {
+  model_name: string
+  quota: number
+  requests: number
+  tokens: number
+  failures: number
+  error_rate: number
+  avg_latency_ms: number
+}
+
+export interface ReportErrorRow {
+  model_name: string
+  failures: number
+  quota: number
+  share: number
+}
+
+export interface ReportPerformanceRow {
+  name: string
+  avg_latency_ms: number
+  p95_latency_ms: number
+  requests: number
+  tokens: number
+  throughput: number
+}
+
+export interface ReportTokenAnatomyRow {
+  model_name: string
+  prompt_tokens: number
+  completion_tokens: number
+  cache_tokens: number
+  total: number
+}
+
+export interface ReportChannelRow {
+  channel_id: number
+  channel_name: string
+  quota: number
+  requests: number
+  failures: number
+  error_rate: number
+  avg_latency_ms: number
+}
+
+export interface ReportStreamComparison {
+  stream_avg_latency_ms: number
+  stream_requests: number
+  non_stream_avg_latency_ms: number
+  non_stream_requests: number
+}
+
+export interface ReportSummary {
+  role: DashboardRole
+  range: ReportTimeRange
+  granularity: ReportGranularity
+  period_start: number
+  period_end: number
+  trend: ReportTrend
+  models: ReportModelRow[]
+  errors: ReportErrorRow[]
+  model_performance: ReportPerformanceRow[]
+  channel_performance?: ReportPerformanceRow[]
+  token_anatomy: ReportTokenAnatomyRow[]
+  channels?: ReportChannelRow[]
+  stream_performance?: ReportStreamComparison
+}

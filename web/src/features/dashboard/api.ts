@@ -23,6 +23,9 @@ import type {
   DashboardSummary,
   FlowQuotaDataItem,
   QuotaDataItem,
+  ReportGranularity,
+  ReportSummary,
+  ReportTimeRange,
   UptimeGroupResult,
 } from './types'
 
@@ -110,4 +113,36 @@ export async function getDashboardInsights() {
     message?: string
   }>('/api/dashboard/insights')
   return res.data
+}
+
+// ----------------------------------------------------------------------------
+// Reports
+// ----------------------------------------------------------------------------
+
+export async function getReportSummary(params: {
+  range?: ReportTimeRange
+  granularity?: ReportGranularity
+} = {}) {
+  const query = new URLSearchParams()
+  if (params.range) query.set('range', params.range)
+  if (params.granularity) query.set('granularity', params.granularity)
+  const qs = query.toString()
+  const path = qs ? `/api/dashboard/report?${qs}` : '/api/dashboard/report'
+  const res = await api.get<{
+    success: boolean
+    data: ReportSummary
+    message?: string
+  }>(path)
+  return res.data
+}
+
+export function getReportExportUrl(params: {
+  range?: ReportTimeRange
+  granularity?: ReportGranularity
+} = {}): string {
+  const query = new URLSearchParams()
+  if (params.range) query.set('range', params.range)
+  if (params.granularity) query.set('granularity', params.granularity)
+  const qs = query.toString()
+  return qs ? `/api/dashboard/report/export?${qs}` : '/api/dashboard/report/export'
 }

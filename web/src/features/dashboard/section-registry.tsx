@@ -40,6 +40,11 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'reports',
+    titleKey: 'Reports',
+    build: () => null,
+  },
+  {
     id: 'users',
     titleKey: 'User Analytics',
     adminOnly: true,
