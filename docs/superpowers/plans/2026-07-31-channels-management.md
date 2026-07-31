@@ -83,6 +83,12 @@ The counts and the filter must come from one definition, or a tile's number will
   - `type ChannelHealthCounts struct { Active int64; Disabled int64; Slow int64; Untested int64; SlowThresholdMs int64 }` with JSON tags `active`, `disabled`, `slow`, `untested`, `slow_threshold_ms`
   - `func GetChannelHealthCounts() (ChannelHealthCounts, error)`
   - `func ApplyChannelHealthFilter(query *gorm.DB, health string) *gorm.DB`
+  - `func ChannelMatchesHealth(channel *Channel, health string) bool`
+
+The last one exists because the keyword branch of `SearchChannels` filters in Go after its query
+returns, following the pattern already there for status and type. Two forms of one rule is a
+liability, so they live side by side in this file and a test pins them to the same answer — the SQL
+form cannot change without the in-memory form failing.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -156,6 +162,35 @@ func TestApplyChannelHealthFilterMatchesCounts(t *testing.T) {
 			var got int64
 			require.NoError(t, ApplyChannelHealthFilter(DB.Model(&Channel{}), tc.health).Count(&got).Error)
 			assert.Equal(t, tc.want, got, "the tile's number and the list it filters to must agree")
+		})
+	}
+}
+
+func TestHealthFilterFormsAgree(t *testing.T) {
+	seedHealthChannels(t)
+
+	var all []*Channel
+	require.NoError(t, DB.Order("id").Find(&all).Error)
+
+	// The SQL filter serves the list endpoint; the in-memory predicate serves
+	// the keyword branch of SearchChannels, which filters after its query
+	// returns. This is the test that stops the two from drifting apart.
+	for _, health := range []string{"slow", "untested", "", "unknown"} {
+		t.Run(health, func(t *testing.T) {
+			var matched []*Channel
+			require.NoError(t, ApplyChannelHealthFilter(DB.Model(&Channel{}), health).Order("id").Find(&matched).Error)
+
+			want := make([]int, 0, len(all))
+			for _, ch := range all {
+				if ChannelMatchesHealth(ch, health) {
+					want = append(want, ch.Id)
+				}
+			}
+			got := make([]int, 0, len(matched))
+			for _, ch := range matched {
+				got = append(got, ch.Id)
+			}
+			assert.Equal(t, want, got, "the SQL filter and the in-memory predicate must select the same channels")
 		})
 	}
 }
@@ -258,6 +293,21 @@ func ApplyChannelHealthFilter(query *gorm.DB, health string) *gorm.DB {
 		return query.Where("test_time = ?", 0)
 	default:
 		return query
+	}
+}
+
+// ChannelMatchesHealth is the in-memory form of the same rule, for the keyword
+// branch of SearchChannels, which filters in Go after its query returns.
+// TestHealthFilterFormsAgree pins the two forms to the same answer, so neither
+// can be changed alone.
+func ChannelMatchesHealth(channel *Channel, health string) bool {
+	switch strings.ToLower(health) {
+	case "slow":
+		return channel.TestTime > 0 && int64(channel.ResponseTime) > SlowResponseTimeMs
+	case "untested":
+		return channel.TestTime == 0
+	default:
+		return true
 	}
 }
 ```
@@ -392,12 +442,7 @@ The type-counts query at line 172 keeps `-1` for the type filter — it delibera
 	if healthFilter != "" {
 		filtered := make([]*model.Channel, 0, len(channelData))
 		for _, ch := range channelData {
-			isUntested := ch.TestTime == 0
-			isSlow := !isUntested && int64(ch.ResponseTime) > model.SlowResponseTimeMs
-			if healthFilter == "slow" && !isSlow {
-				continue
-			}
-			if healthFilter == "untested" && !isUntested {
+			if !model.ChannelMatchesHealth(ch, healthFilter) {
 				continue
 			}
 			filtered = append(filtered, ch)
@@ -405,6 +450,10 @@ The type-counts query at line 172 keeps `-1` for the type filter — it delibera
 		channelData = filtered
 	}
 ```
+
+Do not re-derive the slow or untested predicate here. `model.ChannelMatchesHealth` is the in-memory
+form of the same rule Task 1 defined, and `TestHealthFilterFormsAgree` keeps it identical to the SQL
+form. Inlining the comparison would put a third copy of the rule in the tree.
 
 - [ ] **Step 6: Return the counts from GetChannelOps**
 
