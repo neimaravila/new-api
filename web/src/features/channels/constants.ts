@@ -242,7 +242,7 @@ export const ERROR_MESSAGES = {
   REQUIRED_TYPE: 'Channel type is required',
   REQUIRED_KEY: 'API key is required',
   REQUIRED_MODELS: 'Models are required',
-  REQUIRED_GROUP: 'Group is required',
+  REQUIRED_GROUP: 'Access is required',
   INVALID_JSON: 'Invalid JSON format',
   INVALID_MODEL_MAPPING: 'Invalid model mapping format',
   INVALID_PROXY:
@@ -270,7 +270,7 @@ export const SUCCESS_MESSAGES = {
   BALANCE_QUERIED: 'Balance queried successfully',
   MODELS_FETCHED: 'Models fetched successfully',
   COPIED: 'Channel copied successfully',
-  TAG_SET: 'Tag set successfully',
+  TAG_SET: 'Label set successfully',
   BATCH_DELETED: 'Channels deleted successfully',
 } as const
 
@@ -353,7 +353,7 @@ export const FIELD_PLACEHOLDERS = {
   GROUP: 'Please Select user groups that can access this channel.',
   MODEL_MAPPING: '{"request_model": "actual_model"}',
   TEST_MODEL: 'Model to use for testing',
-  TAG: 'Optional tag for grouping channels',
+  TAG: 'Optional label for grouping channels',
   REMARK: 'Optional notes about this channel',
   PARAM_OVERRIDE: '{"temperature": 0.7}',
   HEADER_OVERRIDE: '{"X-Custom-Header": "value"}',
@@ -367,15 +367,15 @@ export const FIELD_DESCRIPTIONS = {
   KEY: 'API key from the provider',
   MODELS:
     'List of models supported by this channel. Use comma to separate multiple models.',
-  GROUP: 'User groups that can access this channel. ',
+  GROUP: 'User groups allowed to reach this channel.',
   MODEL_MAPPING:
     'Map request model names to actual provider model names (JSON format)',
-  PRIORITY: 'Higher priority channels are selected first',
-  WEIGHT: 'Used for load balancing. Higher weight = more requests',
+  PRIORITY: 'Tried before channels with a lower priority.',
+  WEIGHT: 'Splits traffic between channels of equal priority.',
   TEST_MODEL: 'Model to use when testing channel connectivity',
   AUTO_BAN: 'Automatically disable channel on repeated failures',
   STATUS_CODE_MAPPING: 'Map response status codes (JSON format)',
-  TAG: 'Group channels by tag for batch operations',
+  TAG: 'Organizes channels so you can edit several at once. Does not affect which channel serves a request.',
   REMARK: 'Internal notes (not shown to users)',
   SETTING: 'Channel-specific settings (JSON format)',
   PARAM_OVERRIDE: 'Override request parameters (JSON format)',

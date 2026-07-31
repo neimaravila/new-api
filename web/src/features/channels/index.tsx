@@ -36,6 +36,7 @@ import { ChannelsDialogs } from './components/channels-dialogs'
 import { ChannelsPrimaryButtons } from './components/channels-primary-buttons'
 import { ChannelsProvider } from './components/channels-provider'
 import { ChannelsTable } from './components/channels-table'
+import { channelsQueryKeys, resolveHealthStripState } from './lib'
 
 export function Channels() {
   const { t } = useTranslation()
@@ -43,7 +44,7 @@ export function Channels() {
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
   )
   const channelOpsQuery = useQuery({
-    queryKey: ['channel-ops'],
+    queryKey: channelsQueryKeys.ops(),
     queryFn: getChannelOps,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -51,6 +52,9 @@ export function Channels() {
   const retryTimes = channelOpsQuery.data?.data?.retry_times
   const retryLabel =
     typeof retryTimes === 'number' ? `${t('Max Retries')}: ${retryTimes}` : null
+  const health = channelOpsQuery.data?.data?.health
+  const healthState = resolveHealthStripState(health)
+  const slowThresholdMs = health?.slow_threshold_ms ?? 0
   let retryBadge = null
   if (retryLabel) {
     retryBadge = isRoot ? (
@@ -97,7 +101,10 @@ export function Channels() {
           <ChannelsPrimaryButtons />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <ChannelsTable />
+          <ChannelsTable
+            healthState={healthState}
+            slowThresholdMs={slowThresholdMs}
+          />
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

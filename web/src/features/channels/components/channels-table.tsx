@@ -25,7 +25,7 @@ import type {
   Row,
 } from '@tanstack/react-table'
 import { Eye, EyeOff } from 'lucide-react'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -37,6 +37,14 @@ import {
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Tooltip,
   TooltipContent,
@@ -59,9 +67,15 @@ import {
   isTagAggregateRow,
   getChannelTypeIcon,
   getChannelTypeLabel,
+  healthTileFilterPatch,
+  resolveActiveHealthTiles,
+  type HealthStripState,
+  type HealthTileId,
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
 import { ChannelCard } from './channel-card'
+import { ChannelHealthFilterChips } from './channel-health-filter-chips'
+import { ChannelHealthStrip } from './channel-health-strip'
 import { useChannelsColumns } from './channels-columns'
 import { useChannels } from './channels-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
@@ -87,12 +101,19 @@ function isDisabledChannelRow(channel: Channel) {
   )
 }
 
-export function ChannelsTable() {
+type ChannelsTableProps = {
+  healthState: HealthStripState
+  slowThresholdMs: number
+}
+
+export function ChannelsTable({
+  healthState,
+  slowThresholdMs,
+}: ChannelsTableProps) {
   const { t } = useTranslation()
   const {
     enableTagMode,
-    idSort,
-    batchMode,
+    setEnableTagMode,
     sensitiveVisible,
     setSensitiveVisible,
   } = useChannels()
@@ -134,6 +155,7 @@ export function ChannelsTable() {
       { columnId: 'type', searchKey: 'type', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'array' },
       { columnId: 'model', searchKey: 'model', type: 'string' },
+      { columnId: 'health', searchKey: 'health', type: 'string' },
     ],
   })
 
@@ -162,6 +184,45 @@ export function ChannelsTable() {
   )
   const groupFilter =
     (columnFilters.find((f) => f.id === 'group')?.value as string[]) || []
+  const healthFilter =
+    (columnFilters.find((f) => f.id === 'health')?.value as string) || ''
+  const healthParam =
+    healthFilter === 'slow' || healthFilter === 'untested'
+      ? healthFilter
+      : undefined
+  const activeHealthTiles = resolveActiveHealthTiles(
+    statusFilter,
+    healthFilter || undefined
+  )
+  const handleHealthTileSelect = (tile: HealthTileId) => {
+    const patch = healthTileFilterPatch(tile, activeHealthTiles)
+    handleColumnFiltersChange((previous) => {
+      // A patch only ever carries the one dimension the clicked tile owns
+      // (`status` for Active/Disabled, `health` for Slow/Never tested); the
+      // other dimension's key is absent, so its existing filter entry (if
+      // any) is left untouched below — that's what lets a status tile and a
+      // health tile stay lit together.
+      let next = previous
+      if ('status' in patch) {
+        next = next.filter((f) => f.id !== 'status')
+        if (patch.status) {
+          next = [...next, { id: 'status', value: patch.status }]
+        }
+      }
+      if ('health' in patch) {
+        next = next.filter((f) => f.id !== 'health')
+        if (patch.health) {
+          next = [...next, { id: 'health', value: patch.health }]
+        }
+      }
+      return next
+    })
+  }
+  const handleHealthFilterChipDismiss = (dimension: 'status' | 'health') => {
+    handleColumnFiltersChange((previous) =>
+      previous.filter((f) => f.id !== dimension)
+    )
+  }
   const {
     value: modelFilter,
     inputValue: modelFilterInput,
@@ -236,8 +297,8 @@ export function ChannelsTable() {
         typeFilter.length > 0 && !typeFilter.includes('all')
           ? Number(typeFilter[0])
           : undefined,
+      health: healthParam,
       tag_mode: enableTagMode,
-      id_sort: idSort,
       ...sortParams,
       p: pagination.pageIndex + 1,
       page_size: pagination.pageSize,
@@ -259,8 +320,8 @@ export function ChannelsTable() {
             typeFilter.length > 0 && !typeFilter.includes('all')
               ? Number(typeFilter[0])
               : undefined,
+          health: healthParam,
           tag_mode: enableTagMode,
-          id_sort: idSort,
           ...sortParams,
           p: pagination.pageIndex + 1,
           page_size: pagination.pageSize,
@@ -279,8 +340,8 @@ export function ChannelsTable() {
             typeFilter.length > 0 && !typeFilter.includes('all')
               ? Number(typeFilter[0])
               : undefined,
+          health: healthParam,
           tag_mode: enableTagMode,
-          id_sort: idSort,
           ...sortParams,
           p: pagination.pageIndex + 1,
           page_size: pagination.pageSize,
@@ -305,7 +366,7 @@ export function ChannelsTable() {
   const typeCounts = data?.data?.type_counts
 
   // Columns configuration
-  const columns = useChannelsColumns({ enableSelection: batchMode })
+  const columns = useChannelsColumns()
 
   // React Table instance
   const { table } = useDataTable({
@@ -324,9 +385,7 @@ export function ChannelsTable() {
     columnFilters,
     pagination,
     globalFilter,
-    enableRowSelection: batchMode
-      ? (row: Row<Channel>) => !isTagAggregateRow(row.original)
-      : false,
+    enableRowSelection: (row: Row<Channel>) => !isTagAggregateRow(row.original),
     onSortingChange: handleSortingChange,
     onColumnFiltersChange: handleColumnFiltersChange,
     onPaginationChange,
@@ -340,12 +399,6 @@ export function ChannelsTable() {
     enableColumnResizing: !isMobile,
     ensurePageInRange,
   })
-
-  useEffect(() => {
-    if (!batchMode) {
-      table.resetRowSelection()
-    }
-  }, [batchMode, table])
 
   // Prepare filter options from existing channel types only.
   const typeFilterOptions = useMemo(() => {
@@ -400,98 +453,151 @@ export function ChannelsTable() {
   }, [t, typeCounts, typeFilter])
 
   const groupFilterOptions = [
-    { label: t('All Groups'), value: 'all' },
+    { label: t('All Access'), value: 'all' },
     ...groupOptions.map((option) => ({
       ...option,
       label: sensitiveVisible ? option.label : '••••',
     })),
   ]
 
+  const groupByOptions = [
+    { value: 'none', label: t('None') },
+    { value: 'label', label: t('Label') },
+  ]
+
   return (
-    <DataTablePage
-      table={table}
-      columns={columns}
-      isLoading={isLoading}
-      isFetching={isFetching}
-      emptyTitle={t('No Channels Found')}
-      emptyDescription={t(
-        'No channels available. Create your first channel to get started.'
-      )}
-      skeletonKeyPrefix='channel-skeleton'
-      enableCardView
-      viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
-      renderCard={(row, { isSelected }) => (
-        <ChannelCard row={row} isSelected={isSelected} />
-      )}
-      cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
-      applyHeaderSize
-      toolbarProps={{
-        searchPlaceholder: t('Filter by name, ID, or key...'),
-        searchDebounceMs: 500,
-        onReset: () => {
-          resetModelFilterInput()
-        },
-        additionalSearch: (
-          <Input
-            placeholder={t('Filter by model...')}
-            value={modelFilterInput}
-            onChange={onModelFilterInputChange}
-            onCompositionStart={onModelFilterCompositionStart}
-            onCompositionEnd={onModelFilterCompositionEnd}
-            className='w-full sm:w-[150px] lg:w-[180px]'
-          />
-        ),
-        filters: [
-          {
-            columnId: 'status',
-            title: t('Status'),
-            options: [...CHANNEL_STATUS_OPTIONS],
-            singleSelect: true,
-          },
-          {
-            columnId: 'type',
-            title: t('Type'),
-            options: typeFilterOptions,
-            singleSelect: true,
-          },
-          {
-            columnId: 'group',
-            title: t('Group'),
-            options: groupFilterOptions,
-            singleSelect: true,
-          },
-        ],
-        preActions: (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant='ghost'
-                  size='icon'
-                  onClick={() => setSensitiveVisible(!sensitiveVisible)}
-                  aria-label={sensitiveVisible ? t('Hide') : t('Show')}
-                  className='text-muted-foreground hover:text-foreground size-8'
+    <div className='flex h-full min-h-0 flex-col gap-2.5 sm:gap-3'>
+      <ChannelHealthStrip
+        state={healthState}
+        slowThresholdMs={slowThresholdMs}
+        activeTiles={activeHealthTiles}
+        onSelect={handleHealthTileSelect}
+      />
+      <div className='min-h-0 flex-1'>
+        <DataTablePage
+          table={table}
+          columns={columns}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          emptyTitle={t('No Channels Found')}
+          emptyDescription={t(
+            'No channels available. Create your first channel to get started.'
+          )}
+          skeletonKeyPrefix='channel-skeleton'
+          enableCardView
+          viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
+          renderCard={(row, { isSelected }) => (
+            <ChannelCard row={row} isSelected={isSelected} />
+          )}
+          cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
+          applyHeaderSize
+          toolbarProps={{
+            searchPlaceholder: t('Filter by name, ID, or key...'),
+            searchDebounceMs: 500,
+            onReset: () => {
+              resetModelFilterInput()
+            },
+            additionalSearch: (
+              <>
+                <Input
+                  placeholder={t('Filter by model...')}
+                  value={modelFilterInput}
+                  onChange={onModelFilterInputChange}
+                  onCompositionStart={onModelFilterCompositionStart}
+                  onCompositionEnd={onModelFilterCompositionEnd}
+                  className='w-full sm:w-[150px] lg:w-[180px]'
                 />
-              }
-            >
-              {sensitiveVisible ? <Eye /> : <EyeOff />}
-            </TooltipTrigger>
-            <TooltipContent>
-              {sensitiveVisible ? t('Hide') : t('Show')}
-            </TooltipContent>
-          </Tooltip>
-        ),
-      }}
-      getRowClassName={(row, { isMobile }) => {
-        if (!isDisabledChannelRow(row.original)) {
-          return undefined
-        }
-        if (isMobile) {
-          return DISABLED_ROW_MOBILE
-        }
-        return DISABLED_ROW_DESKTOP
-      }}
-      bulkActions={batchMode ? <DataTableBulkActions table={table} /> : null}
-    />
+                <Select
+                  items={groupByOptions}
+                  value={enableTagMode ? 'label' : 'none'}
+                  onValueChange={(value) => setEnableTagMode(value === 'label')}
+                >
+                  <SelectTrigger className='w-auto min-w-[130px]'>
+                    <span className='text-muted-foreground'>
+                      {t('Group by')}:
+                    </span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {groupByOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <ChannelHealthFilterChips
+                  activeTiles={activeHealthTiles}
+                  slowThresholdMs={slowThresholdMs}
+                  onDismiss={handleHealthFilterChipDismiss}
+                />
+              </>
+            ),
+            filters: [
+              // The health strip replaces this facet — but the strip
+              // renders nothing when the ops summary is unavailable
+              // (request failed, or an older backend), and an admin still
+              // needs a way to filter by status in that degraded state. So
+              // the dropdown is a fallback for `kind: 'hidden'` only, not a
+              // permanent duplicate of the strip's Active/Disabled tiles.
+              ...(healthState.kind === 'hidden'
+                ? [
+                    {
+                      columnId: 'status',
+                      title: t('Status'),
+                      options: [...CHANNEL_STATUS_OPTIONS],
+                      singleSelect: true,
+                    },
+                  ]
+                : []),
+              {
+                columnId: 'type',
+                title: t('Type'),
+                options: typeFilterOptions,
+                singleSelect: true,
+              },
+              {
+                columnId: 'group',
+                title: t('Access'),
+                options: groupFilterOptions,
+                singleSelect: true,
+              },
+            ],
+            preActions: (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      onClick={() => setSensitiveVisible(!sensitiveVisible)}
+                      aria-label={sensitiveVisible ? t('Hide') : t('Show')}
+                      className='text-muted-foreground hover:text-foreground size-8'
+                    />
+                  }
+                >
+                  {sensitiveVisible ? <Eye /> : <EyeOff />}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {sensitiveVisible ? t('Hide') : t('Show')}
+                </TooltipContent>
+              </Tooltip>
+            ),
+          }}
+          getRowClassName={(row, { isMobile }) => {
+            if (!isDisabledChannelRow(row.original)) {
+              return undefined
+            }
+            if (isMobile) {
+              return DISABLED_ROW_MOBILE
+            }
+            return DISABLED_ROW_DESKTOP
+          }}
+          bulkActions={<DataTableBulkActions table={table} />}
+        />
+      </div>
+    </div>
   )
 }

@@ -54,6 +54,32 @@ export const channelsQueryKeys = {
     [...channelsQueryKeys.lists(), params] as const,
   details: () => [...channelsQueryKeys.all, 'detail'] as const,
   detail: (id: number) => [...channelsQueryKeys.details(), id] as const,
+  // Nests under `lists()` on purpose: the ~20 call sites across this file,
+  // dialogs, and drawers that invalidate `lists()` after a channel changes
+  // already cover this key too (TanStack Query invalidation matches by
+  // prefix), so the health/retry summary never lags the rows without having
+  // to touch every one of those call sites individually.
+  //
+  // HAZARD: that same prefix matching applies to setQueriesData/
+  // getQueriesData, not just invalidateQueries. Any call scoped to
+  // `{queryKey: lists()}` also visits this entry. Its payload
+  // (`{success, data: {retry_times, health}}`) has no `items`, so an
+  // updater written for a paginated list response (e.g. one that reads
+  // `data.items`) will throw against it. Callers that write into list
+  // caches via `lists()` must exclude this key with `isChannelOpsQueryKey`
+  // below — see `channel-test-dialog.tsx`'s `updateChannelTestCache`.
+  ops: () => [...channelsQueryKeys.lists(), 'ops'] as const,
+}
+
+/**
+ * True when `queryKey` is `channelsQueryKeys.ops()`'s shape. Use as a
+ * `predicate` alongside a `{queryKey: channelsQueryKeys.lists()}` filter in
+ * `setQueriesData`/`getQueriesData` to exclude the ops summary from an
+ * updater meant for paginated list responses — see the hazard note on
+ * `channelsQueryKeys.ops` above.
+ */
+export function isChannelOpsQueryKey(queryKey: readonly unknown[]): boolean {
+  return queryKey[2] === 'ops'
 }
 
 function getChannelTestResponseTime(
@@ -249,7 +275,7 @@ export async function handleUpdateTagField(
       const fieldLabel =
         fieldName.charAt(0).toUpperCase() + fieldName.slice(1).toLowerCase()
       toast.success(
-        i18next.t('{{field}} updated to {{value}} for tag: {{tag}}', {
+        i18next.t('{{field}} updated to {{value}} for label: {{tag}}', {
           field: fieldLabel,
           value,
           tag,
@@ -534,10 +560,10 @@ export async function handleBatchSetTag(
       queryClient?.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
       onSuccess?.()
     } else {
-      toast.error(response.message || i18next.t('Failed to set tag'))
+      toast.error(response.message || i18next.t('Failed to set label'))
     }
   } catch {
-    toast.error(i18next.t('Failed to set tag'))
+    toast.error(i18next.t('Failed to set label'))
   }
 }
 
@@ -557,17 +583,17 @@ export async function handleEnableTagChannels(
     const response = await enableTagChannels(tag)
     if (response.success) {
       toast.success(
-        i18next.t('Enabled all channels with tag: {{tag}}', { tag })
+        i18next.t('Enabled all channels with label: {{tag}}', { tag })
       )
       queryClient?.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
       onSuccess?.()
     } else {
       toast.error(
-        response.message || i18next.t('Failed to enable tag channels')
+        response.message || i18next.t('Failed to enable label channels')
       )
     }
   } catch {
-    toast.error(i18next.t('Failed to enable tag channels'))
+    toast.error(i18next.t('Failed to enable label channels'))
   }
 }
 
@@ -583,17 +609,17 @@ export async function handleDisableTagChannels(
     const response = await disableTagChannels(tag)
     if (response.success) {
       toast.success(
-        i18next.t('Disabled all channels with tag: {{tag}}', { tag })
+        i18next.t('Disabled all channels with label: {{tag}}', { tag })
       )
       queryClient?.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
       onSuccess?.()
     } else {
       toast.error(
-        response.message || i18next.t('Failed to disable tag channels')
+        response.message || i18next.t('Failed to disable label channels')
       )
     }
   } catch {
-    toast.error(i18next.t('Failed to disable tag channels'))
+    toast.error(i18next.t('Failed to disable label channels'))
   }
 }
 

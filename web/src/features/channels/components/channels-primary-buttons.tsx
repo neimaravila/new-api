@@ -22,11 +22,8 @@ import {
   MoreHorizontal,
   Settings2,
   Trash2,
-  Tags,
   TestTube,
   DollarSign,
-  ListChecks,
-  SortAsc,
   RefreshCw,
   ArrowUpFromLine,
 } from 'lucide-react'
@@ -38,14 +35,13 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import {
   Tooltip,
   TooltipContent,
@@ -68,17 +64,7 @@ import { useChannels } from './channels-provider'
 
 export function ChannelsPrimaryButtons() {
   const { t } = useTranslation()
-  const {
-    setOpen,
-    setCurrentRow,
-    enableTagMode,
-    setEnableTagMode,
-    idSort,
-    setIdSort,
-    batchMode,
-    setBatchMode,
-    upstream,
-  } = useChannels()
+  const { setOpen, setCurrentRow, upstream } = useChannels()
   const queryClient = useQueryClient()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)
@@ -90,63 +76,9 @@ export function ChannelsPrimaryButtons() {
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
   )
 
-  const handleTagModeToggle = (checked: boolean) => {
-    localStorage.setItem('enable-tag-mode', String(checked))
-    setEnableTagMode(checked)
-  }
-
-  const handleIdSortToggle = (checked: boolean) => {
-    localStorage.setItem('channels-id-sort', String(checked))
-    setIdSort(checked)
-  }
-
-  const handleBatchModeToggle = (checked: boolean) => {
-    setBatchMode(checked)
-  }
-
   return (
     <>
       <div className='flex items-center gap-2'>
-        {/* Desktop: Toggle switches visible */}
-        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 sm:flex'>
-          <ListChecks className='text-muted-foreground h-4 w-4' />
-          <Label
-            htmlFor='channel-batch-mode'
-            className='cursor-pointer text-sm'
-          >
-            {t('Batch Operations')}
-          </Label>
-          <Switch
-            id='channel-batch-mode'
-            checked={batchMode}
-            onCheckedChange={handleBatchModeToggle}
-          />
-        </div>
-
-        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 sm:flex'>
-          <Tags className='text-muted-foreground h-4 w-4' />
-          <Label htmlFor='tag-mode' className='cursor-pointer text-sm'>
-            {t('Tag Mode')}
-          </Label>
-          <Switch
-            id='tag-mode'
-            checked={enableTagMode}
-            onCheckedChange={handleTagModeToggle}
-          />
-        </div>
-
-        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 sm:flex'>
-          <SortAsc className='text-muted-foreground h-4 w-4' />
-          <Label htmlFor='id-sort' className='cursor-pointer text-sm'>
-            {t('Sort by ID')}
-          </Label>
-          <Switch
-            id='id-sort'
-            checked={idSort}
-            onCheckedChange={handleIdSortToggle}
-          />
-        </div>
-
         {/* Create Channel */}
         <Tooltip>
           <TooltipTrigger render={<span className='inline-flex' />}>
@@ -177,110 +109,87 @@ export function ChannelsPrimaryButtons() {
             <MoreHorizontal className='h-4 w-4' />
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-56'>
-            {/* Mobile-only: toggle switches */}
-            <DropdownMenuCheckboxItem
-              className='sm:hidden'
-              checked={batchMode}
-              onCheckedChange={handleBatchModeToggle}
-            >
-              <ListChecks className='mr-2 h-4 w-4' />
-              {t('Batch Operations')}
-            </DropdownMenuCheckboxItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t('Check')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => {
+                  handleTestAllChannels(queryClient)
+                }}
+              >
+                {t('Test All Channels')}
+                <DropdownMenuShortcut>
+                  <TestTube className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
 
-            <DropdownMenuCheckboxItem
-              className='sm:hidden'
-              checked={enableTagMode}
-              onCheckedChange={handleTagModeToggle}
-            >
-              <Tags className='mr-2 h-4 w-4' />
-              {t('Tag Mode')}
-            </DropdownMenuCheckboxItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  handleUpdateAllBalances(queryClient)
+                }}
+              >
+                {t('Update All Balances')}
+                <DropdownMenuShortcut>
+                  <DollarSign className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
 
-            <DropdownMenuCheckboxItem
-              className='sm:hidden'
-              checked={idSort}
-              onCheckedChange={handleIdSortToggle}
-            >
-              <SortAsc className='mr-2 h-4 w-4' />
-              {t('Sort by ID')}
-            </DropdownMenuCheckboxItem>
-
-            <DropdownMenuSeparator className='sm:hidden' />
-
-            <DropdownMenuItem
-              onClick={() => {
-                handleTestAllChannels(queryClient)
-              }}
-            >
-              {t('Test All Channels')}
-              <DropdownMenuShortcut>
-                <TestTube className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              onClick={() => {
-                handleUpdateAllBalances(queryClient)
-              }}
-            >
-              {t('Update All Balances')}
-              <DropdownMenuShortcut>
-                <DollarSign className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => upstream.detectAllUpdates()}
+                disabled={upstream.detectAllLoading}
+              >
+                {t('Detect All Upstream Updates')}
+                <DropdownMenuShortcut>
+                  <RefreshCw className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem
-              onClick={() => upstream.detectAllUpdates()}
-              disabled={upstream.detectAllLoading}
-            >
-              {t('Detect All Upstream Updates')}
-              <DropdownMenuShortcut>
-                <RefreshCw className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              onClick={() => upstream.applyAllUpdates()}
-              disabled={upstream.applyAllLoading}
-            >
-              {t('Apply All Upstream Updates')}
-              <DropdownMenuShortcut>
-                <ArrowUpFromLine className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t('Apply')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => upstream.applyAllUpdates()}
+                disabled={upstream.applyAllLoading}
+              >
+                {t('Apply All Upstream Updates')}
+                <DropdownMenuShortcut>
+                  <ArrowUpFromLine className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                setShowConsistencyDialog(true)
-              }}
-            >
-              {t('Repair Channel Consistency')}
-              <DropdownMenuShortcut>
-                <Settings2 className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t('Maintenance')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setShowConsistencyDialog(true)
+                }}
+              >
+                {t('Repair Channel Consistency')}
+                <DropdownMenuShortcut>
+                  <Settings2 className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
 
-            <DropdownMenuSeparator />
-
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                if (!canEditSensitive) return
-                setShowDeleteDialog(true)
-              }}
-              disabled={!canEditSensitive}
-              className='text-destructive focus:text-destructive'
-            >
-              {t('Delete All Disabled')}
-              <DropdownMenuShortcut>
-                <Trash2 className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  if (!canEditSensitive) return
+                  setShowDeleteDialog(true)
+                }}
+                disabled={!canEditSensitive}
+                className='text-destructive focus:text-destructive'
+              >
+                {t('Delete All Disabled')}
+                <DropdownMenuShortcut>
+                  <Trash2 className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

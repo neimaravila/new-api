@@ -58,10 +58,6 @@ type ChannelsContextType = {
   setCurrentTag: (tag: string | null) => void
   enableTagMode: boolean
   setEnableTagMode: (enabled: boolean) => void
-  idSort: boolean
-  setIdSort: (enabled: boolean) => void
-  batchMode: boolean
-  setBatchMode: (enabled: boolean) => void
   sensitiveVisible: boolean
   setSensitiveVisible: (visible: boolean) => void
   upstream: UpstreamUpdateState
@@ -83,17 +79,14 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState<DialogType>(null)
   const [currentRow, setCurrentRow] = useState<Channel | null>(null)
   const [currentTag, setCurrentTag] = useState<string | null>(null)
-  const [enableTagMode, setEnableTagMode] = useState(() => {
-    return localStorage.getItem('enable-tag-mode') === 'true'
-  })
-  const [idSort, setIdSort] = useState(() => {
-    return localStorage.getItem('channels-id-sort') === 'true'
-  })
-  const [batchMode, setBatchMode] = useState(false)
+  const [enableTagMode, setEnableTagMode] = useState(false)
   const [sensitiveVisible, setSensitiveVisible] = useState(true)
 
   const queryClient = useQueryClient()
   const refreshChannels = useCallback(async () => {
+    // channelsQueryKeys.all covers channelsQueryKeys.ops() too (it nests
+    // under lists()), so a single invalidation refreshes the rows and the
+    // health/retry summary together.
     await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
   }, [queryClient])
   const upstream = useChannelUpstreamUpdates(refreshChannels)
@@ -111,24 +104,11 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
       setCurrentTag,
       enableTagMode,
       setEnableTagMode,
-      idSort,
-      setIdSort,
-      batchMode,
-      setBatchMode,
       sensitiveVisible,
       setSensitiveVisible,
       upstream,
     }),
-    [
-      open,
-      currentRow,
-      currentTag,
-      enableTagMode,
-      idSort,
-      batchMode,
-      sensitiveVisible,
-      upstream,
-    ]
+    [open, currentRow, currentTag, enableTagMode, sensitiveVisible, upstream]
   )
 
   return (

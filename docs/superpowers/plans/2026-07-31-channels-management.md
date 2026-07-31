@@ -83,8 +83,14 @@ The counts and the filter must come from one definition, or a tile's number will
   - `type ChannelHealthCounts struct { Active int64; Disabled int64; Slow int64; Untested int64; SlowThresholdMs int64 }` with JSON tags `active`, `disabled`, `slow`, `untested`, `slow_threshold_ms`
   - `func GetChannelHealthCounts() (ChannelHealthCounts, error)`
   - `func ApplyChannelHealthFilter(query *gorm.DB, health string) *gorm.DB`
+  - `func ChannelMatchesHealth(channel *Channel, health string) bool`
 
-- [ ] **Step 1: Write the failing test**
+The last one exists because the keyword branch of `SearchChannels` filters in Go after its query
+returns, following the pattern already there for status and type. Two forms of one rule is a
+liability, so they live side by side in this file and a test pins them to the same answer — the SQL
+form cannot change without the in-memory form failing.
+
+- [x] **Step 1: Write the failing test**
 
 Create `model/channel_health_test.go`. Package `model` already has a `TestMain` in `model/task_cas_test.go` that opens an in-memory SQLite DB and auto-migrates `&Channel{}`, so this file must not declare another one.
 
@@ -160,6 +166,35 @@ func TestApplyChannelHealthFilterMatchesCounts(t *testing.T) {
 	}
 }
 
+func TestHealthFilterFormsAgree(t *testing.T) {
+	seedHealthChannels(t)
+
+	var all []*Channel
+	require.NoError(t, DB.Order("id").Find(&all).Error)
+
+	// The SQL filter serves the list endpoint; the in-memory predicate serves
+	// the keyword branch of SearchChannels, which filters after its query
+	// returns. This is the test that stops the two from drifting apart.
+	for _, health := range []string{"slow", "untested", "", "unknown"} {
+		t.Run(health, func(t *testing.T) {
+			var matched []*Channel
+			require.NoError(t, ApplyChannelHealthFilter(DB.Model(&Channel{}), health).Order("id").Find(&matched).Error)
+
+			want := make([]int, 0, len(all))
+			for _, ch := range all {
+				if ChannelMatchesHealth(ch, health) {
+					want = append(want, ch.Id)
+				}
+			}
+			got := make([]int, 0, len(matched))
+			for _, ch := range matched {
+				got = append(got, ch.Id)
+			}
+			assert.Equal(t, want, got, "the SQL filter and the in-memory predicate must select the same channels")
+		})
+	}
+}
+
 func TestApplyChannelHealthFilterComposesWithStatus(t *testing.T) {
 	seedHealthChannels(t)
 
@@ -186,14 +221,14 @@ func TestApplyChannelHealthFilterIgnoresUnknownValues(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `go test ./model/ -run 'TestGetChannelHealthCounts|TestApplyChannelHealthFilter' -v`
 Expected: FAIL to build — `undefined: SlowResponseTimeMs`, `undefined: GetChannelHealthCounts`, `undefined: ApplyChannelHealthFilter`.
 
 If the seed fails on a NOT NULL or JSON column instead, fill that field in the fixture and rerun — the fixture must insert cleanly before the assertions mean anything.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `model/channel_health.go`. Copy the AGPL header from the top of `model/channel.go` verbatim.
 
@@ -260,19 +295,34 @@ func ApplyChannelHealthFilter(query *gorm.DB, health string) *gorm.DB {
 		return query
 	}
 }
+
+// ChannelMatchesHealth is the in-memory form of the same rule, for the keyword
+// branch of SearchChannels, which filters in Go after its query returns.
+// TestHealthFilterFormsAgree pins the two forms to the same answer, so neither
+// can be changed alone.
+func ChannelMatchesHealth(channel *Channel, health string) bool {
+	switch strings.ToLower(health) {
+	case "slow":
+		return channel.TestTime > 0 && int64(channel.ResponseTime) > SlowResponseTimeMs
+	case "untested":
+		return channel.TestTime == 0
+	default:
+		return true
+	}
+}
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `go test ./model/ -run 'TestGetChannelHealthCounts|TestApplyChannelHealthFilter' -v`
 Expected: PASS, all four subtests of the unknown-value case included.
 
-- [ ] **Step 5: Verify the whole package still builds and passes**
+- [x] **Step 5: Verify the whole package still builds and passes**
 
 Run: `go build ./... && go test ./model/`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add model/channel_health.go model/channel_health_test.go
@@ -296,7 +346,7 @@ git commit -m "feat(channels): add health bucket counts and list filter"
   - `GET /api/channel/ops` response data gains `health` (the `ChannelHealthCounts` shape from Task 1)
   - `GET /api/channel` and `GET /api/channel/search` accept `health=slow|untested`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `controller/channel_health_test.go`. This tests the pure normalizer only; the predicates themselves are covered against a real database in Task 1.
 
@@ -330,12 +380,12 @@ func TestParseHealthFilter(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `go test ./controller/ -run TestParseHealthFilter -v`
 Expected: FAIL to build — `undefined: parseHealthFilter`.
 
-- [ ] **Step 3: Add the normalizer and extend the query builder**
+- [x] **Step 3: Add the normalizer and extend the query builder**
 
 In `controller/channel.go`, add `parseHealthFilter` directly below the existing `parseStatusFilter` (currently at line 56):
 
@@ -367,7 +417,7 @@ func buildChannelListQuery(group string, statusFilter int, typeFilter int, healt
 }
 ```
 
-- [ ] **Step 4: Update all eight call sites**
+- [x] **Step 4: Update all eight call sites**
 
 `buildChannelListQuery` is called at lines 122, 128, 139, 150, 156, 172 and 300. Every call inside `GetAllChannels` (122, 128, 139, 150, 156, 172) takes the request's `healthFilter`; the call at line 300 sits in the tag branch of `SearchChannels`, which passes `-1, -1` because it filters in Go afterwards — pass the request's `healthFilter` there too so the tag branch narrows in SQL.
 
@@ -384,7 +434,7 @@ The type-counts query at line 172 keeps `-1` for the type filter — it delibera
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1, healthFilter)
 ```
 
-- [ ] **Step 5: Filter the keyword branch of SearchChannels**
+- [x] **Step 5: Filter the keyword branch of SearchChannels**
 
 `SearchChannels` runs `model.SearchChannels` and then filters status and type in Go (lines 325-360). The health filter follows that existing shape. Add `healthFilter := parseHealthFilter(c.Query("health"))` beside the existing `statusFilter` (line 283), pass it to the `buildChannelListQuery` call in the tag branch, and add this loop directly after the status filtering block:
 
@@ -392,12 +442,7 @@ The type-counts query at line 172 keeps `-1` for the type filter — it delibera
 	if healthFilter != "" {
 		filtered := make([]*model.Channel, 0, len(channelData))
 		for _, ch := range channelData {
-			isUntested := ch.TestTime == 0
-			isSlow := !isUntested && int64(ch.ResponseTime) > model.SlowResponseTimeMs
-			if healthFilter == "slow" && !isSlow {
-				continue
-			}
-			if healthFilter == "untested" && !isUntested {
+			if !model.ChannelMatchesHealth(ch, healthFilter) {
 				continue
 			}
 			filtered = append(filtered, ch)
@@ -406,7 +451,11 @@ The type-counts query at line 172 keeps `-1` for the type filter — it delibera
 	}
 ```
 
-- [ ] **Step 6: Return the counts from GetChannelOps**
+Do not re-derive the slow or untested predicate here. `model.ChannelMatchesHealth` is the in-memory
+form of the same rule Task 1 defined, and `TestHealthFilterFormsAgree` keeps it identical to the SQL
+form. Inlining the comparison would put a third copy of the rule in the tree.
+
+- [x] **Step 6: Return the counts from GetChannelOps**
 
 Replace the body of `GetChannelOps` (line 94):
 
@@ -425,17 +474,17 @@ func GetChannelOps(c *gin.Context) {
 }
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `go test ./controller/ -run TestParseHealthFilter -v && go build ./... && go test ./model/ ./controller/`
 Expected: PASS.
 
-- [ ] **Step 8: Verify relaykit still builds independently**
+- [x] **Step 8: Verify relaykit still builds independently**
 
 Run: `cd relaykit && GOWORK=off go build ./...`
 Expected: success. (Nothing here should touch it; this confirms it.)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add controller/channel.go controller/channel_health_test.go
@@ -462,7 +511,7 @@ The strip has three states and one rule that matters: a failed health request mu
   - `type HealthTile = { id: 'active' | 'disabled' | 'slow' | 'untested'; count: number }`
   - `function resolveHealthStripState(health: ChannelHealth | undefined): HealthStripState`
 
-- [ ] **Step 1: Add the response types**
+- [x] **Step 1: Add the response types**
 
 In `web/src/features/channels/types.ts`, extend `ChannelOpsResponse` (line 176) and both param interfaces (lines 268 and 280):
 
@@ -489,7 +538,7 @@ export interface ChannelOpsResponse {
 
 Add `health?: 'slow' | 'untested'` to both `GetChannelsParams` and `SearchChannelsParams`.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `web/src/features/channels/lib/__tests__/channel-health.test.ts`, following the `node:test` style the neighbouring tests in that directory already use.
 
@@ -542,12 +591,12 @@ describe('resolveHealthStripState', () => {
 })
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `cd web && bun test src/features/channels/lib/__tests__/channel-health.test.ts`
 Expected: FAIL — cannot resolve `../channel-health`.
 
-- [ ] **Step 4: Write the implementation**
+- [x] **Step 4: Write the implementation**
 
 Create `web/src/features/channels/lib/channel-health.ts` with the project copyright header.
 
@@ -600,12 +649,12 @@ export function resolveHealthStripState(
 
 Re-export it from `web/src/features/channels/lib/index.ts` alongside the existing exports.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `cd web && bun test src/features/channels/lib/__tests__/channel-health.test.ts && bun run typecheck`
 Expected: PASS, clean typecheck.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/features/channels/lib/channel-health.ts web/src/features/channels/lib/__tests__/channel-health.test.ts web/src/features/channels/lib/index.ts web/src/features/channels/types.ts
@@ -626,42 +675,65 @@ git commit -m "feat(channels): add health strip render state"
 - Consumes: `resolveHealthStripState`, `ChannelHealth`, `HealthTileId` from Task 3; the `health` request parameter from Task 2.
 - Produces: a `health` column filter registered in `useTableUrlState`, with `searchKey: 'health'` and `type: 'string'`.
 
-- [ ] **Step 1: Build the strip component**
+- [x] **Step 1: Build the strip component**
 
 Create `channel-health-strip.tsx` with the copyright header. It takes the resolved state and a click handler; it holds no query of its own, so the page owns the data and the component stays renderable in isolation.
 
 ```tsx
+type ActiveHealthTiles = {
+  status: 'active' | 'disabled' | null
+  health: 'slow' | 'untested' | null
+}
+
 type ChannelHealthStripProps = {
   state: HealthStripState
   slowThresholdMs: number
-  activeTile: HealthTileId | null
+  activeTiles: ActiveHealthTiles
   onSelect: (tile: HealthTileId) => void
 }
 ```
 
+`status` and `health` are independent filters the server composes with AND, so a single `activeTile:
+HealthTileId | null` cannot represent the strip's real state: Active/Disabled are mutually exclusive
+with each other (both come from `status`), Slow/Never tested are mutually exclusive with each other
+(both come from `health`), but a status tile and a health tile can be lit together. `activeTiles` is
+the pair, and `isHealthTileActive(tile.id, activeTiles)` decides whether a given tile is lit.
+
 Requirements for the render:
 - `kind: 'hidden'` renders `null`.
 - `kind: 'calm'` renders one line: the total and a "Test all channels" affordance reusing the existing `handleTestAllChannels` action.
-- `kind: 'alert'` renders four tiles in a `grid grid-cols-2 gap-2 sm:grid-cols-4`. Each tile is a `<button>` — not a `div` with `onClick` — so it is reachable by keyboard, with `aria-pressed={activeTile === tile.id}`.
+- `kind: 'alert'` renders four tiles in a `grid grid-cols-2 gap-2 sm:grid-cols-4`. Each tile is a `<button>` — not a `div` with `onClick` — so it is reachable by keyboard, with `aria-pressed={isHealthTileActive(tile.id, activeTiles)}`.
 - Tile labels via `t()`: `'Active'`, `'Disabled'`, `'Slow'`, `'Never tested'`. The slow tile's label reads `t('Slower than {{threshold}}', { threshold: formatResponseTime(slowThresholdMs, t) })` so the number comes from the server, never from a second copy of the constant.
 - Reuse the existing status colors: success for active, error for disabled, warning for slow, muted for never tested.
 
-- [ ] **Step 2: Share the ops query between the badge and the strip**
+- [x] **Step 2: Share the ops query between the badge and the strip**
 
 `web/src/features/channels/index.tsx` already runs a `['channel-ops']` query for the Max Retries badge. Read `channelOpsQuery.data?.data?.health` from that same query and pass `resolveHealthStripState(health)` into the strip — do not add a second query.
 
-Invalidate `['channel-ops']` wherever the channel list is already invalidated, so the counts never lag the rows. `refreshChannels` in `channels-provider.tsx:96-98` is the single chokepoint:
+Invalidate the ops summary wherever the channel list is already invalidated, so the counts never lag
+the rows. `refreshChannels` in `channels-provider.tsx` is not the chokepoint for that — roughly 25
+call sites across this file, dialogs, and drawers already invalidate `channelsQueryKeys.lists()`
+after a channel changes, and rewriting each of them individually to also invalidate an ops key would
+be exactly the kind of change that's easy to miss a call site on. Instead, `channelsQueryKeys.ops()`
+nests under `channelsQueryKeys.lists()`:
 
 ```ts
-  const refreshChannels = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all }),
-      queryClient.invalidateQueries({ queryKey: ['channel-ops'] }),
-    ])
-  }, [queryClient])
+export const channelsQueryKeys = {
+  all: ['channels'] as const,
+  lists: () => [...channelsQueryKeys.all, 'list'] as const,
+  ops: () => [...channelsQueryKeys.lists(), 'ops'] as const,
+}
 ```
 
-- [ ] **Step 3: Register the health column filter**
+TanStack Query invalidation matches by key prefix, so every existing `invalidateQueries({ queryKey:
+channelsQueryKeys.lists() })` call already covers the ops summary too, with no changes to those ~25
+call sites. The same prefix matching also applies to `setQueriesData`/`getQueriesData`, not just
+`invalidateQueries` — the one call scoped to `{queryKey: lists()}` that writes into the list cache
+directly (`updateChannelTestCache` in `channel-test-dialog.tsx`) must exclude the ops entry with an
+`isChannelOpsQueryKey(queryKey)` predicate, since its payload (`{retry_times, health}`) has no
+`items` and an updater written for a paginated list response throws against it.
+
+- [x] **Step 3: Register the health column filter**
 
 In `channels-table.tsx`, add to the `columnFilters` array passed to `useTableUrlState` (currently lines 121-139):
 
@@ -671,20 +743,25 @@ In `channels-table.tsx`, add to the `columnFilters` array passed to `useTableUrl
 
 Read it the way the model filter is read, pass it into both `getChannels` and `searchChannels` params, and add it to the query key so a change refetches.
 
-- [ ] **Step 4: Replace the Status dropdown with strip clicks**
+- [x] **Step 4: Replace the Status dropdown with strip clicks**
 
-Remove the Status faceted filter from `toolbarProps`. Clicking a tile sets the corresponding filter:
+Remove the Status faceted filter from `toolbarProps` while the strip is showing — but the
+`channel-ops` query the strip reads is declared with `retry: false`, so a failed request or an older
+backend leaves the strip rendering nothing (`kind: 'hidden'`) with no way to filter by status at all.
+The dropdown stays as a fallback for that one state: present only when `healthState.kind ===
+'hidden'`, gone the moment the strip has something to show. Clicking a tile sets the corresponding
+filter:
 
 - `active` → `status` column filter `['enabled']`
 - `disabled` → `status` column filter `['disabled']`
 - `slow` → `health` column filter `'slow'`
 - `untested` → `health` column filter `'untested'`
 
-Clicking the tile that is already active clears its filter. `activeTile` is derived from the current filter values, so a URL pasted into a fresh tab highlights the right tile.
+Clicking the tile that is already active clears its filter. `activeTiles` is derived from the current filter values, so a URL pasted into a fresh tab highlights the right tile(s).
 
 Keep `CHANNELS_STATUS_FILTER_STORAGE_KEY` and its `deserialize` fallback exactly as they are — that is existing status persistence, unrelated to this change.
 
-- [ ] **Step 5: Verify manually**
+- [x] **Step 5: Verify manually**
 
 Run: `cd web && bun run dev`
 
@@ -696,7 +773,7 @@ Confirm, in this order:
 5. Click Never tested; the URL gains `health=untested` and the list narrows.
 6. Re-enable the channel; the strip collapses without a manual refresh.
 
-- [ ] **Step 6: Run checks and commit**
+- [x] **Step 6: Run checks and commit**
 
 Run: `cd web && bun run typecheck && bun run lint && bun test`
 
@@ -720,7 +797,7 @@ git commit -m "feat(channels): add the health strip above the channel list"
 **Interfaces:**
 - Produces: `function parseChannelStatusInfo(otherInfo: string | undefined): { statusReason: string; statusTime: number | null }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import assert from 'node:assert/strict'
@@ -767,12 +844,12 @@ describe('parseChannelStatusInfo', () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd web && bun test src/features/channels/lib/__tests__/channel-status-info.test.ts`
 Expected: FAIL — cannot resolve `../channel-status-info`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 export type ChannelStatusInfo = {
@@ -812,7 +889,7 @@ export function parseChannelStatusInfo(
 }
 ```
 
-- [ ] **Step 4: Replace the inline parse in the status cell**
+- [x] **Step 4: Replace the inline parse in the status cell**
 
 In `channels-columns.tsx`, delete the `try/catch` block at lines 918-931 and call the helper:
 
@@ -827,12 +904,12 @@ In `channels-columns.tsx`, delete the `try/catch` block at lines 918-931 and cal
 
 The tooltip below it keeps its current markup, reading `statusReason` and `statusTimeLabel`.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cd web && bun test src/features/channels/lib/__tests__/channel-status-info.test.ts && bun run typecheck`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/features/channels/lib/channel-status-info.ts web/src/features/channels/lib/__tests__/channel-status-info.test.ts web/src/features/channels/lib/index.ts web/src/features/channels/components/channels-columns.tsx
@@ -851,7 +928,7 @@ The card currently mirrors the table's column order, so the four subjects compet
 **Interfaces:**
 - Consumes: `parseChannelStatusInfo` from Task 5.
 
-- [ ] **Step 1: Restructure into three labelled rows**
+- [x] **Step 1: Restructure into three labelled rows**
 
 Keep the `flexRender` approach — cell renderers stay shared with the table, which is what makes the priority/weight spinners and balance refresh keep working. Change only the arrangement:
 
@@ -864,7 +941,7 @@ Keep the `flexRender` approach — cell renderers stay shared with the table, wh
 
 Each row gets a fixed-width uppercase label using the existing `labelClass`, so the three subjects read as three subjects.
 
-- [ ] **Step 2: Surface the disable reason inline**
+- [x] **Step 2: Surface the disable reason inline**
 
 For a channel with `status !== CHANNEL_STATUS.ENABLED`, append the parsed reason to the Health row instead of hiding it in a tooltip:
 
@@ -877,17 +954,17 @@ Render, when `statusReason` is non-empty, `{isAutoDisabled ? t('Auto-disabled') 
 
 Confirm the exact `CHANNEL_STATUS` member names in `web/src/features/channels/constants.ts` before using them; the file defines `ENABLED` and `MANUAL_DISABLED`, so check what the auto-disabled member is called rather than assuming.
 
-- [ ] **Step 3: Keep the checkbox where it is**
+- [x] **Step 3: Keep the checkbox where it is**
 
 The card header already renders `selectCell`. It stays visible unconditionally — Task 7 removes the mode that currently gates it. Do not add a hover-reveal.
 
-- [ ] **Step 4: Verify manually**
+- [x] **Step 4: Verify manually**
 
 Run: `cd web && bun run dev`
 
 Switch to card view and confirm: the three rows are labelled, models appear, an auto-disabled channel shows its reason inline, and the priority/weight spinners still edit in place.
 
-- [ ] **Step 5: Run checks and commit**
+- [x] **Step 5: Run checks and commit**
 
 Run: `cd web && bun run typecheck && bun run lint`
 
@@ -908,11 +985,11 @@ Two switches encode no feature and are deleted. The third is the only entry poin
 - Modify: `web/src/features/channels/components/channels-table.tsx`
 - Modify: `web/src/features/channels/components/channels-columns.tsx`
 
-- [ ] **Step 1: Delete Sort by ID**
+- [x] **Step 1: Delete Sort by ID**
 
 Remove `idSort` and `setIdSort` from `ChannelsContextType` and the provider (`channels-provider.tsx:61-62, 89-91`), the switch from `channels-primary-buttons.tsx:138-148` and its mobile `DropdownMenuCheckboxItem` at lines 199-206, and the `channels-id-sort` localStorage read. Column-header sorting already covers this; `id_sort` stays in the request params, driven by the table's own sorting state.
 
-- [ ] **Step 2: Delete Batch Operations**
+- [x] **Step 2: Delete Batch Operations**
 
 Remove `batchMode` / `setBatchMode` from the provider (lines 63, 92), the switch at `channels-primary-buttons.tsx:111-124` and its mobile item at lines 181-188.
 
@@ -926,20 +1003,20 @@ In `channels-columns.tsx`, drop the `options.enableSelection` parameter and the 
 
 The tag-aggregate guard must stay — aggregate rows are not individually selectable.
 
-- [ ] **Step 3: Convert Tag Mode into a grouping control**
+- [x] **Step 3: Convert Tag Mode into a grouping control**
 
 `enableTagMode` produces the aggregate rows that `data-table-tag-row-actions.tsx` hangs `edit-tag-dialog` and `tag-batch-edit-dialog` off, so the state stays. Change only how it is presented and persisted:
 
 - Replace the switch with a select in the filter toolbar labelled `t('Group by')`, with options `t('None')` and `t('Label')`.
 - Drop the `localStorage.getItem('enable-tag-mode')` initializer in `channels-provider.tsx:86-88`; it starts at `false` every session.
 
-- [ ] **Step 4: Verify tag editing still works**
+- [x] **Step 4: Verify tag editing still works**
 
 Run: `cd web && bun run dev`
 
 Set Group by to Label, confirm aggregate rows appear, open the row actions on one, and confirm both Edit Tag and the batch edit dialog still open and save. This is the regression this task most risks.
 
-- [ ] **Step 5: Run checks and commit**
+- [x] **Step 5: Run checks and commit**
 
 Run: `cd web && bun run typecheck && bun run lint && bun test`
 
@@ -956,7 +1033,7 @@ git commit -m "refactor(channels): drop two page modes and make tag grouping exp
 - Modify: `web/src/features/channels/components/channels-primary-buttons.tsx`
 - Modify: `web/src/features/channels/components/data-table-row-actions.tsx`
 
-- [ ] **Step 1: Group the header menu**
+- [x] **Step 1: Group the header menu**
 
 Insert `DropdownMenuLabel` headings and `DropdownMenuSeparator` between three groups, in this order:
 
@@ -968,7 +1045,7 @@ Insert `DropdownMenuLabel` headings and `DropdownMenuSeparator` between three gr
 
 Both items in the last group keep their existing confirmation dialogs, and Delete All Disabled keeps `variant='destructive'`.
 
-- [ ] **Step 2: Group the row menu**
+- [x] **Step 2: Group the row menu**
 
 Same treatment in `data-table-row-actions.tsx`:
 
@@ -980,13 +1057,13 @@ Same treatment in `data-table-row-actions.tsx`:
 
 Provider-conditional items (Manage Ollama Models, Manage Keys) stay conditional and stay inside their group, so a shorter menu reads as a shorter group rather than a different menu.
 
-- [ ] **Step 3: Verify manually**
+- [x] **Step 3: Verify manually**
 
 Run: `cd web && bun run dev`
 
 Open both menus on an Ollama channel and on a plain OpenAI channel; confirm the groups hold and no group renders an empty heading when all of its items are hidden.
 
-- [ ] **Step 4: Run checks and commit**
+- [x] **Step 4: Run checks and commit**
 
 Run: `cd web && bun run typecheck && bun run lint`
 
@@ -1006,13 +1083,13 @@ Done last so every new string introduced by Tasks 4 through 8 is translated in o
 - Modify: `web/src/features/channels/components/channels-columns.tsx`
 - Modify: `web/src/i18n/locales/*.json`
 
-- [ ] **Step 1: Rename the two labels**
+- [x] **Step 1: Rename the two labels**
 
 `Tag` becomes `Label` and `Groups` becomes `Access` in every user-facing position: the column headers in `channels-columns.tsx` (lines 1018 and 1051), the drawer's field labels, the filter toolbar, and the bulk action copy in `data-table-bulk-actions.tsx`.
 
 Do **not** rename the `tag` or `group` accessor keys, request parameters, JSON fields, or database columns. This is a copy change only.
 
-- [ ] **Step 2: Rewrite the field descriptions**
+- [x] **Step 2: Rewrite the field descriptions**
 
 In `constants.ts`, replace the two entries that both currently use the word "group":
 
@@ -1021,7 +1098,7 @@ In `constants.ts`, replace the two entries that both currently use the word "gro
   GROUP: 'User groups allowed to reach this channel.',
 ```
 
-- [ ] **Step 3: Add the priority and weight gloss**
+- [x] **Step 3: Add the priority and weight gloss**
 
 Add the two descriptions that give the numbers meaning where they are displayed:
 
@@ -1032,23 +1109,23 @@ Add the two descriptions that give the numbers meaning where they are displayed:
 
 Render both in the card's Access row, not only in the drawer.
 
-- [ ] **Step 4: Sync and fill the locales**
+- [x] **Step 4: Sync and fill the locales**
 
 Run: `cd web && bun run i18n:sync`
 
 Fill every new key in all seven locales: `en`, `zh`, `zh-TW`, `fr`, `ru`, `ja`, `vi`. New keys from this plan are the four tile labels, the slow-tile threshold string, the calm-strip line, `Group by` / `None` / `Label`, the six menu group headings, `Auto-disabled`, and the four description strings above. Check `docs/translation-glossary.md` for terms with an established translation.
 
-- [ ] **Step 5: Verify no key is left untranslated**
+- [x] **Step 5: Verify no key is left untranslated**
 
 Run: `cd web && bun run i18n:sync && git diff --stat web/src/i18n/locales/`
 Expected: every locale file touched, no locale left with fewer keys than `en.json`.
 
-- [ ] **Step 6: Run the full frontend check**
+- [x] **Step 6: Run the full frontend check**
 
 Run: `cd web && bun run typecheck && bun run lint && bun run format:check && bun run copyright:check && bun test && bun run build`
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add web/src/features/channels/constants.ts web/src/features/channels/components/channels-columns.tsx web/src/features/channels/components/data-table-bulk-actions.tsx web/src/i18n/locales/

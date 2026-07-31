@@ -269,6 +269,12 @@ No snapshot tests of card markup, and no test asserting the column list.
 - **Four extra counts per page load.** `GetChannelOps` goes from returning a constant to running
   four `Count` queries. On a large instance this is four full scans of `channels` on every visit to
   the page. The table has an index on neither `test_time` nor `response_time`. Acceptable at this
-  scale; worth revisiting before anyone runs this with thousands of channels.
+  scale; worth revisiting before anyone runs this with thousands of channels. It is also four
+  `Count` queries per *mutation*, not just per page load: `channelsQueryKeys.ops()` nests under
+  `channelsQueryKeys.lists()` so that the ~25 existing call sites that invalidate the list after a
+  channel is created, edited, enabled, disabled, deleted, or tested cover the ops summary too, by
+  prefix match, without touching each call site. The trade-off is that every one of those ~25
+  invalidations now refetches the four-count summary alongside the rows. Same acceptable-at-this-
+  scale caveat as the page-load case; worth revisiting together if it ever is.
 - **Card density.** Adding the Serves row makes cards taller. At this instance's scale (under 20
   channels) that is acceptable; at several hundred, the table view remains the answer.

@@ -65,6 +65,7 @@ import {
   getChannelTypeLabel,
   getResponseTimeConfig,
   isMultiKeyChannel,
+  parseChannelStatusInfo,
   parseModelsList,
   parseGroupsList,
   parseChannelSettings,
@@ -211,7 +212,7 @@ function TagPriorityCell({ channel }: { channel: TagRow }) {
         onOpenChange={setConfirmOpen}
         title={t('Confirm Batch Update')}
         desc={t(
-          'This will update the priority to {{value}} for all {{count}} channel(s) with tag "{{tag}}". Continue?',
+          'This will update the priority to {{value}} for all {{count}} channel(s) with label "{{tag}}". Continue?',
           { value: pendingValue, count: channelCount, tag }
         )}
         confirmText={t('Update')}
@@ -300,7 +301,7 @@ function TagWeightCell({ channel }: { channel: TagRow }) {
         onOpenChange={setConfirmOpen}
         title={t('Confirm Batch Update')}
         desc={t(
-          'This will update the weight to {{value}} for all {{count}} channel(s) with tag "{{tag}}". Continue?',
+          'This will update the weight to {{value}} for all {{count}} channel(s) with label "{{tag}}". Continue?',
           { value: pendingValue, count: channelCount, tag }
         )}
         confirmText={t('Update')}
@@ -543,14 +544,9 @@ function BalanceCell({ channel }: { channel: Channel }) {
 /**
  * Generate channels columns configuration
  */
-export function useChannelsColumns(
-  options: {
-    enableSelection?: boolean
-  } = {}
-): ColumnDef<Channel>[] {
+export function useChannelsColumns(): ColumnDef<Channel>[] {
   const { t, i18n } = useTranslation()
   const { sensitiveVisible } = useChannels()
-  const enableSelection = options.enableSelection ?? true
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   // The column definitions only depend on the translation function, the active
   // locale, and sensitive-data visibility. Memoizing keeps the array (and every
@@ -559,43 +555,39 @@ export function useChannelsColumns(
   return useMemo<ColumnDef<Channel>[]>(
     () => [
       // Checkbox column
-      ...(enableSelection
-        ? [
-            {
-              id: 'select',
-              header: ({ table }) => (
-                <Checkbox
-                  checked={table.getIsAllPageRowsSelected()}
-                  indeterminate={table.getIsSomePageRowsSelected()}
-                  onCheckedChange={(value) =>
-                    table.toggleAllPageRowsSelected(!!value)
-                  }
-                  aria-label={t('Select all')}
-                />
-              ),
-              cell: ({ row }) => {
-                const isTagRow = isTagAggregateRow(row.original)
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={table.getIsSomePageRowsSelected()}
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
+            aria-label={t('Select all')}
+          />
+        ),
+        cell: ({ row }) => {
+          const isTagRow = isTagAggregateRow(row.original)
 
-                // Don't show checkbox for tag rows
-                if (isTagRow) {
-                  return null
-                }
+          // Don't show checkbox for tag rows
+          if (isTagRow) {
+            return null
+          }
 
-                return (
-                  <Checkbox
-                    checked={row.getIsSelected()}
-                    onCheckedChange={(value) => row.toggleSelected(!!value)}
-                    aria-label={t('Select row')}
-                  />
-                )
-              },
-              enableSorting: false,
-              enableHiding: false,
-              enableResizing: false,
-              size: 40,
-            } satisfies ColumnDef<Channel>,
-          ]
-        : []),
+          return (
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label={t('Select row')}
+            />
+          )
+        },
+        enableSorting: false,
+        enableHiding: false,
+        enableResizing: false,
+        size: 40,
+      },
 
       // ID column
       {
@@ -730,7 +722,7 @@ export function useChannelsColumns(
           if (isTagRow) {
             return (
               <StatusBadge
-                label={t('Tag Aggregate')}
+                label={t('Label Group')}
                 variant='blue'
                 size='sm'
                 copyable={false}
@@ -912,21 +904,11 @@ export function useChannelsColumns(
 
           // Auto-disabled: show reason and time tooltip
           if (status === 3) {
-            let statusReason = ''
-            let statusTime = ''
-            try {
-              const otherInfo = channel.other_info
-                ? JSON.parse(channel.other_info)
-                : null
-              if (otherInfo) {
-                statusReason = otherInfo.status_reason || ''
-                statusTime = otherInfo.status_time
-                  ? formatTimestampToDate(otherInfo.status_time)
-                  : ''
-              }
-            } catch {
-              /* empty */
-            }
+            const { statusReason, statusTime: rawStatusTime } =
+              parseChannelStatusInfo(channel.other_info)
+            const statusTime = rawStatusTime
+              ? formatTimestampToDate(rawStatusTime)
+              : ''
 
             if (statusReason || statusTime) {
               return (
@@ -1015,7 +997,7 @@ export function useChannelsColumns(
       // Group column
       {
         accessorKey: 'group',
-        header: t('Groups'),
+        header: t('Access'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const group = row.getValue('group') as string
@@ -1048,7 +1030,7 @@ export function useChannelsColumns(
       // Tag column
       {
         accessorKey: 'tag',
-        header: t('Tag'),
+        header: t('Label'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const tag = row.getValue('tag') as string | null
@@ -1184,6 +1166,6 @@ export function useChannelsColumns(
         meta: { pinned: 'right' as const },
       },
     ],
-    [enableSelection, t, locale, sensitiveVisible]
+    [t, locale, sensitiveVisible]
   )
 }

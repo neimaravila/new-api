@@ -107,7 +107,9 @@ export function TagBatchEditDialog({
       setNewTag(currentTag)
     } catch (_error: unknown) {
       toast.error(
-        _error instanceof Error ? _error.message : t('Failed to load tag data')
+        _error instanceof Error
+          ? _error.message
+          : t('Failed to load label data')
       )
     } finally {
       setIsLoading(false)
@@ -159,15 +161,15 @@ export function TagBatchEditDialog({
         params as unknown as TagOperationParams
       )
       if (response.success) {
-        toast.success(t('Tag updated successfully'))
+        toast.success(t('Label updated successfully'))
         queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
         handleClose()
       } else {
-        toast.error(response.message || t('Failed to update tag'))
+        toast.error(response.message || t('Failed to update label'))
       }
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : t('Failed to update tag')
+        error instanceof Error ? error.message : t('Failed to update label')
       )
     } finally {
       setIsSaving(false)
@@ -188,10 +190,10 @@ export function TagBatchEditDialog({
     <Dialog
       open={open}
       onOpenChange={handleClose}
-      title={t('Batch Edit by Tag')}
+      title={t('Batch Edit by Label')}
       description={
         <>
-          {t('Edit all channels with tag:')}
+          {t('Edit all channels with label:')}
           <strong>{currentTag}</strong>
         </>
       }
@@ -232,18 +234,18 @@ export function TagBatchEditDialog({
 
             {/* Tag Name */}
             <div className='space-y-2'>
-              <Label htmlFor='new-tag'>{t('Tag Name')}</Label>
+              <Label htmlFor='new-tag'>{t('Label Name')}</Label>
               <Input
                 id='new-tag'
                 placeholder={t(
-                  'Enter new tag name (leave empty to disband tag)'
+                  'Enter new label name (leave empty to disband label)'
                 )}
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 disabled={isSaving}
               />
               <p className='text-muted-foreground text-xs'>
-                {t('Leave empty to disband the tag')}
+                {t('Leave empty to disband the label')}
               </p>
             </div>
 
@@ -262,7 +264,7 @@ export function TagBatchEditDialog({
               />
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  'Current models for the longest channel in this tag. May not include all models from all channels.'
+                  'Current models for the longest channel in this label. May not include all models from all channels.'
                 )}
               </p>
             </div>
@@ -279,7 +281,7 @@ export function TagBatchEditDialog({
 
             {/* Groups */}
             <div className='space-y-2'>
-              <Label htmlFor='groups'>{t('Groups')}</Label>
+              <Label htmlFor='groups'>{t('Access')}</Label>
               {isLoadingGroups ? (
                 <Skeleton className='h-10 w-full' />
               ) : (
@@ -291,7 +293,7 @@ export function TagBatchEditDialog({
                 />
               )}
               <p className='text-muted-foreground text-xs'>
-                {t('User groups that can access channels with this tag')}
+                {t('User groups that can access channels with this label')}
               </p>
             </div>
           </div>
