@@ -164,6 +164,17 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'Models',
     },
   },
+  61: {
+    id: 61,
+    name: CHANNEL_TYPES[61],
+    icon: 'ElevenLabs',
+    defaultBaseUrl: 'https://api.elevenlabs.io',
+    hints: {
+      baseUrl: 'Default: https://api.elevenlabs.io',
+      key: 'Format: ElevenLabs API Key (sent as xi-api-key header)',
+      models: 'eleven_multilingual_v2,eleven_turbo_v2_5,eleven_flash_v2_5',
+    },
+  },
 }
 
 /**

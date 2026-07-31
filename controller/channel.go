@@ -198,6 +198,9 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 	switch channel.Type {
 	case constant.ChannelTypeAnthropic:
 		headers = GetClaudeAuthHeader(key)
+	case constant.ChannelTypeElevenLabs:
+		headers = http.Header{}
+		headers.Set("xi-api-key", key)
 	default:
 		headers = GetAuthHeader(key)
 	}

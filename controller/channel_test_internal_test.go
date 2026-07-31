@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
@@ -93,6 +94,21 @@ func TestNewAPIChannelRegistration(t *testing.T) {
 	assert.Equal(t, "New API", constant.GetChannelTypeName(constant.ChannelTypeNewAPI))
 	require.Greater(t, len(constant.ChannelBaseURLs), constant.ChannelTypeNewAPI)
 	assert.Empty(t, constant.ChannelBaseURLs[constant.ChannelTypeNewAPI])
+}
+
+func TestElevenLabsChannelRegistration(t *testing.T) {
+	apiType, ok := common.ChannelType2APIType(constant.ChannelTypeElevenLabs)
+
+	require.True(t, ok)
+	assert.Equal(t, constant.APITypeElevenLabs, apiType)
+	assert.Equal(t, "ElevenLabs", constant.GetChannelTypeName(constant.ChannelTypeElevenLabs))
+	// ChannelBaseURLs is indexed by channel type, so a missing slot is an out-of-range panic
+	// on every request that resolves a default base URL.
+	require.Greater(t, len(constant.ChannelBaseURLs), constant.ChannelTypeElevenLabs)
+	assert.Equal(t, "https://api.elevenlabs.io", constant.ChannelBaseURLs[constant.ChannelTypeElevenLabs])
+	// An unregistered API type makes the model-list init() dereference a nil adaptor and
+	// crash the process at startup.
+	assert.NotNil(t, relay.GetAdaptor(apiType))
 }
 
 func TestResponsesCompactAPITypeSupport(t *testing.T) {

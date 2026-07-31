@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
+	"github.com/QuantumNous/new-api/relay/channel/elevenlabs"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -410,6 +411,17 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 	body, err := getFetchModelsResponseBody(http.MethodGet, url, channel, headers)
 	if err != nil {
 		return nil, sanitizeFetchModelsError(err, key)
+	}
+
+	if channel.Type == constant.ChannelTypeElevenLabs {
+		// ElevenLabs answers GET /v1/models with a bare array, not an OpenAI-style {"data": [...]} envelope.
+		var elevenLabsModels []elevenlabs.ElevenLabsModel
+		if err := common.Unmarshal(body, &elevenLabsModels); err != nil {
+			return nil, err
+		}
+		return normalizeModelNames(lo.Map(elevenLabsModels, func(item elevenlabs.ElevenLabsModel, _ int) string {
+			return item.ModelID
+		})), nil
 	}
 
 	var result OpenAIModelsResponse
