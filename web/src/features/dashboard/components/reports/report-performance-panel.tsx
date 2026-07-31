@@ -50,7 +50,7 @@ export function ReportPerformancePanel(props: ReportPerformancePanelProps): Reac
       key: 'throughput',
       header: t('Throughput'),
       align: 'end',
-      render: (row) => `${formatNumber(row.throughput)} tok/s`,
+      render: (row) => `${formatNumber(row.throughput)} ${t('tok/s')}`,
     },
   ]
 
