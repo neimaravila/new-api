@@ -59,7 +59,27 @@ export const channelsQueryKeys = {
   // already cover this key too (TanStack Query invalidation matches by
   // prefix), so the health/retry summary never lags the rows without having
   // to touch every one of those call sites individually.
+  //
+  // HAZARD: that same prefix matching applies to setQueriesData/
+  // getQueriesData, not just invalidateQueries. Any call scoped to
+  // `{queryKey: lists()}` also visits this entry. Its payload
+  // (`{success, data: {retry_times, health}}`) has no `items`, so an
+  // updater written for a paginated list response (e.g. one that reads
+  // `data.items`) will throw against it. Callers that write into list
+  // caches via `lists()` must exclude this key with `isChannelOpsQueryKey`
+  // below — see `channel-test-dialog.tsx`'s `updateChannelTestCache`.
   ops: () => [...channelsQueryKeys.lists(), 'ops'] as const,
+}
+
+/**
+ * True when `queryKey` is `channelsQueryKeys.ops()`'s shape. Use as a
+ * `predicate` alongside a `{queryKey: channelsQueryKeys.lists()}` filter in
+ * `setQueriesData`/`getQueriesData` to exclude the ops summary from an
+ * updater meant for paginated list responses — see the hazard note on
+ * `channelsQueryKeys.ops` above.
+ */
+export function isChannelOpsQueryKey(queryKey: readonly unknown[]): boolean {
+  return queryKey[2] === 'ops'
 }
 
 function getChannelTestResponseTime(

@@ -47,7 +47,11 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import { getChannels, searchChannels, getGroups } from '../api'
-import { DEFAULT_PAGE_SIZE, CHANNEL_STATUS } from '../constants'
+import {
+  DEFAULT_PAGE_SIZE,
+  CHANNEL_STATUS,
+  CHANNEL_STATUS_OPTIONS,
+} from '../constants'
 import {
   channelsQueryKeys,
   aggregateChannelsByTag,
@@ -497,6 +501,22 @@ export function ChannelsTable({
               />
             ),
             filters: [
+              // The health strip replaces this facet — but the strip
+              // renders nothing when the ops summary is unavailable
+              // (request failed, or an older backend), and an admin still
+              // needs a way to filter by status in that degraded state. So
+              // the dropdown is a fallback for `kind: 'hidden'` only, not a
+              // permanent duplicate of the strip's Active/Disabled tiles.
+              ...(healthState.kind === 'hidden'
+                ? [
+                    {
+                      columnId: 'status',
+                      title: t('Status'),
+                      options: [...CHANNEL_STATUS_OPTIONS],
+                      singleSelect: true,
+                    },
+                  ]
+                : []),
               {
                 columnId: 'type',
                 title: t('Type'),

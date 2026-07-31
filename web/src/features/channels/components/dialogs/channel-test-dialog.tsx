@@ -92,6 +92,7 @@ import {
   channelsQueryKeys,
   formatResponseTime,
   handleTestChannel,
+  isChannelOpsQueryKey,
 } from '../../lib'
 import type {
   Channel,
@@ -499,7 +500,13 @@ function ChannelTestDialogContent({
       if (!patch) return
 
       queryClient.setQueriesData<ChannelListCache>(
-        { queryKey: channelsQueryKeys.lists() },
+        {
+          queryKey: channelsQueryKeys.lists(),
+          // Exclude channelsQueryKeys.ops(): it nests under lists() for
+          // invalidation purposes, but its payload isn't a paginated list
+          // (no `items`) — see the hazard note on channelsQueryKeys.ops.
+          predicate: (query) => !isChannelOpsQueryKey(query.queryKey),
+        },
         (oldData) => {
           const data = oldData?.data
           if (!oldData || !data?.items.length) return oldData
