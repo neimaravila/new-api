@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -137,6 +138,7 @@ func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRan
 		if err != nil {
 			return dto.ReportSummary{}, err
 		}
+		nameChannelPerformanceRows(channelPerf)
 		summary.ChannelPerformance = channelPerf
 	}
 	return summary, nil
@@ -397,6 +399,31 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim
 	return rows, nil
 }
 
+// nameChannelPerformanceRows replaces the raw channel_id each row is grouped under with the channel
+// name, so the panel reads like the channel cost/health table instead of listing bare ids.
+func nameChannelPerformanceRows(rows []dto.ReportPerformanceRow) {
+	ids := make([]int, 0, len(rows))
+	for _, row := range rows {
+		id, err := strconv.Atoi(row.Name)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	nameByID := reportChannelDisplayNames(ids)
+	for i := range rows {
+		id, err := strconv.Atoi(rows[i].Name)
+		if err != nil {
+			continue
+		}
+		rows[i].Name = nameByID[id]
+	}
+}
+
 // reportGroupP95 fetches a bounded sample of use_time for a group and computes the 95th percentile.
 // Cross-DB-safe: only reads scalar use_time values; no percentile SQL function is used.
 func reportGroupP95(scope reportRoleScope, start int64, end int64, groupCol string, groupVal string) (int, error) {
@@ -529,28 +556,13 @@ func computeReportChannels(scope reportRoleScope, start int64, end int64) ([]dto
 	for _, r := range rawRows {
 		ids = append(ids, r.ChannelID)
 	}
-	nameByID := make(map[int]string)
-	if len(ids) > 0 {
-		var channels []struct {
-			ID   int    `gorm:"column:id"`
-			Name string `gorm:"column:name"`
-		}
-		if err := model.DB.Table("channels").Select("id, name").Where("id IN ?", ids).Find(&channels).Error; err == nil {
-			for _, c := range channels {
-				nameByID[c.ID] = c.Name
-			}
-		}
-	}
+	nameByID := reportChannelDisplayNames(ids)
 
 	rows := make([]dto.ReportChannelRow, 0, len(rawRows))
 	for _, r := range rawRows {
-		name := nameByID[r.ChannelID]
-		if name == "" {
-			name = fmt.Sprintf("#%d", r.ChannelID)
-		}
 		rows = append(rows, dto.ReportChannelRow{
 			ChannelID:    r.ChannelID,
-			ChannelName:  name,
+			ChannelName:  nameByID[r.ChannelID],
 			Quota:        r.Quota,
 			Requests:     r.Requests,
 			Failures:     r.Failures,
@@ -559,6 +571,33 @@ func computeReportChannels(scope reportRoleScope, start int64, end int64) ([]dto
 		})
 	}
 	return rows, nil
+}
+
+// reportChannelDisplayNames maps channel ids to the label the report shows for them. Channels that
+// were deleted since the logs were written keep a "#id" placeholder, and so does every id if the
+// lookup fails: a missing name must not cost the caller its aggregation.
+func reportChannelDisplayNames(ids []int) map[int]string {
+	nameByID := make(map[int]string, len(ids))
+	for _, id := range ids {
+		nameByID[id] = fmt.Sprintf("#%d", id)
+	}
+	if len(ids) == 0 {
+		return nameByID
+	}
+
+	var channels []struct {
+		ID   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if err := model.DB.Table("channels").Select("id, name").Where("id IN ?", ids).Find(&channels).Error; err != nil {
+		return nameByID
+	}
+	for _, c := range channels {
+		if c.Name != "" {
+			nameByID[c.ID] = c.Name
+		}
+	}
+	return nameByID
 }
 
 // ---- helpers ----

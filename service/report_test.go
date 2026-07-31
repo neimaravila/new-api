@@ -140,6 +140,30 @@ func TestReportChannelPerformanceFiltersChannelIDNumerically(t *testing.T) {
 	assert.Contains(t, aggregate, "channel_id <> 0")
 }
 
+// The channel performance aggregation groups by channel_id, so its rows arrive labelled with the
+// raw id and must be resolved to the same names the channel cost/health table shows.
+func TestGetReportSummaryNamesChannelPerformanceRows(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+	// The fixture logs reference channels 10 and 11; only 10 still exists.
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 10, Name: "primary-openai"}).Error)
+
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	require.NoError(t, err)
+
+	perfNames := make([]string, 0, len(summary.ChannelPerformance))
+	for _, row := range summary.ChannelPerformance {
+		perfNames = append(perfNames, row.Name)
+	}
+	assert.ElementsMatch(t, []string{"primary-openai", "#11"}, perfNames)
+
+	channelNames := make([]string, 0, len(summary.Channels))
+	for _, row := range summary.Channels {
+		channelNames = append(channelNames, row.ChannelName)
+	}
+	assert.ElementsMatch(t, []string{"primary-openai", "#11"}, channelNames)
+}
+
 func TestGetReportSummaryRegularUserScoped(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	seedReportFixture(t)
