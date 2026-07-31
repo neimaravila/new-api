@@ -42,7 +42,9 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -273,112 +275,124 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuItem>
           )}
 
-          {/* Test Connection */}
-          <DropdownMenuItem onClick={handleTest}>
-            {t('Test Connection')}
-            <DropdownMenuShortcut>
-              <PlugZap size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{t('Check')}</DropdownMenuLabel>
 
-          {/* Query Balance */}
-          <DropdownMenuItem onClick={handleQueryBalance}>
-            {t('Query Balance')}
-            <DropdownMenuShortcut>
-              <DollarSign size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+            {/* Test Connection */}
+            <DropdownMenuItem onClick={handleTest}>
+              {t('Test Connection')}
+              <DropdownMenuShortcut>
+                <PlugZap size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-          {/* Fetch Models */}
-          <DropdownMenuItem onClick={handleFetchModels}>
-            {t('Fetch Models')}
-            <DropdownMenuShortcut>
-              <Download size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+            {/* Query Balance */}
+            <DropdownMenuItem onClick={handleQueryBalance}>
+              {t('Query Balance')}
+              <DropdownMenuShortcut>
+                <DollarSign size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-          {/* Detect Upstream Updates (only for fetchable channel types) */}
-          {MODEL_FETCHABLE_TYPES.has(channel.type) && (
+            {/* Fetch Models */}
+            <DropdownMenuItem onClick={handleFetchModels}>
+              {t('Fetch Models')}
+              <DropdownMenuShortcut>
+                <Download size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{t('Manage')}</DropdownMenuLabel>
+
+            {/* Detect Upstream Updates (only for fetchable channel types) */}
+            {MODEL_FETCHABLE_TYPES.has(channel.type) && (
+              <DropdownMenuItem
+                onClick={() => {
+                  const meta = parseUpstreamUpdateMeta(channel.settings)
+                  if (
+                    meta.pendingAddModels.length > 0 ||
+                    meta.pendingRemoveModels.length > 0
+                  ) {
+                    upstream.openModal(
+                      channel,
+                      meta.pendingAddModels,
+                      meta.pendingRemoveModels,
+                      meta.pendingAddModels.length > 0 ? 'add' : 'remove'
+                    )
+                  } else {
+                    upstream.detectChannelUpdates(channel)
+                  }
+                }}
+              >
+                {t('Upstream Updates')}
+                <DropdownMenuShortcut>
+                  <RefreshCw size={16} />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
+
+            {/* Ollama Models (only for Ollama channels) */}
+            {channel.type === 4 && (
+              <DropdownMenuItem onClick={handleManageOllamaModels}>
+                {t('Manage Ollama Models')}
+                <DropdownMenuShortcut>
+                  <Boxes size={16} />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
+
+            {/* Manage Keys (only for multi-key channels) */}
+            {isMultiKey && (
+              <DropdownMenuItem onClick={handleManageKeys}>
+                {t('Manage Keys')}
+                <DropdownMenuShortcut>
+                  <Key size={16} />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
+
+            {/* Copy Channel */}
             <DropdownMenuItem
-              onClick={() => {
-                const meta = parseUpstreamUpdateMeta(channel.settings)
-                if (
-                  meta.pendingAddModels.length > 0 ||
-                  meta.pendingRemoveModels.length > 0
-                ) {
-                  upstream.openModal(
-                    channel,
-                    meta.pendingAddModels,
-                    meta.pendingRemoveModels,
-                    meta.pendingAddModels.length > 0 ? 'add' : 'remove'
-                  )
-                } else {
-                  upstream.detectChannelUpdates(channel)
-                }
-              }}
+              disabled={!canEditSensitive}
+              onClick={canEditSensitive ? handleCopy : undefined}
             >
-              {t('Upstream Updates')}
+              {t('Copy Channel')}
               <DropdownMenuShortcut>
-                <RefreshCw size={16} />
+                <Copy size={16} />
               </DropdownMenuShortcut>
             </DropdownMenuItem>
-          )}
-
-          {/* Ollama Models (only for Ollama channels) */}
-          {channel.type === 4 && (
-            <DropdownMenuItem onClick={handleManageOllamaModels}>
-              {t('Manage Ollama Models')}
-              <DropdownMenuShortcut>
-                <Boxes size={16} />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-          )}
+            {!canEditSensitive && (
+              <DropdownMenuItem disabled className='text-xs normal-case'>
+                {t('No permission to perform this action')}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
 
           <DropdownMenuSeparator />
 
-          {/* Copy Channel */}
-          <DropdownMenuItem
-            disabled={!canEditSensitive}
-            onClick={canEditSensitive ? handleCopy : undefined}
-          >
-            {t('Copy Channel')}
-            <DropdownMenuShortcut>
-              <Copy size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
-          {!canEditSensitive && (
-            <DropdownMenuItem disabled className='text-xs normal-case'>
-              {t('No permission to perform this action')}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{t('Danger')}</DropdownMenuLabel>
 
-          {/* Manage Keys (only for multi-key channels) */}
-          {isMultiKey && (
-            <DropdownMenuItem onClick={handleManageKeys}>
-              {t('Manage Keys')}
+            {/* Delete */}
+            <DropdownMenuItem
+              disabled={!canEditSensitive}
+              onSelect={(e) => {
+                e.preventDefault()
+                if (!canEditSensitive) return
+                setDeleteConfirmOpen(true)
+              }}
+              className='text-destructive focus:text-destructive'
+            >
+              {t('Delete')}
               <DropdownMenuShortcut>
-                <Key size={16} />
+                <Trash2 size={16} />
               </DropdownMenuShortcut>
             </DropdownMenuItem>
-          )}
-
-          <DropdownMenuSeparator />
-
-          {/* Delete */}
-          <DropdownMenuItem
-            disabled={!canEditSensitive}
-            onSelect={(e) => {
-              e.preventDefault()
-              if (!canEditSensitive) return
-              setDeleteConfirmOpen(true)
-            }}
-            className='text-destructive focus:text-destructive'
-          >
-            {t('Delete')}
-            <DropdownMenuShortcut>
-              <Trash2 size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 

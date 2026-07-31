@@ -35,7 +35,9 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
@@ -107,80 +109,87 @@ export function ChannelsPrimaryButtons() {
             <MoreHorizontal className='h-4 w-4' />
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-56'>
-            <DropdownMenuItem
-              onClick={() => {
-                handleTestAllChannels(queryClient)
-              }}
-            >
-              {t('Test All Channels')}
-              <DropdownMenuShortcut>
-                <TestTube className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t('Check')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => {
+                  handleTestAllChannels(queryClient)
+                }}
+              >
+                {t('Test All Channels')}
+                <DropdownMenuShortcut>
+                  <TestTube className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={() => {
-                handleUpdateAllBalances(queryClient)
-              }}
-            >
-              {t('Update All Balances')}
-              <DropdownMenuShortcut>
-                <DollarSign className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  handleUpdateAllBalances(queryClient)
+                }}
+              >
+                {t('Update All Balances')}
+                <DropdownMenuShortcut>
+                  <DollarSign className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
 
-            <DropdownMenuSeparator />
-
-            <DropdownMenuItem
-              onClick={() => upstream.detectAllUpdates()}
-              disabled={upstream.detectAllLoading}
-            >
-              {t('Detect All Upstream Updates')}
-              <DropdownMenuShortcut>
-                <RefreshCw className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              onClick={() => upstream.applyAllUpdates()}
-              disabled={upstream.applyAllLoading}
-            >
-              {t('Apply All Upstream Updates')}
-              <DropdownMenuShortcut>
-                <ArrowUpFromLine className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => upstream.detectAllUpdates()}
+                disabled={upstream.detectAllLoading}
+              >
+                {t('Detect All Upstream Updates')}
+                <DropdownMenuShortcut>
+                  <RefreshCw className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                setShowConsistencyDialog(true)
-              }}
-            >
-              {t('Repair Channel Consistency')}
-              <DropdownMenuShortcut>
-                <Settings2 className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t('Apply')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => upstream.applyAllUpdates()}
+                disabled={upstream.applyAllLoading}
+              >
+                {t('Apply All Upstream Updates')}
+                <DropdownMenuShortcut>
+                  <ArrowUpFromLine className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault()
-                if (!canEditSensitive) return
-                setShowDeleteDialog(true)
-              }}
-              disabled={!canEditSensitive}
-              className='text-destructive focus:text-destructive'
-            >
-              {t('Delete All Disabled')}
-              <DropdownMenuShortcut>
-                <Trash2 className='h-4 w-4' />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{t('Maintenance')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setShowConsistencyDialog(true)
+                }}
+              >
+                {t('Repair Channel Consistency')}
+                <DropdownMenuShortcut>
+                  <Settings2 className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  if (!canEditSensitive) return
+                  setShowDeleteDialog(true)
+                }}
+                disabled={!canEditSensitive}
+                className='text-destructive focus:text-destructive'
+              >
+                {t('Delete All Disabled')}
+                <DropdownMenuShortcut>
+                  <Trash2 className='h-4 w-4' />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
