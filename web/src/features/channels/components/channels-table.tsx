@@ -25,7 +25,7 @@ import type {
   Row,
 } from '@tanstack/react-table'
 import { Eye, EyeOff } from 'lucide-react'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -37,6 +37,14 @@ import {
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Tooltip,
   TooltipContent,
@@ -104,8 +112,7 @@ export function ChannelsTable({
   const { t } = useTranslation()
   const {
     enableTagMode,
-    idSort,
-    batchMode,
+    setEnableTagMode,
     sensitiveVisible,
     setSensitiveVisible,
   } = useChannels()
@@ -241,6 +248,12 @@ export function ChannelsTable({
     } as const
   }, [sorting])
 
+  // The removed "Sort by ID" switch only ever changed the default order
+  // (id desc vs. priority desc) when no column sort was active. Column-header
+  // sorting on the ID column already covers that, so `id_sort` is derived
+  // straight from the table's own sorting state instead of separate UI state.
+  const idSort = sorting[0]?.id === 'id'
+
   const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
     setSorting((previous) => {
       const next = typeof updater === 'function' ? updater(previous) : updater
@@ -356,7 +369,7 @@ export function ChannelsTable({
   const typeCounts = data?.data?.type_counts
 
   // Columns configuration
-  const columns = useChannelsColumns({ enableSelection: batchMode })
+  const columns = useChannelsColumns()
 
   // React Table instance
   const { table } = useDataTable({
@@ -375,9 +388,7 @@ export function ChannelsTable({
     columnFilters,
     pagination,
     globalFilter,
-    enableRowSelection: batchMode
-      ? (row: Row<Channel>) => !isTagAggregateRow(row.original)
-      : false,
+    enableRowSelection: (row: Row<Channel>) => !isTagAggregateRow(row.original),
     onSortingChange: handleSortingChange,
     onColumnFiltersChange: handleColumnFiltersChange,
     onPaginationChange,
@@ -391,12 +402,6 @@ export function ChannelsTable({
     enableColumnResizing: !isMobile,
     ensurePageInRange,
   })
-
-  useEffect(() => {
-    if (!batchMode) {
-      table.resetRowSelection()
-    }
-  }, [batchMode, table])
 
   // Prepare filter options from existing channel types only.
   const typeFilterOptions = useMemo(() => {
@@ -458,6 +463,11 @@ export function ChannelsTable({
     })),
   ]
 
+  const groupByOptions = [
+    { value: 'none', label: t('None') },
+    { value: 'label', label: t('Label') },
+  ]
+
   return (
     <div className='flex h-full min-h-0 flex-col gap-2.5 sm:gap-3'>
       <ChannelHealthStrip
@@ -491,14 +501,34 @@ export function ChannelsTable({
               resetModelFilterInput()
             },
             additionalSearch: (
-              <Input
-                placeholder={t('Filter by model...')}
-                value={modelFilterInput}
-                onChange={onModelFilterInputChange}
-                onCompositionStart={onModelFilterCompositionStart}
-                onCompositionEnd={onModelFilterCompositionEnd}
-                className='w-full sm:w-[150px] lg:w-[180px]'
-              />
+              <>
+                <Input
+                  placeholder={t('Filter by model...')}
+                  value={modelFilterInput}
+                  onChange={onModelFilterInputChange}
+                  onCompositionStart={onModelFilterCompositionStart}
+                  onCompositionEnd={onModelFilterCompositionEnd}
+                  className='w-full sm:w-[150px] lg:w-[180px]'
+                />
+                <Select
+                  items={groupByOptions}
+                  value={enableTagMode ? 'label' : 'none'}
+                  onValueChange={(value) => setEnableTagMode(value === 'label')}
+                >
+                  <SelectTrigger className='w-auto min-w-[130px]'>
+                    <span className='text-muted-foreground'>
+                      {t('Group by')}:
+                    </span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      <SelectItem value='none'>{t('None')}</SelectItem>
+                      <SelectItem value='label'>{t('Label')}</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </>
             ),
             filters: [
               // The health strip replaces this facet — but the strip
@@ -560,9 +590,7 @@ export function ChannelsTable({
             }
             return DISABLED_ROW_DESKTOP
           }}
-          bulkActions={
-            batchMode ? <DataTableBulkActions table={table} /> : null
-          }
+          bulkActions={<DataTableBulkActions table={table} />}
         />
       </div>
     </div>

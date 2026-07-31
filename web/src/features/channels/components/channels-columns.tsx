@@ -544,14 +544,9 @@ function BalanceCell({ channel }: { channel: Channel }) {
 /**
  * Generate channels columns configuration
  */
-export function useChannelsColumns(
-  options: {
-    enableSelection?: boolean
-  } = {}
-): ColumnDef<Channel>[] {
+export function useChannelsColumns(): ColumnDef<Channel>[] {
   const { t, i18n } = useTranslation()
   const { sensitiveVisible } = useChannels()
-  const enableSelection = options.enableSelection ?? true
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   // The column definitions only depend on the translation function, the active
   // locale, and sensitive-data visibility. Memoizing keeps the array (and every
@@ -560,43 +555,39 @@ export function useChannelsColumns(
   return useMemo<ColumnDef<Channel>[]>(
     () => [
       // Checkbox column
-      ...(enableSelection
-        ? [
-            {
-              id: 'select',
-              header: ({ table }) => (
-                <Checkbox
-                  checked={table.getIsAllPageRowsSelected()}
-                  indeterminate={table.getIsSomePageRowsSelected()}
-                  onCheckedChange={(value) =>
-                    table.toggleAllPageRowsSelected(!!value)
-                  }
-                  aria-label={t('Select all')}
-                />
-              ),
-              cell: ({ row }) => {
-                const isTagRow = isTagAggregateRow(row.original)
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={table.getIsSomePageRowsSelected()}
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
+            aria-label={t('Select all')}
+          />
+        ),
+        cell: ({ row }) => {
+          const isTagRow = isTagAggregateRow(row.original)
 
-                // Don't show checkbox for tag rows
-                if (isTagRow) {
-                  return null
-                }
+          // Don't show checkbox for tag rows
+          if (isTagRow) {
+            return null
+          }
 
-                return (
-                  <Checkbox
-                    checked={row.getIsSelected()}
-                    onCheckedChange={(value) => row.toggleSelected(!!value)}
-                    aria-label={t('Select row')}
-                  />
-                )
-              },
-              enableSorting: false,
-              enableHiding: false,
-              enableResizing: false,
-              size: 40,
-            } satisfies ColumnDef<Channel>,
-          ]
-        : []),
+          return (
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label={t('Select row')}
+            />
+          )
+        },
+        enableSorting: false,
+        enableHiding: false,
+        enableResizing: false,
+        size: 40,
+      },
 
       // ID column
       {
@@ -1175,6 +1166,6 @@ export function useChannelsColumns(
         meta: { pinned: 'right' as const },
       },
     ],
-    [enableSelection, t, locale, sensitiveVisible]
+    [t, locale, sensitiveVisible]
   )
 }
