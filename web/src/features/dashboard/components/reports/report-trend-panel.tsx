@@ -16,11 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { formatNumber, formatQuota } from '@/lib/format'
+import { Button } from '@/components/ui/button'
 
-import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
+import { EmptyOrLoading, PanelShell } from './report-primitives'
+import { ReportChart } from './report-chart'
+import { buildTrendSpec, type ReportTrendMetric } from '../../lib/report-charts'
 import type { ReportTrendPoint } from '../../types'
 
 interface ReportTrendPanelProps {
@@ -28,31 +31,45 @@ interface ReportTrendPanelProps {
   points: ReportTrendPoint[]
 }
 
+const METRIC_OPTIONS: { value: ReportTrendMetric; labelKey: string }[] = [
+  { value: 'quota', labelKey: 'Cost' },
+  { value: 'requests', labelKey: 'Requests' },
+  { value: 'tokens', labelKey: 'Tokens' },
+  { value: 'failures', labelKey: 'Failures' },
+]
+
 export function ReportTrendPanel(props: ReportTrendPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const max = Math.max(1, ...props.points.map((p) => p.quota))
+  const [metric, setMetric] = useState<ReportTrendMetric>('quota')
+  const metricLabel = t(METRIC_OPTIONS.find((option) => option.value === metric)?.labelKey ?? 'Cost')
+  const spec = useMemo(
+    () => buildTrendSpec(props.points, metric, metricLabel),
+    [props.points, metric, metricLabel]
+  )
 
   return (
     <PanelShell
-      title={t('Trend over time')}
-      description={t('Cost, requests, tokens, failures and latency per bucket')}
-    >
-      {props.points.length === 0 ? (
-        <EmptyOrLoading loading={props.loading} emptyText={t('No trend data in this period.')} />
-      ) : (
-        <div className='grid gap-2'>
-          {props.points.map((p) => (
-            <BarChartRow
-              key={p.bucket_timestamp}
-              label={p.bucket_label}
-              value={p.quota}
-              maxValue={max}
-              displayValue={formatQuota(p.quota)}
-              tone='accent-1'
-              sublabel={`${formatNumber(p.requests)} ${t('requests')} · ${formatNumber(p.failures)} ${t('failures')}`}
-            />
+      title={t('Usage over time')}
+      description={t('One measure at a time, across the selected period')}
+      actions={
+        <div className='flex flex-wrap gap-1'>
+          {METRIC_OPTIONS.map((option) => (
+            <Button
+              key={option.value}
+              size='sm'
+              variant={metric === option.value ? 'default' : 'outline'}
+              onClick={() => setMetric(option.value)}
+            >
+              {t(option.labelKey)}
+            </Button>
           ))}
         </div>
+      }
+    >
+      {spec === null ? (
+        <EmptyOrLoading loading={props.loading} emptyText={t('No usage in this period.')} />
+      ) : (
+        <ReportChart spec={spec} height={280} ariaLabel={t('Usage over time')} />
       )}
     </PanelShell>
   )
