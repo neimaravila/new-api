@@ -18,8 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { ERROR_DONUT_MAX_SLICES, buildErrorShareSpec, buildModelCostSpec, buildTrendSpec } from '../report-charts'
-import type { ReportErrorRow, ReportModelRow, ReportTrendPoint } from '../../types'
+import {
+  ERROR_DONUT_MAX_SLICES,
+  buildChannelCostSpec,
+  buildErrorShareSpec,
+  buildModelCostSpec,
+  buildPerformanceSpec,
+  buildStreamSpec,
+  buildTokenAnatomySpec,
+  buildTrendSpec,
+} from '../report-charts'
+import type { ReportErrorRow, ReportModelRow, ReportPerformanceRow, ReportTrendPoint } from '../../types'
 
 const point = (over: Partial<ReportTrendPoint>): ReportTrendPoint => ({
   bucket_label: '2026-07-30',
@@ -110,5 +119,92 @@ describe('buildErrorShareSpec', () => {
     const spec = buildErrorShareSpec(rows, 'Other')
     const data = spec?.data as [{ values: unknown[] }]
     expect(data[0].values).toHaveLength(ERROR_DONUT_MAX_SLICES)
+  })
+})
+
+const perfRow = (name: string, avg: number, p95: number): ReportPerformanceRow => ({
+  name,
+  avg_latency_ms: avg,
+  p95_latency_ms: p95,
+  requests: 5,
+  tokens: 100,
+  throughput: 20,
+})
+
+describe('buildPerformanceSpec', () => {
+  it('returns null for no rows', () => {
+    expect(buildPerformanceSpec([], 'Avg', 'p95')).toBeNull()
+  })
+
+  it('emits avg and p95 as two series in the same millisecond scale', () => {
+    const spec = buildPerformanceSpec([perfRow('gpt-4o', 500, 900)], 'Avg', 'p95')
+    const data = spec?.data as [{ values: { name: string; series: string; value: number }[] }]
+    const values = data[0].values
+    expect(values).toEqual([
+      { name: 'gpt-4o', series: 'Avg', value: 500 },
+      { name: 'gpt-4o', series: 'p95', value: 900 },
+    ])
+    expect(spec?.legends).toEqual({ visible: true, orient: 'bottom' })
+  })
+})
+
+describe('buildTokenAnatomySpec', () => {
+  it('stacks prompt, completion and cache per model', () => {
+    const spec = buildTokenAnatomySpec(
+      [{ model_name: 'claude', prompt_tokens: 100, completion_tokens: 200, cache_tokens: 50, total: 350 }],
+      { prompt: 'Prompt', completion: 'Completion', cache: 'Cache' }
+    )
+    expect(spec?.stack).toBe(true)
+    const data = spec?.data as [{ values: { series: string; value: number }[] }]
+    const values = data[0].values
+    expect(values).toEqual([
+      { name: 'claude', series: 'Prompt', value: 100 },
+      { name: 'claude', series: 'Completion', value: 200 },
+      { name: 'claude', series: 'Cache', value: 50 },
+    ])
+  })
+
+  it('returns null for no rows', () => {
+    expect(buildTokenAnatomySpec([], { prompt: 'p', completion: 'c', cache: 'k' })).toBeNull()
+  })
+})
+
+describe('buildChannelCostSpec', () => {
+  it('marks channels above the error threshold so the bar carries status, not a second axis', () => {
+    const spec = buildChannelCostSpec([
+      { channel_id: 1, channel_name: 'ok', quota: 100, requests: 10, failures: 0, error_rate: 0, avg_latency_ms: 100 },
+      { channel_id: 2, channel_name: 'bad', quota: 90, requests: 10, failures: 5, error_rate: 0.5, avg_latency_ms: 100 },
+    ])
+    const data = spec?.data as [{ values: { name: string; degraded: boolean }[] }]
+    const values = data[0].values
+    expect(values).toEqual([
+      { name: 'ok', quota: 100, degraded: false },
+      { name: 'bad', quota: 90, degraded: true },
+    ])
+  })
+})
+
+describe('buildStreamSpec', () => {
+  it('returns null when neither mode had requests', () => {
+    const spec = buildStreamSpec(
+      { stream_avg_latency_ms: 0, stream_requests: 0, non_stream_avg_latency_ms: 0, non_stream_requests: 0 },
+      'Stream',
+      'Non-stream'
+    )
+    expect(spec).toBeNull()
+  })
+
+  it('pairs stream against non-stream request counts', () => {
+    const spec = buildStreamSpec(
+      { stream_avg_latency_ms: 400, stream_requests: 7, non_stream_avg_latency_ms: 900, non_stream_requests: 3 },
+      'Stream',
+      'Non-stream'
+    )
+    const data = spec?.data as [{ values: { name: string; value: number }[] }]
+    const values = data[0].values
+    expect(values).toEqual([
+      { name: 'Stream', value: 7 },
+      { name: 'Non-stream', value: 3 },
+    ])
   })
 })

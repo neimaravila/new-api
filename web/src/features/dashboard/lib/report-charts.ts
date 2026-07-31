@@ -16,7 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReportErrorRow, ReportModelRow, ReportTrendPoint } from '../types'
+import type {
+  ReportChannelRow,
+  ReportErrorRow,
+  ReportModelRow,
+  ReportPerformanceRow,
+  ReportStreamComparison,
+  ReportTokenAnatomyRow,
+  ReportTrendPoint,
+} from '../types'
 import { getDashboardChartColors } from './charts'
 
 export type ReportChartSpec = Record<string, unknown>
@@ -121,6 +129,125 @@ export function buildErrorShareSpec(
     label: { visible: true },
     color: getDashboardChartColors(values.length),
     pie: { state: { hover: { outerRadius: 0.85, stroke: '#000', lineWidth: 1 } } },
+    background: { fill: 'transparent' },
+    animation: true,
+  }
+}
+
+export const CHANNEL_ERROR_RATE_THRESHOLD = 0.05
+
+export function buildPerformanceSpec(
+  rows: ReportPerformanceRow[],
+  avgLabel: string,
+  p95Label: string
+): ReportChartSpec | null {
+  if (rows.length === 0) return null
+
+  const values = rows.flatMap((item) => [
+    { name: item.name, series: avgLabel, value: item.avg_latency_ms },
+    { name: item.name, series: p95Label, value: item.p95_latency_ms },
+  ])
+
+  return {
+    type: 'bar',
+    data: [{ id: 'reportPerformance', values }],
+    xField: 'value',
+    yField: ['name', 'series'],
+    seriesField: 'series',
+    direction: 'horizontal',
+    legends: { visible: true, orient: 'bottom' },
+    color: getDashboardChartColors(2).slice(0, 2),
+    axes: [
+      { orient: 'left', type: 'band' },
+      { orient: 'bottom', type: 'linear' },
+    ],
+    background: { fill: 'transparent' },
+    animation: true,
+  }
+}
+
+export function buildTokenAnatomySpec(
+  rows: ReportTokenAnatomyRow[],
+  labels: { prompt: string; completion: string; cache: string }
+): ReportChartSpec | null {
+  if (rows.length === 0) return null
+
+  const values = rows.flatMap((item) => [
+    { name: item.model_name, series: labels.prompt, value: item.prompt_tokens },
+    { name: item.model_name, series: labels.completion, value: item.completion_tokens },
+    { name: item.model_name, series: labels.cache, value: item.cache_tokens },
+  ])
+
+  return {
+    type: 'bar',
+    data: [{ id: 'reportTokenAnatomy', values }],
+    xField: 'value',
+    yField: 'name',
+    seriesField: 'series',
+    direction: 'horizontal',
+    stack: true,
+    legends: { visible: true, orient: 'bottom' },
+    color: getDashboardChartColors(3).slice(0, 3),
+    bar: { style: { stroke: 'transparent', lineWidth: 2 } },
+    axes: [
+      { orient: 'left', type: 'band' },
+      { orient: 'bottom', type: 'linear' },
+    ],
+    background: { fill: 'transparent' },
+    animation: true,
+  }
+}
+
+export function buildChannelCostSpec(channels: ReportChannelRow[]): ReportChartSpec | null {
+  if (channels.length === 0) return null
+
+  const values = channels.map((item) => ({
+    name: item.channel_name,
+    quota: item.quota,
+    degraded: item.error_rate > CHANNEL_ERROR_RATE_THRESHOLD,
+  }))
+
+  return {
+    type: 'bar',
+    data: [{ id: 'reportChannelCost', values }],
+    xField: 'quota',
+    yField: 'name',
+    seriesField: 'degraded',
+    direction: 'horizontal',
+    legends: { visible: false },
+    color: getDashboardChartColors(2).slice(0, 2),
+    axes: [
+      { orient: 'left', type: 'band' },
+      { orient: 'bottom', type: 'linear', visible: false },
+    ],
+    background: { fill: 'transparent' },
+    animation: true,
+  }
+}
+
+export function buildStreamSpec(
+  stream: ReportStreamComparison,
+  streamLabel: string,
+  nonStreamLabel: string
+): ReportChartSpec | null {
+  if (stream.stream_requests <= 0 && stream.non_stream_requests <= 0) return null
+
+  return {
+    type: 'bar',
+    data: [
+      {
+        id: 'reportStream',
+        values: [
+          { name: streamLabel, value: stream.stream_requests },
+          { name: nonStreamLabel, value: stream.non_stream_requests },
+        ],
+      },
+    ],
+    xField: 'name',
+    yField: 'value',
+    seriesField: 'name',
+    legends: { visible: false },
+    color: getDashboardChartColors(2).slice(0, 2),
     background: { fill: 'transparent' },
     animation: true,
   }
