@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { ROLE } from '@/lib/roles'
-import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getReportExportUrl, getReportSummary } from '../../api'
@@ -35,9 +34,10 @@ import { ReportChannelPanel } from './report-channel-panel'
 import { ReportErrorsPanel } from './report-errors-panel'
 import { ReportModelPanel } from './report-model-panel'
 import { ReportPerformancePanel } from './report-performance-panel'
+import { ReportStreamPanel } from './report-stream-panel'
 import { ReportTokenAnatomyPanel } from './report-token-anatomy-panel'
+import { ReportTotalsPanel } from './report-totals-panel'
 import { ReportTrendPanel } from './report-trend-panel'
-import { BarChartRow, PanelShell } from './report-primitives'
 
 const RANGE_OPTIONS: { value: ReportTimeRange; labelKey: string }[] = [
   { value: 'today', labelKey: 'Today' },
@@ -119,130 +119,35 @@ export function ReportsSection(): React.JSX.Element {
 
       {summary && (
         <>
-          <ReportTotalsPanel
-            loading={summaryQuery.isLoading}
-            summary={summary}
-          />
-          <ReportTrendPanel
-            loading={summaryQuery.isLoading}
-            points={summary.trend.points}
-          />
-          <ReportModelPanel
-            loading={summaryQuery.isLoading}
-            models={summary.models}
-          />
-          <ReportErrorsPanel
-            loading={summaryQuery.isLoading}
-            errors={summary.errors}
-          />
-          <ReportPerformancePanel
-            loading={summaryQuery.isLoading}
-            title={t('Model performance')}
-            rows={summary.model_performance}
-          />
-          <ReportTokenAnatomyPanel
-            loading={summaryQuery.isLoading}
-            rows={summary.token_anatomy}
-          />
-          {summary.stream_performance && (
-            <ReportStreamPanel
-              stream={summary.stream_performance}
+          <ReportTotalsPanel loading={summaryQuery.isLoading} summary={summary} />
+          <ReportTrendPanel loading={summaryQuery.isLoading} points={summary.trend.points} />
+          <div className='grid gap-4 lg:grid-cols-2'>
+            <ReportModelPanel loading={summaryQuery.isLoading} models={summary.models} />
+            <ReportErrorsPanel loading={summaryQuery.isLoading} errors={summary.errors} />
+          </div>
+          <div className='grid gap-4 lg:grid-cols-2'>
+            <ReportPerformancePanel
               loading={summaryQuery.isLoading}
+              title={t('Model latency')}
+              rows={summary.model_performance}
             />
+            <ReportTokenAnatomyPanel loading={summaryQuery.isLoading} rows={summary.token_anatomy} />
+          </div>
+          {summary.stream_performance && (
+            <ReportStreamPanel loading={summaryQuery.isLoading} stream={summary.stream_performance} />
+          )}
+          {isAdmin && summary.channels && (
+            <ReportChannelPanel loading={summaryQuery.isLoading} channels={summary.channels} />
           )}
           {isAdmin && summary.channel_performance && (
             <ReportPerformancePanel
               loading={summaryQuery.isLoading}
-              title={t('Channel performance')}
+              title={t('Channel latency')}
               rows={summary.channel_performance}
-            />
-          )}
-          {isAdmin && summary.channels && (
-            <ReportChannelPanel
-              loading={summaryQuery.isLoading}
-              channels={summary.channels}
             />
           )}
         </>
       )}
     </div>
-  )
-}
-
-interface ReportTotalsPanelProps {
-  loading: boolean
-  summary: {
-    trend: { totals: { quota: number; requests: number; tokens: number; failures: number; avg_latency_ms: number } }
-  }
-}
-
-function ReportTotalsPanel(props: ReportTotalsPanelProps): React.JSX.Element {
-  const { t } = useTranslation()
-  const totals = props.summary.trend.totals
-  const max = Math.max(totals.quota, 1)
-  const rows = [
-    { label: t('Quota used'), value: totals.quota, display: formatQuota(totals.quota), tone: 'accent-2' as const },
-    { label: t('Requests'), value: totals.requests, display: formatNumber(totals.requests), tone: 'accent-1' as const },
-    { label: t('Tokens'), value: totals.tokens, display: formatCompactNumber(totals.tokens), tone: 'accent-1' as const },
-    { label: t('Failures'), value: totals.failures, display: formatNumber(totals.failures), tone: 'accent-3' as const },
-  ]
-  return (
-    <PanelShell
-      title={t('Period totals')}
-      description={t('Aggregate volume across the selected period')}
-      isEmpty={props.loading}
-      emptyText={t('Loading…')}
-    >
-      <div className='grid gap-2'>
-        {rows.map((r) => (
-          <BarChartRow
-            key={r.label}
-            label={r.label}
-            value={r.value}
-            maxValue={max}
-            displayValue={r.display}
-            tone={r.tone}
-            sublabel={r.label === t('Failures') && totals.requests > 0 ? `${Math.round((totals.failures / totals.requests) * 1000) / 10}%` : undefined}
-          />
-        ))}
-      </div>
-    </PanelShell>
-  )
-}
-
-interface ReportStreamPanelProps {
-  loading: boolean
-  stream: {
-    stream_avg_latency_ms: number
-    stream_requests: number
-    non_stream_avg_latency_ms: number
-    non_stream_requests: number
-  }
-}
-
-function ReportStreamPanel(props: ReportStreamPanelProps): React.JSX.Element {
-  const { t } = useTranslation()
-  const maxLatency = Math.max(props.stream.stream_avg_latency_ms, props.stream.non_stream_avg_latency_ms, 1)
-  return (
-    <PanelShell title={t('Stream vs non-stream')} description={t('Average latency and request volume by streaming mode')}>
-      <div className='grid gap-2'>
-        <BarChartRow
-          label={t('Stream')}
-          value={props.stream.stream_avg_latency_ms}
-          maxValue={maxLatency}
-          displayValue={`${formatNumber(props.stream.stream_avg_latency_ms)} ms`}
-          sublabel={`${formatNumber(props.stream.stream_requests)} ${t('requests')}`}
-          tone='accent-1'
-        />
-        <BarChartRow
-          label={t('Non-stream')}
-          value={props.stream.non_stream_avg_latency_ms}
-          maxValue={maxLatency}
-          displayValue={`${formatNumber(props.stream.non_stream_avg_latency_ms)} ms`}
-          sublabel={`${formatNumber(props.stream.non_stream_requests)} ${t('requests')}`}
-          tone='accent-2'
-        />
-      </div>
-    </PanelShell>
   )
 }

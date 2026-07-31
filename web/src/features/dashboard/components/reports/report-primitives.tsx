@@ -18,48 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { cn } from '@/lib/utils'
-
-interface BarChartRowProps {
-  label: string
-  value: number
-  maxValue: number
-  displayValue: string
-  tone?: 'accent-1' | 'accent-2' | 'accent-3'
-  sublabel?: string
-}
-
-const toneClass = {
-  'accent-1': 'bg-primary',
-  'accent-2': 'bg-success',
-  'accent-3': 'bg-warning',
-} as const
-
-export function BarChartRow(props: BarChartRowProps): React.JSX.Element {
-  const pct = props.maxValue > 0 ? Math.max(2, (props.value / props.maxValue) * 100) : 0
-  return (
-    <div className='flex items-center gap-3'>
-      <div className='text-muted-foreground w-32 shrink-0 truncate text-xs' title={props.label}>
-        {props.label}
-      </div>
-      <div className='bg-muted relative h-5 flex-1 overflow-hidden rounded-md'>
-        <div
-          className={cn('h-full rounded-md', toneClass[props.tone ?? 'accent-1'])}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className='w-20 shrink-0 text-right font-mono text-xs font-semibold tabular-nums'>
-        {props.displayValue}
-      </div>
-      {props.sublabel && (
-        <div className='text-muted-foreground hidden w-24 shrink-0 truncate text-right text-xs sm:block'>
-          {props.sublabel}
-        </div>
-      )}
-    </div>
-  )
-}
-
 interface PanelShellProps {
   title: string
   description?: string
