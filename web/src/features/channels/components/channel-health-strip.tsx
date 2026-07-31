@@ -69,7 +69,7 @@ export function ChannelHealthStrip(props: ChannelHealthStripProps) {
     return (
       <div className='flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3'>
         <p className='text-muted-foreground text-sm'>
-          {t('{{count}} channels healthy', { count: state.total })}
+          {t('{{count}} channel(s) healthy', { count: state.total })}
         </p>
         <Button
           type='button'

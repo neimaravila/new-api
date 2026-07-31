@@ -21,9 +21,14 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-import { CHANNEL_STATUS } from '../constants'
+import { CHANNEL_STATUS, FIELD_DESCRIPTIONS } from '../constants'
 import {
   isTagAggregateRow,
   parseChannelStatusInfo,
@@ -110,7 +115,7 @@ function ChannelCardComponent({
   if (!isTagRow && row.original.status !== CHANNEL_STATUS.ENABLED) {
     const { statusReason } = parseChannelStatusInfo(row.original.other_info)
     const isAutoDisabled = row.original.status === CHANNEL_STATUS.AUTO_DISABLED
-    const label = isAutoDisabled ? t('Auto-disabled') : t('Disabled')
+    const label = isAutoDisabled ? t('Auto Disabled') : t('Disabled')
     disabledStatusText = statusReason ? `${label} · ${statusReason}` : label
   }
 
@@ -192,7 +197,9 @@ function ChannelCardComponent({
         <div className='flex items-start gap-2'>
           <span className={rowLabelClass}>{t('Serves')}</span>
           <div className='min-w-0 flex-1'>
-            {modelsCell ?? <span className='text-muted-foreground text-sm'>-</span>}
+            {modelsCell ?? (
+              <span className='text-muted-foreground text-sm'>-</span>
+            )}
           </div>
         </div>
 
@@ -218,8 +225,38 @@ function ChannelCardComponent({
               )}
             </div>
             <div className='mt-1.5 grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-1'>
-              <span className={labelClass}>{t('Priority')}</span>
-              <span className={labelClass}>{t('Weight')}</span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className={cn(
+                        labelClass,
+                        'cursor-help decoration-dotted underline-offset-2 hover:underline'
+                      )}
+                    />
+                  }
+                >
+                  {t('Priority')}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {t(FIELD_DESCRIPTIONS.PRIORITY)}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className={cn(
+                        labelClass,
+                        'cursor-help decoration-dotted underline-offset-2 hover:underline'
+                      )}
+                    />
+                  }
+                >
+                  {t('Weight')}
+                </TooltipTrigger>
+                <TooltipContent>{t(FIELD_DESCRIPTIONS.WEIGHT)}</TooltipContent>
+              </Tooltip>
               <div className='flex justify-start'>{priorityCell}</div>
               <div className='flex justify-start'>{weightCell}</div>
             </div>

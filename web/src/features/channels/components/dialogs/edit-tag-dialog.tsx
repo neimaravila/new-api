@@ -195,15 +195,15 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
       )
 
       if (response.success) {
-        toast.success(t('Tag updated successfully'))
+        toast.success(t('Label updated successfully'))
         queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
         onOpenChange(false)
       } else {
-        toast.error(response.message || t('Failed to update tag'))
+        toast.error(response.message || t('Failed to update label'))
       }
     } catch (error: unknown) {
       toast.error(
-        error instanceof Error ? error.message : t('Failed to update tag')
+        error instanceof Error ? error.message : t('Failed to update label')
       )
     } finally {
       setIsSubmitting(false)
@@ -222,12 +222,12 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
       onOpenChange={handleClose}
       title={
         <>
-          {t('Edit Tag:')}
+          {t('Edit Label:')}
           {currentTag}
         </>
       }
       description={t(
-        'Batch edit all channels with this tag. Leave fields empty to keep current values.'
+        'Batch edit all channels with this label. Leave fields empty to keep current values.'
       )}
       contentClassName='max-h-[90vh] max-w-2xl'
       contentHeight='auto'
@@ -249,16 +249,16 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
           {/* Tag Name */}
           <div className='space-y-2'>
             <Label htmlFor='new-tag'>
-              {t('Tag Name')}
+              {t('Label Name')}
               <span className='text-muted-foreground ml-2 text-xs'>
-                {t('(Leave empty to dissolve tag)')}
+                {t('(Leave empty to dissolve label)')}
               </span>
             </Label>
             <Input
               id='new-tag'
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}
-              placeholder={t('Enter new tag name or leave empty')}
+              placeholder={t('Enter new label name or leave empty')}
             />
           </div>
 
@@ -418,9 +418,9 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
           {/* Groups */}
           <div className='space-y-2'>
             <Label>
-              {t('Groups')}
+              {t('Access')}
               <span className='text-muted-foreground ml-2 text-xs'>
-                {t("(Override all channels' groups)")}
+                {t("(Override all channels' access)")}
               </span>
             </Label>
             <div className='flex min-h-[60px] flex-wrap gap-2 rounded-md border p-3'>

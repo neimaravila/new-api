@@ -77,13 +77,13 @@ export function DataTableTagRowActions({ row }: DataTableTagRowActionsProps) {
               variant='ghost'
               size='icon-sm'
               onClick={handleEditTag}
-              aria-label={t('Edit Tag')}
+              aria-label={t('Edit Label')}
             />
           }
         >
           <Edit />
         </TooltipTrigger>
-        <TooltipContent>{t('Edit Tag')}</TooltipContent>
+        <TooltipContent>{t('Edit Label')}</TooltipContent>
       </Tooltip>
 
       <DataTableRowActionMenu ariaLabel={t('Open menu')}>

@@ -456,7 +456,7 @@ export function ChannelsTable({
   }, [t, typeCounts, typeFilter])
 
   const groupFilterOptions = [
-    { label: t('All Groups'), value: 'all' },
+    { label: t('All Access'), value: 'all' },
     ...groupOptions.map((option) => ({
       ...option,
       label: sensitiveVisible ? option.label : '••••',
@@ -555,7 +555,7 @@ export function ChannelsTable({
               },
               {
                 columnId: 'group',
-                title: t('Group'),
+                title: t('Access'),
                 options: groupFilterOptions,
                 singleSelect: true,
               },

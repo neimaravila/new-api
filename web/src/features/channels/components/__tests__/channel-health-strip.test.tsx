@@ -119,7 +119,7 @@ describe('ChannelHealthStrip', () => {
       slowThresholdMs: 1000,
       activeTiles: noTiles,
     })
-    expect(screen.getByText('18 channels healthy')).toBeTruthy()
+    expect(screen.getByText('18 channel(s) healthy')).toBeTruthy()
     expect(
       screen.getByRole('button', { name: /Test All Channels/i })
     ).toBeTruthy()

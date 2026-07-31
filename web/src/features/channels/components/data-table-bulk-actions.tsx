@@ -159,18 +159,18 @@ export function DataTableBulkActions<TData>({
                 size='icon'
                 onClick={() => setShowTagDialog(true)}
                 className='size-8'
-                aria-label={t('Set tag for selected channels')}
-                title={t('Set tag for selected channels')}
+                aria-label={t('Set label for selected channels')}
+                title={t('Set label for selected channels')}
               />
             }
           >
             <Tag />
             <span className='sr-only'>
-              {t('Set tag for selected channels')}
+              {t('Set label for selected channels')}
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{t('Set tag for selected channels')}</p>
+            <p>{t('Set label for selected channels')}</p>
           </TooltipContent>
         </Tooltip>
 
@@ -215,12 +215,12 @@ export function DataTableBulkActions<TData>({
       <Dialog
         open={showTagDialog}
         onOpenChange={setShowTagDialog}
-        title={t('Set Tag')}
+        title={t('Set Label')}
         description={
           <>
-            {t('Set a tag for')}
+            {t('Set a label for')}
             {selectedIds.length}{' '}
-            {t('selected channel(s). Leave empty to remove tag.')}
+            {t('selected channel(s). Leave empty to remove label.')}
           </>
         }
         contentHeight='auto'
@@ -236,16 +236,16 @@ export function DataTableBulkActions<TData>({
             >
               {t('Cancel')}
             </Button>
-            <Button onClick={handleSetTag}>{t('Set Tag')}</Button>
+            <Button onClick={handleSetTag}>{t('Set Label')}</Button>
           </>
         }
       >
         <div className='grid gap-4 py-4'>
           <div className='grid gap-2'>
-            <Label htmlFor='tag'>{t('Tag')}</Label>
+            <Label htmlFor='tag'>{t('Label')}</Label>
             <Input
               id='tag'
-              placeholder={t('Enter tag name (optional)')}
+              placeholder={t('Enter label name (optional)')}
               value={tagValue}
               onChange={(e) => setTagValue(e.target.value)}
             />

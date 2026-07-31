@@ -275,7 +275,7 @@ export async function handleUpdateTagField(
       const fieldLabel =
         fieldName.charAt(0).toUpperCase() + fieldName.slice(1).toLowerCase()
       toast.success(
-        i18next.t('{{field}} updated to {{value}} for tag: {{tag}}', {
+        i18next.t('{{field}} updated to {{value}} for label: {{tag}}', {
           field: fieldLabel,
           value,
           tag,
@@ -560,10 +560,10 @@ export async function handleBatchSetTag(
       queryClient?.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
       onSuccess?.()
     } else {
-      toast.error(response.message || i18next.t('Failed to set tag'))
+      toast.error(response.message || i18next.t('Failed to set label'))
     }
   } catch {
-    toast.error(i18next.t('Failed to set tag'))
+    toast.error(i18next.t('Failed to set label'))
   }
 }
 
@@ -583,17 +583,17 @@ export async function handleEnableTagChannels(
     const response = await enableTagChannels(tag)
     if (response.success) {
       toast.success(
-        i18next.t('Enabled all channels with tag: {{tag}}', { tag })
+        i18next.t('Enabled all channels with label: {{tag}}', { tag })
       )
       queryClient?.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
       onSuccess?.()
     } else {
       toast.error(
-        response.message || i18next.t('Failed to enable tag channels')
+        response.message || i18next.t('Failed to enable label channels')
       )
     }
   } catch {
-    toast.error(i18next.t('Failed to enable tag channels'))
+    toast.error(i18next.t('Failed to enable label channels'))
   }
 }
 
@@ -609,17 +609,17 @@ export async function handleDisableTagChannels(
     const response = await disableTagChannels(tag)
     if (response.success) {
       toast.success(
-        i18next.t('Disabled all channels with tag: {{tag}}', { tag })
+        i18next.t('Disabled all channels with label: {{tag}}', { tag })
       )
       queryClient?.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
       onSuccess?.()
     } else {
       toast.error(
-        response.message || i18next.t('Failed to disable tag channels')
+        response.message || i18next.t('Failed to disable label channels')
       )
     }
   } catch {
-    toast.error(i18next.t('Failed to disable tag channels'))
+    toast.error(i18next.t('Failed to disable label channels'))
   }
 }
 

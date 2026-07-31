@@ -212,7 +212,7 @@ function TagPriorityCell({ channel }: { channel: TagRow }) {
         onOpenChange={setConfirmOpen}
         title={t('Confirm Batch Update')}
         desc={t(
-          'This will update the priority to {{value}} for all {{count}} channel(s) with tag "{{tag}}". Continue?',
+          'This will update the priority to {{value}} for all {{count}} channel(s) with label "{{tag}}". Continue?',
           { value: pendingValue, count: channelCount, tag }
         )}
         confirmText={t('Update')}
@@ -301,7 +301,7 @@ function TagWeightCell({ channel }: { channel: TagRow }) {
         onOpenChange={setConfirmOpen}
         title={t('Confirm Batch Update')}
         desc={t(
-          'This will update the weight to {{value}} for all {{count}} channel(s) with tag "{{tag}}". Continue?',
+          'This will update the weight to {{value}} for all {{count}} channel(s) with label "{{tag}}". Continue?',
           { value: pendingValue, count: channelCount, tag }
         )}
         confirmText={t('Update')}
@@ -722,7 +722,7 @@ export function useChannelsColumns(): ColumnDef<Channel>[] {
           if (isTagRow) {
             return (
               <StatusBadge
-                label={t('Tag Aggregate')}
+                label={t('Label Group')}
                 variant='blue'
                 size='sm'
                 copyable={false}
@@ -997,7 +997,7 @@ export function useChannelsColumns(): ColumnDef<Channel>[] {
       // Group column
       {
         accessorKey: 'group',
-        header: t('Groups'),
+        header: t('Access'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const group = row.getValue('group') as string
@@ -1030,7 +1030,7 @@ export function useChannelsColumns(): ColumnDef<Channel>[] {
       // Tag column
       {
         accessorKey: 'tag',
-        header: t('Tag'),
+        header: t('Label'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const tag = row.getValue('tag') as string | null

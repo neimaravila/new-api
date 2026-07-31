@@ -1110,7 +1110,7 @@ export function ChannelMutateDrawer({
     },
     {
       id: CHANNEL_EDITOR_SECTION_IDS.models,
-      title: t('Models & Groups'),
+      title: t('Models & Access'),
       description: getSectionStatusLabel(modelsStatus, t),
       statusLabel: getSectionStatusLabel(modelsStatus, t),
       status: modelsStatus,
@@ -3582,7 +3582,7 @@ export function ChannelMutateDrawer({
                               render={({ field }) => (
                                 <FormItem className='space-y-3'>
                                   <div className='space-y-1'>
-                                    <FormLabel>{t('Groups *')}</FormLabel>
+                                    <FormLabel>{t('Access *')}</FormLabel>
                                     <FormDescription>
                                       {t(FIELD_DESCRIPTIONS.GROUP)}
                                     </FormDescription>
@@ -3752,7 +3752,7 @@ export function ChannelMutateDrawer({
                                 name='tag'
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>{t('Tag')}</FormLabel>
+                                    <FormLabel>{t('Label')}</FormLabel>
                                     <FormControl>
                                       <Input
                                         placeholder={t(FIELD_PLACEHOLDERS.TAG)}
@@ -4233,9 +4233,7 @@ export function ChannelMutateDrawer({
                                         <SelectValue />
                                       </SelectTrigger>
                                     </FormControl>
-                                    <SelectContent
-                                      alignItemWithTrigger={false}
-                                    >
+                                    <SelectContent alignItemWithTrigger={false}>
                                       <SelectGroup>
                                         <SelectItem value='auto'>
                                           {t('Auto')}
