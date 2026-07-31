@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatNumber } from '@/lib/format'
 
-import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
+import { EmptyOrLoading, PanelShell } from './report-primitives'
+import { ReportChart } from './report-chart'
+import { ReportTable, type ReportTableColumn } from './report-table'
+import { buildErrorShareSpec } from '../../lib/report-charts'
 import type { ReportErrorRow } from '../../types'
 
 interface ReportErrorsPanelProps {
@@ -30,29 +34,28 @@ interface ReportErrorsPanelProps {
 
 export function ReportErrorsPanel(props: ReportErrorsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const max = Math.max(1, ...props.errors.map((e) => e.failures))
+  const otherLabel = t('Other')
+  const spec = useMemo(() => buildErrorShareSpec(props.errors, otherLabel), [props.errors, otherLabel])
+  const columns: ReportTableColumn<ReportErrorRow>[] = [
+    { key: 'model', header: t('Model'), render: (row) => row.model_name },
+    { key: 'failures', header: t('Failures'), align: 'end', render: (row) => formatNumber(row.failures) },
+    { key: 'share', header: t('Share'), align: 'end', render: (row) => `${Math.round(row.share * 10) / 10}%` },
+  ]
 
   return (
-    <PanelShell
-      title={t('Error analysis')}
-      description={t('Top models by failure count and their share of total failures')}
-    >
-      {props.errors.length === 0 ? (
-        <EmptyOrLoading loading={false} emptyText={t('No errors recorded in this period.')} />
+    <PanelShell title={t('Failures by model')} description={t('Where the errors in this period came from')}>
+      {spec === null ? (
+        <EmptyOrLoading loading={props.loading} emptyText={t('No failures in this period.')} />
       ) : (
-        <div className='grid gap-2'>
-          {props.errors.map((e) => (
-            <BarChartRow
-              key={e.model_name}
-              label={e.model_name}
-              value={e.failures}
-              maxValue={max}
-              displayValue={formatNumber(e.failures)}
-              tone='accent-3'
-              sublabel={`${e.share}% ${t('share')}`}
-            />
-          ))}
-        </div>
+        <>
+          <ReportChart spec={spec} ariaLabel={t('Failures by model')} />
+          <ReportTable
+            caption={t('Failures by model')}
+            columns={columns}
+            rows={props.errors}
+            rowKey={(row) => row.model_name}
+          />
+        </>
       )}
     </PanelShell>
   )

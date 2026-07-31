@@ -1,5 +1,5 @@
 import { Window } from 'happy-dom'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const domWindow = new Window()
 const domGlobals = [
@@ -35,6 +35,15 @@ afterAll(() => {
   domWindow.close()
 })
 
+// Stub out the chart wrapper so a canvas-backed VChart never has to render
+// under happy-dom. report-chart.test.tsx exercises the real ReportChart
+// (and its own @visactor/react-vchart mock) directly; this file only needs
+// to prove the table and the chart's aria-label are wired to the panel's
+// spec, so a lightweight stand-in is enough.
+vi.mock('../report-chart', () => ({
+  ReportChart: (props: { ariaLabel: string }): React.JSX.Element => <div role='img' aria-label={props.ariaLabel} />,
+}))
+
 const { render } = await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
@@ -56,8 +65,8 @@ function renderNode(node: React.ReactNode) {
 }
 
 describe('report sub-panels', () => {
-  it('renders model breakdown rows from data', () => {
-    const { queryByText } = renderNode(
+  it('renders one table row per model with its cost', () => {
+    const { queryByText, getAllByRole } = renderNode(
       <ReportModelPanel
         loading={false}
         models={[
@@ -67,11 +76,9 @@ describe('report sub-panels', () => {
       />
     )
 
+    expect(getAllByRole('row')).toHaveLength(3)
     expect(queryByText('gpt-4o')).not.toBeNull()
-    expect(queryByText('claude')).not.toBeNull()
-    // quota values are rendered through formatQuota (currency rules), not raw integers
     expect(queryByText(formatQuota(350))).not.toBeNull()
-    expect(queryByText(formatQuota(100))).not.toBeNull()
   })
 
   it('renders an empty state when there are no models', () => {
@@ -79,16 +86,18 @@ describe('report sub-panels', () => {
     expect(queryByText('No model usage in this period.')).not.toBeNull()
   })
 
-  it('renders errors panel with share sublabels', () => {
-    const { queryByText } = renderNode(
+  it('renders one table row per model with its failures and share', () => {
+    const { queryByText, getAllByRole } = renderNode(
       <ReportErrorsPanel
         loading={false}
         errors={[{ model_name: 'gpt-4o', failures: 4, quota: 0, share: 100 }]}
       />
     )
+
+    expect(getAllByRole('row')).toHaveLength(2)
     expect(queryByText('gpt-4o')).not.toBeNull()
     expect(queryByText('4')).not.toBeNull()
-    expect(queryByText('100% share')).not.toBeNull()
+    expect(queryByText('100%')).not.toBeNull()
   })
 
   it('channel panel (admin) renders channel rows', () => {

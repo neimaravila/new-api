@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatNumber, formatQuota } from '@/lib/format'
 
-import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
+import { EmptyOrLoading, PanelShell } from './report-primitives'
+import { ReportChart } from './report-chart'
+import { ReportTable, type ReportTableColumn } from './report-table'
+import { buildModelCostSpec } from '../../lib/report-charts'
 import type { ReportModelRow } from '../../types'
 
 interface ReportModelPanelProps {
@@ -30,29 +34,39 @@ interface ReportModelPanelProps {
 
 export function ReportModelPanel(props: ReportModelPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const max = Math.max(1, ...props.models.map((m) => m.quota))
+  const spec = useMemo(() => buildModelCostSpec(props.models), [props.models])
+  const columns: ReportTableColumn<ReportModelRow>[] = [
+    { key: 'model', header: t('Model'), render: (row) => row.model_name },
+    { key: 'cost', header: t('Cost'), align: 'end', render: (row) => formatQuota(row.quota) },
+    { key: 'requests', header: t('Requests'), align: 'end', render: (row) => formatNumber(row.requests) },
+    {
+      key: 'errors',
+      header: t('Error rate'),
+      align: 'end',
+      render: (row) => `${Math.round(row.error_rate * 1000) / 10}%`,
+    },
+    {
+      key: 'latency',
+      header: t('Avg latency'),
+      align: 'end',
+      render: (row) => `${formatNumber(row.avg_latency_ms)} ms`,
+    },
+  ]
 
   return (
-    <PanelShell
-      title={t('Model breakdown')}
-      description={t('Cost, requests, tokens, error rate and latency per model')}
-    >
-      {props.models.length === 0 ? (
+    <PanelShell title={t('Model breakdown')} description={t('Cost per model, with requests, errors and latency')}>
+      {spec === null ? (
         <EmptyOrLoading loading={props.loading} emptyText={t('No model usage in this period.')} />
       ) : (
-        <div className='grid gap-2'>
-          {props.models.map((m) => (
-            <BarChartRow
-              key={m.model_name}
-              label={m.model_name}
-              value={m.quota}
-              maxValue={max}
-              displayValue={formatQuota(m.quota)}
-              tone='accent-2'
-              sublabel={`${formatNumber(m.requests)} ${t('requests')} · ${Math.round(m.error_rate * 1000) / 10}% ${t('errors')} · ${formatNumber(m.avg_latency_ms)} ms`}
-            />
-          ))}
-        </div>
+        <>
+          <ReportChart spec={spec} ariaLabel={t('Cost per model')} />
+          <ReportTable
+            caption={t('Model breakdown')}
+            columns={columns}
+            rows={props.models}
+            rowKey={(row) => row.model_name}
+          />
+        </>
       )}
     </PanelShell>
   )
