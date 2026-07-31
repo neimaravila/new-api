@@ -122,8 +122,8 @@ describe('report sub-panels', () => {
     expect(cells.map((cell) => cell.textContent)).toEqual(['gpt-4o', '4', '100%'])
   })
 
-  it('channel panel (admin) renders channel rows', () => {
-    const { queryByText } = renderNode(
+  it('channel panel (admin) lists channels with cost and error rate', () => {
+    const { queryByText, getAllByRole } = renderNode(
       <ReportChannelPanel
         loading={false}
         channels={[
@@ -133,18 +133,19 @@ describe('report sub-panels', () => {
     )
     expect(queryByText('OpenAI')).not.toBeNull()
     expect(queryByText(formatQuota(500))).not.toBeNull()
+    expect(getAllByRole('row')).toHaveLength(2)
   })
 
-  it('token anatomy panel renders prompt/completion/cache sublabels', () => {
+  it('token anatomy panel lists prompt, completion and cache columns', () => {
     const { queryByText } = renderNode(
       <ReportTokenAnatomyPanel
         loading={false}
-        rows={[
-          { model_name: 'claude', prompt_tokens: 100, completion_tokens: 200, cache_tokens: 50, total: 350 },
-        ]}
+        rows={[{ model_name: 'claude', prompt_tokens: 100, completion_tokens: 200, cache_tokens: 50, total: 350 }]}
       />
     )
     expect(queryByText('claude')).not.toBeNull()
-    expect(queryByText('prompt 100 · completion 200 · cache 50')).not.toBeNull()
+    expect(queryByText('100')).not.toBeNull()
+    expect(queryByText('200')).not.toBeNull()
+    expect(queryByText('50')).not.toBeNull()
   })
 })

@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatNumber, formatQuota } from '@/lib/format'
 
-import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
+import { EmptyOrLoading, PanelShell } from './report-primitives'
+import { ReportChart } from './report-chart'
+import { ReportTable, type ReportTableColumn } from './report-table'
+import { buildChannelCostSpec, CHANNEL_ERROR_RATE_THRESHOLD } from '../../lib/report-charts'
 import type { ReportChannelRow } from '../../types'
 
 interface ReportChannelPanelProps {
@@ -30,29 +34,49 @@ interface ReportChannelPanelProps {
 
 export function ReportChannelPanel(props: ReportChannelPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const max = Math.max(1, ...props.channels.map((c) => c.quota))
+  const spec = useMemo(() => buildChannelCostSpec(props.channels), [props.channels])
+  const columns: ReportTableColumn<ReportChannelRow>[] = [
+    { key: 'channel', header: t('Channel'), render: (row) => row.channel_name },
+    { key: 'cost', header: t('Cost'), align: 'end', render: (row) => formatQuota(row.quota) },
+    { key: 'requests', header: t('Requests'), align: 'end', render: (row) => formatNumber(row.requests) },
+    {
+      key: 'errors',
+      header: t('Error rate'),
+      align: 'end',
+      render: (row) => {
+        const value = `${Math.round(row.error_rate * 1000) / 10}%`
+        return row.error_rate > CHANNEL_ERROR_RATE_THRESHOLD ? (
+          <span className='text-destructive'>{value}</span>
+        ) : (
+          value
+        )
+      },
+    },
+    {
+      key: 'latency',
+      header: t('Avg latency'),
+      align: 'end',
+      render: (row) => `${formatNumber(row.avg_latency_ms)} ms`,
+    },
+  ]
 
   return (
     <PanelShell
       title={t('Channel cost and health')}
       description={t('Cost, volume, error rate and latency per upstream channel')}
     >
-      {props.channels.length === 0 ? (
+      {spec === null ? (
         <EmptyOrLoading loading={props.loading} emptyText={t('No channel data in this period.')} />
       ) : (
-        <div className='grid gap-2'>
-          {props.channels.map((c) => (
-            <BarChartRow
-              key={c.channel_id}
-              label={c.channel_name}
-              value={c.quota}
-              maxValue={max}
-              displayValue={formatQuota(c.quota)}
-              tone='accent-2'
-              sublabel={`${formatNumber(c.requests)} ${t('requests')} · ${Math.round(c.error_rate * 1000) / 10}% ${t('errors')} · ${formatNumber(c.avg_latency_ms)} ms`}
-            />
-          ))}
-        </div>
+        <>
+          <ReportChart spec={spec} ariaLabel={t('Channel cost and health')} />
+          <ReportTable
+            caption={t('Channel cost and health')}
+            columns={columns}
+            rows={props.channels}
+            rowKey={(row) => String(row.channel_id)}
+          />
+        </>
       )}
     </PanelShell>
   )

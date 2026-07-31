@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { formatCompactNumber, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 
-import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
+import { EmptyOrLoading, PanelShell } from './report-primitives'
+import { ReportChart } from './report-chart'
+import { ReportTable, type ReportTableColumn } from './report-table'
+import { buildTokenAnatomySpec } from '../../lib/report-charts'
 import type { ReportTokenAnatomyRow } from '../../types'
 
 interface ReportTokenAnatomyPanelProps {
@@ -30,29 +34,48 @@ interface ReportTokenAnatomyPanelProps {
 
 export function ReportTokenAnatomyPanel(props: ReportTokenAnatomyPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const max = Math.max(1, ...props.rows.map((r) => r.total))
+  const promptLabel = t('Prompt')
+  const completionLabel = t('Completion')
+  const cacheLabel = t('Cache')
+  const spec = useMemo(
+    () =>
+      buildTokenAnatomySpec(props.rows, {
+        prompt: promptLabel,
+        completion: completionLabel,
+        cache: cacheLabel,
+      }),
+    [props.rows, promptLabel, completionLabel, cacheLabel]
+  )
+  const columns: ReportTableColumn<ReportTokenAnatomyRow>[] = [
+    { key: 'model', header: t('Model'), render: (row) => row.model_name },
+    { key: 'prompt', header: promptLabel, align: 'end', render: (row) => formatNumber(row.prompt_tokens) },
+    {
+      key: 'completion',
+      header: completionLabel,
+      align: 'end',
+      render: (row) => formatNumber(row.completion_tokens),
+    },
+    { key: 'cache', header: cacheLabel, align: 'end', render: (row) => formatNumber(row.cache_tokens) },
+    { key: 'total', header: t('Total'), align: 'end', render: (row) => formatNumber(row.total) },
+  ]
 
   return (
     <PanelShell
       title={t('Token anatomy')}
       description={t('Prompt, completion and cache tokens per model')}
     >
-      {props.rows.length === 0 ? (
+      {spec === null ? (
         <EmptyOrLoading loading={props.loading} emptyText={t('No token data in this period.')} />
       ) : (
-        <div className='grid gap-2'>
-          {props.rows.map((r) => (
-            <BarChartRow
-              key={r.model_name}
-              label={r.model_name}
-              value={r.total}
-              maxValue={max}
-              displayValue={formatCompactNumber(r.total)}
-              tone='accent-2'
-              sublabel={`${t('prompt')} ${formatNumber(r.prompt_tokens)} · ${t('completion')} ${formatNumber(r.completion_tokens)} · ${t('cache')} ${formatNumber(r.cache_tokens)}`}
-            />
-          ))}
-        </div>
+        <>
+          <ReportChart spec={spec} ariaLabel={t('Token anatomy')} />
+          <ReportTable
+            caption={t('Token anatomy')}
+            columns={columns}
+            rows={props.rows}
+            rowKey={(row) => row.model_name}
+          />
+        </>
       )}
     </PanelShell>
   )

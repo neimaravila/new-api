@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatNumber } from '@/lib/format'
 
-import { BarChartRow, EmptyOrLoading, PanelShell } from './report-primitives'
+import { EmptyOrLoading, PanelShell } from './report-primitives'
+import { ReportChart } from './report-chart'
+import { ReportTable, type ReportTableColumn } from './report-table'
+import { buildPerformanceSpec } from '../../lib/report-charts'
 import type { ReportPerformanceRow } from '../../types'
 
 interface ReportPerformancePanelProps {
@@ -31,29 +35,42 @@ interface ReportPerformancePanelProps {
 
 export function ReportPerformancePanel(props: ReportPerformancePanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const max = Math.max(1, ...props.rows.map((r) => r.p95_latency_ms))
+  const avgLabel = t('Avg latency')
+  const p95Label = t('p95 latency')
+  const spec = useMemo(
+    () => buildPerformanceSpec(props.rows, avgLabel, p95Label),
+    [props.rows, avgLabel, p95Label]
+  )
+  const columns: ReportTableColumn<ReportPerformanceRow>[] = [
+    { key: 'name', header: t('Name'), render: (row) => row.name },
+    { key: 'avg', header: avgLabel, align: 'end', render: (row) => `${formatNumber(row.avg_latency_ms)} ms` },
+    { key: 'p95', header: p95Label, align: 'end', render: (row) => `${formatNumber(row.p95_latency_ms)} ms` },
+    { key: 'requests', header: t('Requests'), align: 'end', render: (row) => formatNumber(row.requests) },
+    {
+      key: 'throughput',
+      header: t('Throughput'),
+      align: 'end',
+      render: (row) => `${formatNumber(row.throughput)} tok/s`,
+    },
+  ]
 
   return (
     <PanelShell
       title={props.title}
       description={t('Average and p95 latency, plus throughput in tokens per second')}
     >
-      {props.rows.length === 0 ? (
+      {spec === null ? (
         <EmptyOrLoading loading={props.loading} emptyText={t('No performance data in this period.')} />
       ) : (
-        <div className='grid gap-2'>
-          {props.rows.map((r) => (
-            <BarChartRow
-              key={r.name}
-              label={r.name}
-              value={r.p95_latency_ms}
-              maxValue={max}
-              displayValue={`p95 ${formatNumber(r.p95_latency_ms)} ms`}
-              tone='accent-1'
-              sublabel={`${t('avg')} ${formatNumber(r.avg_latency_ms)} ms · ${formatNumber(r.throughput)} ${t('tok/s')}`}
-            />
-          ))}
-        </div>
+        <>
+          <ReportChart spec={spec} ariaLabel={props.title} />
+          <ReportTable
+            caption={props.title}
+            columns={columns}
+            rows={props.rows}
+            rowKey={(row) => row.name}
+          />
+        </>
       )}
     </PanelShell>
   )
