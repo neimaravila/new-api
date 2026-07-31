@@ -173,11 +173,22 @@ export interface GetChannelResponse {
   data?: Channel
 }
 
+export interface ChannelHealth {
+  active: number
+  disabled: number
+  slow: number
+  untested: number
+  slow_threshold_ms: number
+}
+
 export interface ChannelOpsResponse {
   success: boolean
   message?: string
   data?: {
     retry_times: number
+    // Absent when the server could not compute the summary. Treated as
+    // "unknown", never as zero.
+    health?: ChannelHealth
   }
 }
 
@@ -275,6 +286,7 @@ export interface GetChannelsParams {
   tag_mode?: boolean
   sort_by?: ChannelSortBy
   sort_order?: ChannelSortOrder
+  health?: 'slow' | 'untested'
 }
 
 export interface SearchChannelsParams {
@@ -289,6 +301,7 @@ export interface SearchChannelsParams {
   sort_order?: ChannelSortOrder
   p?: number
   page_size?: number
+  health?: 'slow' | 'untested'
 }
 
 export interface ChannelTestParams {
