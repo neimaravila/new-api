@@ -56,12 +56,13 @@ afterAll(() => {
 })
 
 const { fireEvent, render, screen } = await import('@testing-library/react')
-const { QueryClient, QueryClientProvider } = await import(
-  '@tanstack/react-query'
-)
+const { QueryClient, QueryClientProvider } =
+  await import('@tanstack/react-query')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { ChannelHealthStrip } = await import('../channel-health-strip')
+const { ChannelHealthFilterChips } =
+  await import('../channel-health-filter-chips')
 
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({
@@ -89,6 +90,29 @@ function renderStrip(
     </QueryClientProvider>
   )
   return { ...utils, onSelect }
+}
+
+function renderChips(
+  props: Omit<
+    React.ComponentProps<typeof ChannelHealthFilterChips>,
+    'onDismiss'
+  > & {
+    onDismiss?: React.ComponentProps<
+      typeof ChannelHealthFilterChips
+    >['onDismiss']
+  }
+) {
+  const onDismiss = props.onDismiss ?? vi.fn()
+  const utils = render(
+    <I18nextProvider i18n={i18n}>
+      <ChannelHealthFilterChips
+        activeTiles={props.activeTiles}
+        slowThresholdMs={props.slowThresholdMs}
+        onDismiss={onDismiss}
+      />
+    </I18nextProvider>
+  )
+  return { ...utils, onDismiss }
 }
 
 const alertState: HealthStripState = {
@@ -178,5 +202,70 @@ describe('ChannelHealthStrip', () => {
     })
     fireEvent.click(getByRole('button', { name: /Never tested/i }))
     expect(onSelect).toHaveBeenCalledWith('untested')
+  })
+})
+
+describe('ChannelHealthFilterChips', () => {
+  it('renders nothing when no status/health filter is active', () => {
+    const { container } = renderChips({
+      activeTiles: noTiles,
+      slowThresholdMs: 1000,
+    })
+    expect(container.childElementCount).toBe(0)
+  })
+
+  // This is the scenario the health strip's `calm` state hides: a status
+  // filter left over from an earlier click (or restored from localStorage)
+  // with nothing currently disabled, slow, or untested. The chip takes only
+  // `activeTiles` as input — never the strip's render state — so it has no
+  // way to go missing just because the strip collapsed to "N channels
+  // healthy". If a future change re-couples chip visibility to the strip's
+  // state, this test's props (an active filter, nothing else) still produce
+  // the render this asserts.
+  it('names the disabled filter even though nothing is currently unhealthy', () => {
+    renderChips({
+      activeTiles: { status: 'disabled', health: null },
+      slowThresholdMs: 1000,
+    })
+    expect(screen.getByText('Disabled')).toBeTruthy()
+  })
+
+  it('reads the slow chip label off the server threshold, matching the tile', () => {
+    renderChips({
+      activeTiles: { status: null, health: 'slow' },
+      slowThresholdMs: 1500,
+    })
+    expect(screen.getByText('Slower than 1.50s')).toBeTruthy()
+  })
+
+  it('renders both chips when a status filter and a health filter are both active', () => {
+    renderChips({
+      activeTiles: { status: 'disabled', health: 'untested' },
+      slowThresholdMs: 1000,
+    })
+    expect(screen.getByText('Disabled')).toBeTruthy()
+    expect(screen.getByText('Never tested')).toBeTruthy()
+  })
+
+  it('dismisses the status chip independently of the health chip', () => {
+    const { onDismiss } = renderChips({
+      activeTiles: { status: 'disabled', health: 'untested' },
+      slowThresholdMs: 1000,
+    })
+    const buttons = screen.getAllByRole('button', { name: /Remove filter/i })
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[0])
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+    expect(onDismiss).toHaveBeenCalledWith('status')
+  })
+
+  it('dismisses the health chip', () => {
+    const { onDismiss } = renderChips({
+      activeTiles: { status: null, health: 'slow' },
+      slowThresholdMs: 1000,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Remove filter/i }))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+    expect(onDismiss).toHaveBeenCalledWith('health')
   })
 })

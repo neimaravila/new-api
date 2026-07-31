@@ -74,6 +74,7 @@ import {
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
 import { ChannelCard } from './channel-card'
+import { ChannelHealthFilterChips } from './channel-health-filter-chips'
 import { ChannelHealthStrip } from './channel-health-strip'
 import { useChannelsColumns } from './channels-columns'
 import { useChannels } from './channels-provider'
@@ -217,6 +218,11 @@ export function ChannelsTable({
       return next
     })
   }
+  const handleHealthFilterChipDismiss = (dimension: 'status' | 'health') => {
+    handleColumnFiltersChange((previous) =>
+      previous.filter((f) => f.id !== dimension)
+    )
+  }
   const {
     value: modelFilter,
     inputValue: modelFilterInput,
@@ -247,12 +253,6 @@ export function ChannelsTable({
       sort_order: activeSort.desc ? 'desc' : 'asc',
     } as const
   }, [sorting])
-
-  // The removed "Sort by ID" switch only ever changed the default order
-  // (id desc vs. priority desc) when no column sort was active. Column-header
-  // sorting on the ID column already covers that, so `id_sort` is derived
-  // straight from the table's own sorting state instead of separate UI state.
-  const idSort = sorting[0]?.id === 'id'
 
   const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
     setSorting((previous) => {
@@ -299,7 +299,6 @@ export function ChannelsTable({
           : undefined,
       health: healthParam,
       tag_mode: enableTagMode,
-      id_sort: idSort,
       ...sortParams,
       p: pagination.pageIndex + 1,
       page_size: pagination.pageSize,
@@ -323,7 +322,6 @@ export function ChannelsTable({
               : undefined,
           health: healthParam,
           tag_mode: enableTagMode,
-          id_sort: idSort,
           ...sortParams,
           p: pagination.pageIndex + 1,
           page_size: pagination.pageSize,
@@ -344,7 +342,6 @@ export function ChannelsTable({
               : undefined,
           health: healthParam,
           tag_mode: enableTagMode,
-          id_sort: idSort,
           ...sortParams,
           p: pagination.pageIndex + 1,
           page_size: pagination.pageSize,
@@ -523,11 +520,19 @@ export function ChannelsTable({
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
-                      <SelectItem value='none'>{t('None')}</SelectItem>
-                      <SelectItem value='label'>{t('Label')}</SelectItem>
+                      {groupByOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
+                <ChannelHealthFilterChips
+                  activeTiles={activeHealthTiles}
+                  slowThresholdMs={slowThresholdMs}
+                  onDismiss={handleHealthFilterChipDismiss}
+                />
               </>
             ),
             filters: [

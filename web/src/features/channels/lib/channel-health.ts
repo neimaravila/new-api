@@ -16,7 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
+
 import type { ChannelHealth } from '../types'
+import { formatResponseTime } from './channel-utils'
 
 export type HealthTileId = 'active' | 'disabled' | 'slow' | 'untested'
 
@@ -87,9 +90,7 @@ export function resolveActiveHealthTiles(
     status = 'disabled'
   }
   const health =
-    healthFilter === 'slow' || healthFilter === 'untested'
-      ? healthFilter
-      : null
+    healthFilter === 'slow' || healthFilter === 'untested' ? healthFilter : null
   return { status, health }
 }
 
@@ -102,6 +103,31 @@ export function isHealthTileActive(
     return activeTiles.status === tile
   }
   return activeTiles.health === tile
+}
+
+/**
+ * The label a tile — or a filter chip naming the same `status`/`health`
+ * value the tile writes — reads. Shared so the strip and the removable
+ * filter chips never drift into describing the same filter two different
+ * ways.
+ */
+export function healthTileLabel(
+  tile: HealthTileId,
+  slowThresholdMs: number,
+  t: TFunction
+): string {
+  switch (tile) {
+    case 'active':
+      return t('Active')
+    case 'disabled':
+      return t('Disabled')
+    case 'slow':
+      return t('Slower than {{threshold}}', {
+        threshold: formatResponseTime(slowThresholdMs, t),
+      })
+    case 'untested':
+      return t('Never tested')
+  }
 }
 
 /**

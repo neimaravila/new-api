@@ -19,13 +19,24 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
+import type { TFunction } from 'i18next'
+
 import {
   healthTileFilterPatch,
+  healthTileLabel,
   isHealthTileActive,
   resolveActiveHealthTiles,
   resolveHealthStripState,
   type ActiveHealthTiles,
 } from '../channel-health'
+
+// A minimal stand-in for react-i18next's `t`: returns the key with any
+// `{{token}}` interpolated from `options`, mirroring what the real i18next
+// instance does for these keys once translated.
+const fakeT = ((key: string, options?: Record<string, unknown>) =>
+  key.replaceAll(/{{(\w+)}}/g, (_, token) =>
+    String(options?.[token] ?? '')
+  )) as TFunction
 
 const healthy = {
   active: 18,
@@ -154,7 +165,10 @@ describe('healthTileFilterPatch', () => {
   })
 
   test('a status tile then a health tile leaves both active (composes)', () => {
-    const afterDisabled: ActiveHealthTiles = { status: 'disabled', health: null }
+    const afterDisabled: ActiveHealthTiles = {
+      status: 'disabled',
+      health: null,
+    }
     assert.deepEqual(healthTileFilterPatch('untested', afterDisabled), {
       health: 'untested',
     })
@@ -164,26 +178,51 @@ describe('healthTileFilterPatch', () => {
   })
 
   test('selecting the other status tile swaps rather than adds', () => {
-    const bothActive: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    const bothActive: ActiveHealthTiles = {
+      status: 'disabled',
+      health: 'untested',
+    }
     assert.deepEqual(healthTileFilterPatch('active', bothActive), {
       status: ['enabled'],
     })
   })
 
   test('selecting the other health tile swaps rather than adds', () => {
-    const bothActive: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    const bothActive: ActiveHealthTiles = {
+      status: 'disabled',
+      health: 'untested',
+    }
     assert.deepEqual(healthTileFilterPatch('slow', bothActive), {
       health: 'slow',
     })
   })
 
   test('selecting an already-lit tile clears only its own dimension', () => {
-    const bothActive: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    const bothActive: ActiveHealthTiles = {
+      status: 'disabled',
+      health: 'untested',
+    }
     assert.deepEqual(healthTileFilterPatch('disabled', bothActive), {
       status: null,
     })
     assert.deepEqual(healthTileFilterPatch('untested', bothActive), {
       health: null,
     })
+  })
+})
+
+describe('healthTileLabel', () => {
+  test('active and disabled read their plain status label', () => {
+    assert.equal(healthTileLabel('active', 1000, fakeT), 'Active')
+    assert.equal(healthTileLabel('disabled', 1000, fakeT), 'Disabled')
+  })
+
+  test('untested reads a fixed label independent of the threshold', () => {
+    assert.equal(healthTileLabel('untested', 1000, fakeT), 'Never tested')
+  })
+
+  test('slow interpolates the server-provided threshold, same as the tile', () => {
+    assert.equal(healthTileLabel('slow', 1500, fakeT), 'Slower than 1.50s')
+    assert.equal(healthTileLabel('slow', 500, fakeT), 'Slower than 500ms')
   })
 })

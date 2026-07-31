@@ -25,8 +25,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import {
-  formatResponseTime,
   handleTestAllChannels,
+  healthTileLabel,
   isHealthTileActive,
   type ActiveHealthTiles,
   type HealthStripState,
@@ -86,20 +86,8 @@ export function ChannelHealthStrip(props: ChannelHealthStripProps) {
     )
   }
 
-  const tileLabel = (tile: HealthTile) => {
-    switch (tile.id) {
-      case 'active':
-        return t('Active')
-      case 'disabled':
-        return t('Disabled')
-      case 'slow':
-        return t('Slower than {{threshold}}', {
-          threshold: formatResponseTime(slowThresholdMs, t),
-        })
-      case 'untested':
-        return t('Never tested')
-    }
-  }
+  const tileLabel = (tile: HealthTile) =>
+    healthTileLabel(tile.id, slowThresholdMs, t)
 
   return (
     <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
