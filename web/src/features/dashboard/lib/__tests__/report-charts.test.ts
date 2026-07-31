@@ -18,8 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { buildTrendSpec } from '../report-charts'
-import type { ReportTrendPoint } from '../../types'
+import { ERROR_DONUT_MAX_SLICES, buildErrorShareSpec, buildModelCostSpec, buildTrendSpec } from '../report-charts'
+import type { ReportErrorRow, ReportModelRow, ReportTrendPoint } from '../../types'
 
 const point = (over: Partial<ReportTrendPoint>): ReportTrendPoint => ({
   bucket_label: '2026-07-30',
@@ -55,5 +55,60 @@ describe('buildTrendSpec', () => {
   it('hides the legend for its single series', () => {
     const spec = buildTrendSpec([point({ quota: 1 })], 'quota', 'Cost')
     expect(spec?.legends).toEqual({ visible: false })
+  })
+})
+
+const model = (name: string, quota: number): ReportModelRow => ({
+  model_name: name,
+  quota,
+  requests: 1,
+  tokens: 1,
+  failures: 0,
+  error_rate: 0,
+  avg_latency_ms: 100,
+})
+
+const errorRow = (name: string, failures: number): ReportErrorRow => ({
+  model_name: name,
+  failures,
+  quota: 0,
+  share: 0,
+})
+
+describe('buildModelCostSpec', () => {
+  it('returns null for no models', () => {
+    expect(buildModelCostSpec([])).toBeNull()
+  })
+
+  it('ranks models by cost descending so the widest bar is on top', () => {
+    const spec = buildModelCostSpec([model('cheap', 10), model('expensive', 90)])
+    const data = spec?.data as [{ values: { name: string; quota: number }[] }]
+    expect(data[0].values.map((row) => row.name)).toEqual(['expensive', 'cheap'])
+  })
+})
+
+describe('buildErrorShareSpec', () => {
+  it('returns null when every model has zero failures', () => {
+    expect(buildErrorShareSpec([errorRow('gpt-4o', 0)], 'Other')).toBeNull()
+  })
+
+  it('collapses the tail past the slice cap into a single Other slice that keeps the total', () => {
+    const rows = Array.from({ length: ERROR_DONUT_MAX_SLICES + 3 }, (_, i) => errorRow(`m${i}`, 10 - i))
+    const spec = buildErrorShareSpec(rows, 'Other')
+
+    const data = spec?.data as [{ values: { type: string; value: number }[] }]
+    const values = data[0].values
+    expect(values).toHaveLength(ERROR_DONUT_MAX_SLICES + 1)
+    expect(values.at(-1)).toEqual({ type: 'Other', value: 4 + 3 + 2 })
+    expect(values.reduce((sum, item) => sum + item.value, 0)).toBe(
+      rows.reduce((sum, row) => sum + row.failures, 0)
+    )
+  })
+
+  it('keeps every model when the count is at the cap', () => {
+    const rows = Array.from({ length: ERROR_DONUT_MAX_SLICES }, (_, i) => errorRow(`m${i}`, 5))
+    const spec = buildErrorShareSpec(rows, 'Other')
+    const data = spec?.data as [{ values: unknown[] }]
+    expect(data[0].values).toHaveLength(ERROR_DONUT_MAX_SLICES)
   })
 })
