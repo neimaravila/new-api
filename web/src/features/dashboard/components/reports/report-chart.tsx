@@ -54,7 +54,12 @@ export function ReportChart(props: ReportChartProps): React.JSX.Element | null {
   if (!props.spec) return null
 
   const height = props.height ?? 240
-  const chartKey = [String(props.spec.type), resolvedTheme, themeReady ? 'ready' : 'pending'].join('-')
+  const chartKey = [
+    String(props.spec.type),
+    JSON.stringify(props.spec),
+    resolvedTheme,
+    themeReady ? 'ready' : 'pending',
+  ].join('-')
 
   return (
     <div role='img' aria-label={props.ariaLabel} style={{ height }}>
