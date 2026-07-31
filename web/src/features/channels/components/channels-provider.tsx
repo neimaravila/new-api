@@ -94,7 +94,10 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
 
   const queryClient = useQueryClient()
   const refreshChannels = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all }),
+      queryClient.invalidateQueries({ queryKey: ['channel-ops'] }),
+    ])
   }, [queryClient])
   const upstream = useChannelUpstreamUpdates(refreshChannels)
 

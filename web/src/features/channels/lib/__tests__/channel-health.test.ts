@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { resolveHealthStripState } from '../channel-health'
+import {
+  healthTileFilterPatch,
+  resolveActiveHealthTile,
+  resolveHealthStripState,
+} from '../channel-health'
 
 const healthy = {
   active: 18,
@@ -60,5 +64,62 @@ describe('resolveHealthStripState', () => {
   test('an instance with no channels at all stays collapsed', () => {
     const state = resolveHealthStripState({ ...healthy, active: 0 })
     assert.deepEqual(state, { kind: 'calm', total: 0 })
+  })
+})
+
+describe('resolveActiveHealthTile', () => {
+  test('is null when neither filter is set', () => {
+    assert.equal(resolveActiveHealthTile([], undefined), null)
+  })
+
+  test('reads enabled/disabled status filters as active/disabled tiles', () => {
+    assert.equal(resolveActiveHealthTile(['enabled'], undefined), 'active')
+    assert.equal(resolveActiveHealthTile(['disabled'], undefined), 'disabled')
+  })
+
+  test('reads the health filter as the slow/untested tiles', () => {
+    assert.equal(resolveActiveHealthTile([], 'slow'), 'slow')
+    assert.equal(resolveActiveHealthTile([], 'untested'), 'untested')
+  })
+
+  test('is null for filter values the strip never writes', () => {
+    assert.equal(resolveActiveHealthTile(['all'], undefined), null)
+    assert.equal(resolveActiveHealthTile(['enabled', 'disabled'], undefined), null)
+  })
+
+  test('prefers the health filter when a stale URL sets both', () => {
+    assert.equal(resolveActiveHealthTile(['disabled'], 'untested'), 'untested')
+  })
+})
+
+describe('healthTileFilterPatch', () => {
+  test('active and disabled write the status filter', () => {
+    assert.deepEqual(healthTileFilterPatch('active', null), {
+      status: ['enabled'],
+    })
+    assert.deepEqual(healthTileFilterPatch('disabled', null), {
+      status: ['disabled'],
+    })
+  })
+
+  test('slow and untested write the health filter', () => {
+    assert.deepEqual(healthTileFilterPatch('slow', null), { health: 'slow' })
+    assert.deepEqual(healthTileFilterPatch('untested', null), {
+      health: 'untested',
+    })
+  })
+
+  test('selecting a different tile replaces the previous choice', () => {
+    assert.deepEqual(healthTileFilterPatch('slow', 'disabled'), {
+      health: 'slow',
+    })
+    assert.deepEqual(healthTileFilterPatch('active', 'untested'), {
+      status: ['enabled'],
+    })
+  })
+
+  test('selecting the already-active tile clears it', () => {
+    assert.deepEqual(healthTileFilterPatch('disabled', 'disabled'), {})
+    assert.deepEqual(healthTileFilterPatch('untested', 'untested'), {})
   })
 })

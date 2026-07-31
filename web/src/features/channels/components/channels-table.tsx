@@ -47,11 +47,7 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import { getChannels, searchChannels, getGroups } from '../api'
-import {
-  DEFAULT_PAGE_SIZE,
-  CHANNEL_STATUS,
-  CHANNEL_STATUS_OPTIONS,
-} from '../constants'
+import { DEFAULT_PAGE_SIZE, CHANNEL_STATUS } from '../constants'
 import {
   channelsQueryKeys,
   aggregateChannelsByTag,
@@ -59,9 +55,14 @@ import {
   isTagAggregateRow,
   getChannelTypeIcon,
   getChannelTypeLabel,
+  healthTileFilterPatch,
+  resolveActiveHealthTile,
+  type HealthStripState,
+  type HealthTileId,
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
 import { ChannelCard } from './channel-card'
+import { ChannelHealthStrip } from './channel-health-strip'
 import { useChannelsColumns } from './channels-columns'
 import { useChannels } from './channels-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
@@ -87,7 +88,15 @@ function isDisabledChannelRow(channel: Channel) {
   )
 }
 
-export function ChannelsTable() {
+type ChannelsTableProps = {
+  healthState: HealthStripState
+  slowThresholdMs: number
+}
+
+export function ChannelsTable({
+  healthState,
+  slowThresholdMs,
+}: ChannelsTableProps) {
   const { t } = useTranslation()
   const {
     enableTagMode,
@@ -134,6 +143,7 @@ export function ChannelsTable() {
       { columnId: 'type', searchKey: 'type', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'array' },
       { columnId: 'model', searchKey: 'model', type: 'string' },
+      { columnId: 'health', searchKey: 'health', type: 'string' },
     ],
   })
 
@@ -162,6 +172,31 @@ export function ChannelsTable() {
   )
   const groupFilter =
     (columnFilters.find((f) => f.id === 'group')?.value as string[]) || []
+  const healthFilter =
+    (columnFilters.find((f) => f.id === 'health')?.value as string) || ''
+  const healthParam =
+    healthFilter === 'slow' || healthFilter === 'untested'
+      ? healthFilter
+      : undefined
+  const activeHealthTile = resolveActiveHealthTile(
+    statusFilter,
+    healthFilter || undefined
+  )
+  const handleHealthTileSelect = (tile: HealthTileId) => {
+    const patch = healthTileFilterPatch(tile, activeHealthTile)
+    handleColumnFiltersChange((previous) => {
+      const next = previous.filter(
+        (f) => f.id !== 'status' && f.id !== 'health'
+      )
+      if (patch.status) {
+        next.push({ id: 'status', value: patch.status })
+      }
+      if (patch.health) {
+        next.push({ id: 'health', value: patch.health })
+      }
+      return next
+    })
+  }
   const {
     value: modelFilter,
     inputValue: modelFilterInput,
@@ -236,6 +271,7 @@ export function ChannelsTable() {
         typeFilter.length > 0 && !typeFilter.includes('all')
           ? Number(typeFilter[0])
           : undefined,
+      health: healthParam,
       tag_mode: enableTagMode,
       id_sort: idSort,
       ...sortParams,
@@ -259,6 +295,7 @@ export function ChannelsTable() {
             typeFilter.length > 0 && !typeFilter.includes('all')
               ? Number(typeFilter[0])
               : undefined,
+          health: healthParam,
           tag_mode: enableTagMode,
           id_sort: idSort,
           ...sortParams,
@@ -279,6 +316,7 @@ export function ChannelsTable() {
             typeFilter.length > 0 && !typeFilter.includes('all')
               ? Number(typeFilter[0])
               : undefined,
+          health: healthParam,
           tag_mode: enableTagMode,
           id_sort: idSort,
           ...sortParams,
@@ -408,90 +446,96 @@ export function ChannelsTable() {
   ]
 
   return (
-    <DataTablePage
-      table={table}
-      columns={columns}
-      isLoading={isLoading}
-      isFetching={isFetching}
-      emptyTitle={t('No Channels Found')}
-      emptyDescription={t(
-        'No channels available. Create your first channel to get started.'
-      )}
-      skeletonKeyPrefix='channel-skeleton'
-      enableCardView
-      viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
-      renderCard={(row, { isSelected }) => (
-        <ChannelCard row={row} isSelected={isSelected} />
-      )}
-      cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
-      applyHeaderSize
-      toolbarProps={{
-        searchPlaceholder: t('Filter by name, ID, or key...'),
-        searchDebounceMs: 500,
-        onReset: () => {
-          resetModelFilterInput()
-        },
-        additionalSearch: (
-          <Input
-            placeholder={t('Filter by model...')}
-            value={modelFilterInput}
-            onChange={onModelFilterInputChange}
-            onCompositionStart={onModelFilterCompositionStart}
-            onCompositionEnd={onModelFilterCompositionEnd}
-            className='w-full sm:w-[150px] lg:w-[180px]'
-          />
-        ),
-        filters: [
-          {
-            columnId: 'status',
-            title: t('Status'),
-            options: [...CHANNEL_STATUS_OPTIONS],
-            singleSelect: true,
-          },
-          {
-            columnId: 'type',
-            title: t('Type'),
-            options: typeFilterOptions,
-            singleSelect: true,
-          },
-          {
-            columnId: 'group',
-            title: t('Group'),
-            options: groupFilterOptions,
-            singleSelect: true,
-          },
-        ],
-        preActions: (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant='ghost'
-                  size='icon'
-                  onClick={() => setSensitiveVisible(!sensitiveVisible)}
-                  aria-label={sensitiveVisible ? t('Hide') : t('Show')}
-                  className='text-muted-foreground hover:text-foreground size-8'
-                />
-              }
-            >
-              {sensitiveVisible ? <Eye /> : <EyeOff />}
-            </TooltipTrigger>
-            <TooltipContent>
-              {sensitiveVisible ? t('Hide') : t('Show')}
-            </TooltipContent>
-          </Tooltip>
-        ),
-      }}
-      getRowClassName={(row, { isMobile }) => {
-        if (!isDisabledChannelRow(row.original)) {
-          return undefined
-        }
-        if (isMobile) {
-          return DISABLED_ROW_MOBILE
-        }
-        return DISABLED_ROW_DESKTOP
-      }}
-      bulkActions={batchMode ? <DataTableBulkActions table={table} /> : null}
-    />
+    <div className='flex h-full min-h-0 flex-col gap-2.5 sm:gap-3'>
+      <ChannelHealthStrip
+        state={healthState}
+        slowThresholdMs={slowThresholdMs}
+        activeTile={activeHealthTile}
+        onSelect={handleHealthTileSelect}
+      />
+      <div className='min-h-0 flex-1'>
+        <DataTablePage
+          table={table}
+          columns={columns}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          emptyTitle={t('No Channels Found')}
+          emptyDescription={t(
+            'No channels available. Create your first channel to get started.'
+          )}
+          skeletonKeyPrefix='channel-skeleton'
+          enableCardView
+          viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
+          renderCard={(row, { isSelected }) => (
+            <ChannelCard row={row} isSelected={isSelected} />
+          )}
+          cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
+          applyHeaderSize
+          toolbarProps={{
+            searchPlaceholder: t('Filter by name, ID, or key...'),
+            searchDebounceMs: 500,
+            onReset: () => {
+              resetModelFilterInput()
+            },
+            additionalSearch: (
+              <Input
+                placeholder={t('Filter by model...')}
+                value={modelFilterInput}
+                onChange={onModelFilterInputChange}
+                onCompositionStart={onModelFilterCompositionStart}
+                onCompositionEnd={onModelFilterCompositionEnd}
+                className='w-full sm:w-[150px] lg:w-[180px]'
+              />
+            ),
+            filters: [
+              {
+                columnId: 'type',
+                title: t('Type'),
+                options: typeFilterOptions,
+                singleSelect: true,
+              },
+              {
+                columnId: 'group',
+                title: t('Group'),
+                options: groupFilterOptions,
+                singleSelect: true,
+              },
+            ],
+            preActions: (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      onClick={() => setSensitiveVisible(!sensitiveVisible)}
+                      aria-label={sensitiveVisible ? t('Hide') : t('Show')}
+                      className='text-muted-foreground hover:text-foreground size-8'
+                    />
+                  }
+                >
+                  {sensitiveVisible ? <Eye /> : <EyeOff />}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {sensitiveVisible ? t('Hide') : t('Show')}
+                </TooltipContent>
+              </Tooltip>
+            ),
+          }}
+          getRowClassName={(row, { isMobile }) => {
+            if (!isDisabledChannelRow(row.original)) {
+              return undefined
+            }
+            if (isMobile) {
+              return DISABLED_ROW_MOBILE
+            }
+            return DISABLED_ROW_DESKTOP
+          }}
+          bulkActions={
+            batchMode ? <DataTableBulkActions table={table} /> : null
+          }
+        />
+      </div>
+    </div>
   )
 }

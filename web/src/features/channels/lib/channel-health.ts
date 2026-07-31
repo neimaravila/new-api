@@ -60,3 +60,59 @@ export function resolveHealthStripState(
     ],
   }
 }
+
+/**
+ * Which tile, if any, the current `status`/`health` column filters
+ * correspond to.
+ *
+ * The strip presents the four buckets as one choice, like a segmented
+ * control, even though `status` and `health` are independent filters on the
+ * server. In normal use only one of the two is ever set at a time (selecting
+ * a tile clears the other), but a hand-edited or stale URL can set both; in
+ * that case `health` wins because it is the more specific signal.
+ */
+export function resolveActiveHealthTile(
+  statusFilter: string[],
+  healthFilter: string | undefined
+): HealthTileId | null {
+  if (healthFilter === 'slow' || healthFilter === 'untested') {
+    return healthFilter
+  }
+  if (statusFilter.length === 1 && statusFilter[0] === 'enabled') {
+    return 'active'
+  }
+  if (statusFilter.length === 1 && statusFilter[0] === 'disabled') {
+    return 'disabled'
+  }
+  return null
+}
+
+/**
+ * What the `status`/`health` column filters should become after clicking a
+ * tile. Selecting the already-active tile clears it (toggle off); selecting
+ * any other tile replaces whichever filter was driving the strip, since the
+ * four tiles present one choice rather than independent checkboxes.
+ */
+export type HealthTileFilterPatch = {
+  status?: ['enabled'] | ['disabled']
+  health?: 'slow' | 'untested'
+}
+
+export function healthTileFilterPatch(
+  tile: HealthTileId,
+  activeTile: HealthTileId | null
+): HealthTileFilterPatch {
+  if (tile === activeTile) {
+    return {}
+  }
+  switch (tile) {
+    case 'active':
+      return { status: ['enabled'] }
+    case 'disabled':
+      return { status: ['disabled'] }
+    case 'slow':
+      return { health: 'slow' }
+    case 'untested':
+      return { health: 'untested' }
+  }
+}
