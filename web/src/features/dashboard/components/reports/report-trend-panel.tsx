@@ -20,9 +20,11 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { formatNumber, formatQuota } from '@/lib/format'
 
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportChart } from './report-chart'
+import { ReportTable, type ReportTableColumn } from './report-table'
 import { buildTrendSpec, type ReportTrendMetric } from '../../lib/report-charts'
 import type { ReportTrendPoint } from '../../types'
 
@@ -38,6 +40,14 @@ const METRIC_OPTIONS: { value: ReportTrendMetric; labelKey: string }[] = [
   { value: 'failures', labelKey: 'Failures' },
 ]
 
+/**
+ * The table exists so the trend is readable as text, not to mirror the whole
+ * series: a 30-day hourly range returns ~720 buckets. Every daily range and the
+ * hourly today/yesterday ranges fit under this cap in full; longer hourly ranges
+ * show the most recent buckets and say so, with the CSV export for the rest.
+ */
+export const TREND_TABLE_MAX_ROWS = 48
+
 export function ReportTrendPanel(props: ReportTrendPanelProps): React.JSX.Element {
   const { t } = useTranslation()
   const [metric, setMetric] = useState<ReportTrendMetric>('quota')
@@ -46,6 +56,17 @@ export function ReportTrendPanel(props: ReportTrendPanelProps): React.JSX.Elemen
     () => buildTrendSpec(props.points, metric, metricLabel),
     [props.points, metric, metricLabel]
   )
+  const chartLabel = t('Usage over time: {{metric}}', { metric: metricLabel })
+  const tableRows = props.points.slice(-TREND_TABLE_MAX_ROWS)
+  const columns: ReportTableColumn<ReportTrendPoint>[] = [
+    { key: 'bucket', header: t('Period'), render: (row) => row.bucket_label },
+    {
+      key: 'value',
+      header: metricLabel,
+      align: 'end',
+      render: (row) => (metric === 'quota' ? formatQuota(row.quota) : formatNumber(row[metric])),
+    },
+  ]
 
   return (
     <PanelShell
@@ -69,7 +90,23 @@ export function ReportTrendPanel(props: ReportTrendPanelProps): React.JSX.Elemen
       {spec === null ? (
         <EmptyOrLoading loading={props.loading} emptyText={t('No usage in this period.')} />
       ) : (
-        <ReportChart spec={spec} height={280} ariaLabel={t('Usage over time')} />
+        <>
+          <ReportChart spec={spec} height={280} ariaLabel={chartLabel} />
+          <ReportTable
+            caption={chartLabel}
+            columns={columns}
+            rows={tableRows}
+            rowKey={(row) => String(row.bucket_timestamp)}
+          />
+          {props.points.length > TREND_TABLE_MAX_ROWS && (
+            <p className='text-muted-foreground mt-2 text-xs'>
+              {t(
+                'Showing the most recent {{shown}} of {{total}} periods. Export the CSV for the full series.',
+                { shown: TREND_TABLE_MAX_ROWS, total: props.points.length }
+              )}
+            </p>
+          )}
+        </>
       )}
     </PanelShell>
   )

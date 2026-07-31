@@ -28,7 +28,13 @@ import {
   buildTokenAnatomySpec,
   buildTrendSpec,
 } from '../report-charts'
-import type { ReportErrorRow, ReportModelRow, ReportPerformanceRow, ReportTrendPoint } from '../../types'
+import type {
+  ReportChannelRow,
+  ReportErrorRow,
+  ReportModelRow,
+  ReportPerformanceRow,
+  ReportTrendPoint,
+} from '../../types'
 
 const point = (over: Partial<ReportTrendPoint>): ReportTrendPoint => ({
   bucket_label: '2026-07-30',
@@ -169,18 +175,53 @@ describe('buildTokenAnatomySpec', () => {
   })
 })
 
+const STATUS_LABELS = { healthy: 'Healthy', degraded: 'Degraded' }
+
+const channel = (name: string, quota: number, errorRate: number): ReportChannelRow => ({
+  channel_id: name.length,
+  channel_name: name,
+  quota,
+  requests: 10,
+  failures: 5,
+  error_rate: errorRate,
+  avg_latency_ms: 100,
+})
+
+type ChannelColor = { type: string; domain: string[]; range: string[] }
+
 describe('buildChannelCostSpec', () => {
   it('marks channels above the error threshold so the bar carries status, not a second axis', () => {
-    const spec = buildChannelCostSpec([
-      { channel_id: 1, channel_name: 'ok', quota: 100, requests: 10, failures: 0, error_rate: 0, avg_latency_ms: 100 },
-      { channel_id: 2, channel_name: 'bad', quota: 90, requests: 10, failures: 5, error_rate: 0.5, avg_latency_ms: 100 },
+    const spec = buildChannelCostSpec([channel('ok', 100, 0), channel('bad', 90, 0.5)], STATUS_LABELS)
+    const data = spec?.data as [{ values: { name: string; status: string }[] }]
+    expect(data[0].values).toEqual([
+      { name: 'ok', quota: 100, status: 'Healthy' },
+      { name: 'bad', quota: 90, status: 'Degraded' },
     ])
-    const data = spec?.data as [{ values: { name: string; degraded: boolean }[] }]
-    const values = data[0].values
-    expect(values).toEqual([
-      { name: 'ok', quota: 100, degraded: false },
-      { name: 'bad', quota: 90, degraded: true },
-    ])
+  })
+
+  it('pins the status hues to an explicit domain so data order cannot swap them', () => {
+    const healthyFirst = buildChannelCostSpec(
+      [channel('ok', 100, 0), channel('bad', 90, 0.5)],
+      STATUS_LABELS
+    )
+    const degradedFirst = buildChannelCostSpec(
+      [channel('bad', 100, 0.5), channel('ok', 90, 0)],
+      STATUS_LABELS
+    )
+
+    const first = healthyFirst?.color as ChannelColor
+    const second = degradedFirst?.color as ChannelColor
+    expect(first.type).toBe('ordinal')
+    expect(first.domain).toEqual(['Healthy', 'Degraded'])
+    expect(second).toEqual(first)
+    expect(first.range.length).toBeGreaterThanOrEqual(2)
+    expect(first.range[0]).not.toBe(first.range[1])
+  })
+
+  it('names both states in a visible legend so status is never hue alone', () => {
+    const spec = buildChannelCostSpec([channel('ok', 100, 0)], STATUS_LABELS)
+    expect(spec?.legends).toEqual({ visible: true, orient: 'bottom' })
+    expect(spec?.seriesField).toBe('status')
   })
 })
 

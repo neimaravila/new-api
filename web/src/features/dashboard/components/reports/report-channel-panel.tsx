@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { AlertTriangle } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -34,7 +35,12 @@ interface ReportChannelPanelProps {
 
 export function ReportChannelPanel(props: ReportChannelPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const spec = useMemo(() => buildChannelCostSpec(props.channels), [props.channels])
+  const healthyLabel = t('Healthy')
+  const degradedLabel = t('Degraded')
+  const spec = useMemo(
+    () => buildChannelCostSpec(props.channels, { healthy: healthyLabel, degraded: degradedLabel }),
+    [props.channels, healthyLabel, degradedLabel]
+  )
   const columns: ReportTableColumn<ReportChannelRow>[] = [
     { key: 'channel', header: t('Channel'), render: (row) => row.channel_name },
     { key: 'cost', header: t('Cost'), align: 'end', render: (row) => formatQuota(row.quota) },
@@ -45,10 +51,13 @@ export function ReportChannelPanel(props: ReportChannelPanelProps): React.JSX.El
       align: 'end',
       render: (row) => {
         const value = `${Math.round(row.error_rate * 1000) / 10}%`
-        return row.error_rate > CHANNEL_ERROR_RATE_THRESHOLD ? (
-          <span className='text-destructive'>{value}</span>
-        ) : (
-          value
+        if (row.error_rate <= CHANNEL_ERROR_RATE_THRESHOLD) return value
+        return (
+          <span className='text-destructive inline-flex items-center gap-1'>
+            <AlertTriangle className='size-3' aria-hidden='true' />
+            <span className='sr-only'>{degradedLabel}</span>
+            {value}
+          </span>
         )
       },
     },

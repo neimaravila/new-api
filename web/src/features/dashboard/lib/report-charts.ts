@@ -198,13 +198,22 @@ export function buildTokenAnatomySpec(
   }
 }
 
-export function buildChannelCostSpec(channels: ReportChannelRow[]): ReportChartSpec | null {
+export interface ChannelStatusLabels {
+  healthy: string
+  degraded: string
+}
+
+export function buildChannelCostSpec(
+  channels: ReportChannelRow[],
+  statusLabels: ChannelStatusLabels
+): ReportChartSpec | null {
   if (channels.length === 0) return null
 
   const values = channels.map((item) => ({
     name: item.channel_name,
     quota: item.quota,
-    degraded: item.error_rate > CHANNEL_ERROR_RATE_THRESHOLD,
+    status:
+      item.error_rate > CHANNEL_ERROR_RATE_THRESHOLD ? statusLabels.degraded : statusLabels.healthy,
   }))
 
   return {
@@ -212,10 +221,18 @@ export function buildChannelCostSpec(channels: ReportChannelRow[]): ReportChartS
     data: [{ id: 'reportChannelCost', values }],
     xField: 'quota',
     yField: 'name',
-    seriesField: 'degraded',
+    seriesField: 'status',
     direction: 'horizontal',
-    legends: { visible: false },
-    color: getDashboardChartColors(2).slice(0, 2),
+    legends: { visible: true, orient: 'bottom' },
+    // Pin the ordinal domain: left to itself VChart derives it from data order,
+    // so the healthy and degraded hues swap whenever the highest-cost channel
+    // changes status between two time ranges. The legend then names both
+    // states, so status never rests on hue alone.
+    color: {
+      type: 'ordinal',
+      domain: [statusLabels.healthy, statusLabels.degraded],
+      range: getDashboardChartColors(2).slice(0, 2),
+    },
     axes: [
       { orient: 'left', type: 'band' },
       { orient: 'bottom', type: 'linear', visible: false },

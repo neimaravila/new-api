@@ -68,6 +68,7 @@ const { ReportModelPanel } = await import('../report-model-panel')
 const { ReportErrorsPanel } = await import('../report-errors-panel')
 const { ReportChannelPanel } = await import('../report-channel-panel')
 const { ReportTokenAnatomyPanel } = await import('../report-token-anatomy-panel')
+const { ReportTrendPanel, TREND_TABLE_MAX_ROWS } = await import('../report-trend-panel')
 
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({
@@ -78,6 +79,19 @@ await i18n.use(initReactI18next).init({
 function renderNode(node: React.ReactNode) {
   const utils = render(<I18nextProvider i18n={i18n}>{node}</I18nextProvider>)
   return utils
+}
+
+function trendPoint(bucketTimestamp: number, bucketLabel: string) {
+  return {
+    bucket_label: bucketLabel,
+    bucket_timestamp: bucketTimestamp,
+    quota: 350,
+    requests: 3,
+    tokens: 200,
+    failures: 1,
+    avg_latency_ms: 600,
+    consuming_requests: 3,
+  }
 }
 
 describe('report sub-panels', () => {
@@ -134,6 +148,35 @@ describe('report sub-panels', () => {
     expect(queryByText('OpenAI')).not.toBeNull()
     expect(queryByText(formatQuota(500))).not.toBeNull()
     expect(getAllByRole('row')).toHaveLength(2)
+  })
+
+  it('trend panel names the selected metric and repeats every bucket as text', async () => {
+    const { getAllByRole, findByTestId, queryByLabelText } = renderNode(
+      <ReportTrendPanel loading={false} points={[trendPoint(1, 'Jul 30'), trendPoint(2, 'Jul 31')]} />
+    )
+
+    expect(await findByTestId('chart-spec')).not.toBeNull()
+    expect(queryByLabelText('Usage over time: Cost')).not.toBeNull()
+    const rows = getAllByRole('row')
+    expect(rows).toHaveLength(3)
+    expect(within(rows[1]).getAllByRole('cell')[0].textContent).toBe('Jul 30')
+  })
+
+  it('trend panel caps the table and says how much of the series it shows', async () => {
+    const points = Array.from({ length: TREND_TABLE_MAX_ROWS + 12 }, (_, i) =>
+      trendPoint(i + 1, `b${i}`)
+    )
+    const { getAllByRole, findByTestId, queryByText } = renderNode(
+      <ReportTrendPanel loading={false} points={points} />
+    )
+
+    expect(await findByTestId('chart-spec')).not.toBeNull()
+    expect(getAllByRole('row')).toHaveLength(TREND_TABLE_MAX_ROWS + 1)
+    expect(
+      queryByText(
+        `Showing the most recent ${TREND_TABLE_MAX_ROWS} of ${points.length} periods. Export the CSV for the full series.`
+      )
+    ).not.toBeNull()
   })
 
   it('token anatomy panel lists prompt, completion and cache columns', () => {

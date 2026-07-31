@@ -54,12 +54,10 @@ export function ReportChart(props: ReportChartProps): React.JSX.Element | null {
   if (!props.spec) return null
 
   const height = props.height ?? 240
-  const chartKey = [
-    String(props.spec.type),
-    JSON.stringify(props.spec),
-    resolvedTheme,
-    themeReady ? 'ready' : 'pending',
-  ].join('-')
+  // VChart only reads `spec` on mount, so the key has to change whenever the
+  // spec content does; the serialized spec already covers its `type`, and
+  // `themeReady` is always true below, since `<VChart>` is gated behind it.
+  const chartKey = `${resolvedTheme}-${JSON.stringify(props.spec)}`
 
   return (
     <div role='img' aria-label={props.ariaLabel} style={{ height }}>
