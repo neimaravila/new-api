@@ -65,6 +65,7 @@ import {
   getChannelTypeLabel,
   getResponseTimeConfig,
   isMultiKeyChannel,
+  parseChannelStatusInfo,
   parseModelsList,
   parseGroupsList,
   parseChannelSettings,
@@ -912,21 +913,11 @@ export function useChannelsColumns(
 
           // Auto-disabled: show reason and time tooltip
           if (status === 3) {
-            let statusReason = ''
-            let statusTime = ''
-            try {
-              const otherInfo = channel.other_info
-                ? JSON.parse(channel.other_info)
-                : null
-              if (otherInfo) {
-                statusReason = otherInfo.status_reason || ''
-                statusTime = otherInfo.status_time
-                  ? formatTimestampToDate(otherInfo.status_time)
-                  : ''
-              }
-            } catch {
-              /* empty */
-            }
+            const { statusReason, statusTime: rawStatusTime } =
+              parseChannelStatusInfo(channel.other_info)
+            const statusTime = rawStatusTime
+              ? formatTimestampToDate(rawStatusTime)
+              : ''
 
             if (statusReason || statusTime) {
               return (
