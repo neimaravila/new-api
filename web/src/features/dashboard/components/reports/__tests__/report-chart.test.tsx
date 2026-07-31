@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Window } from 'happy-dom'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ReportChartSpec } from '../../../lib/report-charts'
+import { StubVChart } from './vchart-stub'
 
 const domWindow = new Window()
 const domGlobals = [
@@ -55,31 +55,10 @@ afterAll(() => {
   domWindow.close()
 })
 
-interface TrendDatum {
-  value?: unknown
-}
-
-interface TrendDataBlock {
-  values?: TrendDatum[]
-}
-
-// Stub out @visactor/react-vchart so no canvas is required. The stub mimics the
-// real VChart component's behavior of capturing its spec only on mount (it does
-// not resync to a later `spec` prop without being remounted) so the test can
-// prove `ReportChart` forces a remount when the spec content changes.
-vi.mock('@visactor/react-vchart', async () => {
-  const react = await import('react')
-
-  return {
-    VChart: (props: { spec: ReportChartSpec }): React.JSX.Element => {
-      const [committedSpec] = react.useState(() => props.spec)
-      const dataBlock = committedSpec.data as TrendDataBlock[] | undefined
-      const values = dataBlock?.[0]?.values ?? []
-      const text = values.map((item) => String(item.value)).join(',')
-      return react.createElement('div', { 'data-testid': 'chart-spec' }, text)
-    },
-  }
-})
+// Stub out @visactor/react-vchart so no canvas is required. The stub keeps the
+// real VChart component's mount-only spec capture, so the test can prove
+// `ReportChart` forces a remount when the spec content changes.
+vi.mock('@visactor/react-vchart', () => ({ VChart: StubVChart }))
 
 const { render, waitFor } = await import('@testing-library/react')
 const { ReportChart } = await import('../report-chart')

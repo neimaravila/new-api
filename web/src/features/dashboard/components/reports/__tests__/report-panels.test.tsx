@@ -1,5 +1,25 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { Window } from 'happy-dom'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { StubVChart } from './vchart-stub'
 
 const domWindow = new Window()
 const domGlobals = [
@@ -35,16 +55,12 @@ afterAll(() => {
   domWindow.close()
 })
 
-// Stub out the chart wrapper so a canvas-backed VChart never has to render
-// under happy-dom. report-chart.test.tsx exercises the real ReportChart
-// (and its own @visactor/react-vchart mock) directly; this file only needs
-// to prove the table and the chart's aria-label are wired to the panel's
-// spec, so a lightweight stand-in is enough.
-vi.mock('../report-chart', () => ({
-  ReportChart: (props: { ariaLabel: string }): React.JSX.Element => <div role='img' aria-label={props.ariaLabel} />,
-}))
+// Stub out @visactor/react-vchart so the canvas-backed chart never mounts under
+// happy-dom once `ReportChart`'s async theme import resolves. Only that
+// third-party boundary is mocked: the panels and `ReportChart` itself stay real.
+vi.mock('@visactor/react-vchart', () => ({ VChart: StubVChart }))
 
-const { render } = await import('@testing-library/react')
+const { render, within } = await import('@testing-library/react')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { formatQuota } = await import('@/lib/format')
@@ -65,8 +81,8 @@ function renderNode(node: React.ReactNode) {
 }
 
 describe('report sub-panels', () => {
-  it('renders one table row per model with its cost', () => {
-    const { queryByText, getAllByRole } = renderNode(
+  it('renders one table row per model with its cost', async () => {
+    const { queryByText, getAllByRole, findByTestId } = renderNode(
       <ReportModelPanel
         loading={false}
         models={[
@@ -76,6 +92,9 @@ describe('report sub-panels', () => {
       />
     )
 
+    // The panel renders a chart next to the table; waiting for it also lets the
+    // chart's async theme setup settle before the test ends.
+    expect(await findByTestId('chart-spec')).not.toBeNull()
     expect(getAllByRole('row')).toHaveLength(3)
     expect(queryByText('gpt-4o')).not.toBeNull()
     expect(queryByText(formatQuota(350))).not.toBeNull()
@@ -86,18 +105,21 @@ describe('report sub-panels', () => {
     expect(queryByText('No model usage in this period.')).not.toBeNull()
   })
 
-  it('renders one table row per model with its failures and share', () => {
-    const { queryByText, getAllByRole } = renderNode(
+  it('renders one table row per model with its failures and share', async () => {
+    const { getAllByRole, findByTestId } = renderNode(
       <ReportErrorsPanel
         loading={false}
         errors={[{ model_name: 'gpt-4o', failures: 4, quota: 0, share: 100 }]}
       />
     )
 
-    expect(getAllByRole('row')).toHaveLength(2)
-    expect(queryByText('gpt-4o')).not.toBeNull()
-    expect(queryByText('4')).not.toBeNull()
-    expect(queryByText('100%')).not.toBeNull()
+    expect(await findByTestId('chart-spec')).not.toBeNull()
+    const rows = getAllByRole('row')
+    expect(rows).toHaveLength(2)
+    // Scoped to the data row: the chart stub also prints the failure count, so a
+    // document-wide text query for '4' would be ambiguous.
+    const cells = within(rows[1]).getAllByRole('cell')
+    expect(cells.map((cell) => cell.textContent)).toEqual(['gpt-4o', '4', '100%'])
   })
 
   it('channel panel (admin) renders channel rows', () => {
