@@ -62,57 +62,72 @@ export function resolveHealthStripState(
 }
 
 /**
- * Which tile, if any, the current `status`/`health` column filters
- * correspond to.
+ * Which tiles the current `status`/`health` column filters correspond to.
  *
- * The strip presents the four buckets as one choice, like a segmented
- * control, even though `status` and `health` are independent filters on the
- * server. In normal use only one of the two is ever set at a time (selecting
- * a tile clears the other), but a hand-edited or stale URL can set both; in
- * that case `health` wins because it is the more specific signal.
+ * `status` and `health` are independent filters on the server (the backend
+ * composes them with AND), so Active/Disabled and Slow/Never tested are two
+ * separate dimensions, not one four-way choice: a status tile and a health
+ * tile can be lit together, but Active and Disabled can't both be lit
+ * (`status` holds one value), and neither can Slow and Never tested
+ * (`health` holds one value).
  */
-export function resolveActiveHealthTile(
+export type ActiveHealthTiles = {
+  status: 'active' | 'disabled' | null
+  health: 'slow' | 'untested' | null
+}
+
+export function resolveActiveHealthTiles(
   statusFilter: string[],
   healthFilter: string | undefined
-): HealthTileId | null {
-  if (healthFilter === 'slow' || healthFilter === 'untested') {
-    return healthFilter
-  }
+): ActiveHealthTiles {
+  let status: ActiveHealthTiles['status'] = null
   if (statusFilter.length === 1 && statusFilter[0] === 'enabled') {
-    return 'active'
+    status = 'active'
+  } else if (statusFilter.length === 1 && statusFilter[0] === 'disabled') {
+    status = 'disabled'
   }
-  if (statusFilter.length === 1 && statusFilter[0] === 'disabled') {
-    return 'disabled'
+  const health =
+    healthFilter === 'slow' || healthFilter === 'untested'
+      ? healthFilter
+      : null
+  return { status, health }
+}
+
+/** Whether a single tile is lit, given the resolved pair. */
+export function isHealthTileActive(
+  tile: HealthTileId,
+  activeTiles: ActiveHealthTiles
+): boolean {
+  if (tile === 'active' || tile === 'disabled') {
+    return activeTiles.status === tile
   }
-  return null
+  return activeTiles.health === tile
 }
 
 /**
  * What the `status`/`health` column filters should become after clicking a
- * tile. Selecting the already-active tile clears it (toggle off); selecting
- * any other tile replaces whichever filter was driving the strip, since the
- * four tiles present one choice rather than independent checkboxes.
+ * tile. Active/Disabled only ever set `status`; Slow/Never tested only ever
+ * set `health` — the other dimension, wherever it currently stands, is left
+ * untouched, so clicking Disabled then Never tested narrows to channels
+ * that are both. Clicking a tile that is already lit clears only its own
+ * dimension (`null`); an absent key means "leave this dimension as is".
  */
 export type HealthTileFilterPatch = {
-  status?: ['enabled'] | ['disabled']
-  health?: 'slow' | 'untested'
+  status?: ['enabled'] | ['disabled'] | null
+  health?: 'slow' | 'untested' | null
 }
 
 export function healthTileFilterPatch(
   tile: HealthTileId,
-  activeTile: HealthTileId | null
+  activeTiles: ActiveHealthTiles
 ): HealthTileFilterPatch {
-  if (tile === activeTile) {
-    return {}
+  const isActive = isHealthTileActive(tile, activeTiles)
+  if (tile === 'active') {
+    return { status: isActive ? null : ['enabled'] }
   }
-  switch (tile) {
-    case 'active':
-      return { status: ['enabled'] }
-    case 'disabled':
-      return { status: ['disabled'] }
-    case 'slow':
-      return { health: 'slow' }
-    case 'untested':
-      return { health: 'untested' }
+  if (tile === 'disabled') {
+    return { status: isActive ? null : ['disabled'] }
   }
+  // tile is 'slow' or 'untested'
+  return { health: isActive ? null : tile }
 }

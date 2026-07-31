@@ -54,6 +54,12 @@ export const channelsQueryKeys = {
     [...channelsQueryKeys.lists(), params] as const,
   details: () => [...channelsQueryKeys.all, 'detail'] as const,
   detail: (id: number) => [...channelsQueryKeys.details(), id] as const,
+  // Nests under `lists()` on purpose: the ~20 call sites across this file,
+  // dialogs, and drawers that invalidate `lists()` after a channel changes
+  // already cover this key too (TanStack Query invalidation matches by
+  // prefix), so the health/retry summary never lags the rows without having
+  // to touch every one of those call sites individually.
+  ops: () => [...channelsQueryKeys.lists(), 'ops'] as const,
 }
 
 function getChannelTestResponseTime(

@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils'
 import {
   formatResponseTime,
   handleTestAllChannels,
+  isHealthTileActive,
+  type ActiveHealthTiles,
   type HealthStripState,
   type HealthTile,
   type HealthTileId,
@@ -35,7 +37,7 @@ import {
 export type ChannelHealthStripProps = {
   state: HealthStripState
   slowThresholdMs: number
-  activeTile: HealthTileId | null
+  activeTiles: ActiveHealthTiles
   onSelect: (tile: HealthTileId) => void
 }
 
@@ -55,7 +57,7 @@ const TILE_VARIANT: Record<HealthTileId, StatusVariant> = {
  * renderable in isolation.
  */
 export function ChannelHealthStrip(props: ChannelHealthStripProps) {
-  const { state, slowThresholdMs, activeTile, onSelect } = props
+  const { state, slowThresholdMs, activeTiles, onSelect } = props
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
@@ -102,7 +104,7 @@ export function ChannelHealthStrip(props: ChannelHealthStripProps) {
   return (
     <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
       {state.tiles.map((tile) => {
-        const isActive = activeTile === tile.id
+        const isActive = isHealthTileActive(tile.id, activeTiles)
         return (
           <button
             key={tile.id}

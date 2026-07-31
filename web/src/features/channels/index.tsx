@@ -36,7 +36,7 @@ import { ChannelsDialogs } from './components/channels-dialogs'
 import { ChannelsPrimaryButtons } from './components/channels-primary-buttons'
 import { ChannelsProvider } from './components/channels-provider'
 import { ChannelsTable } from './components/channels-table'
-import { resolveHealthStripState } from './lib'
+import { channelsQueryKeys, resolveHealthStripState } from './lib'
 
 export function Channels() {
   const { t } = useTranslation()
@@ -44,7 +44,7 @@ export function Channels() {
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
   )
   const channelOpsQuery = useQuery({
-    queryKey: ['channel-ops'],
+    queryKey: channelsQueryKeys.ops(),
     queryFn: getChannelOps,
     retry: false,
     staleTime: 5 * 60 * 1000,

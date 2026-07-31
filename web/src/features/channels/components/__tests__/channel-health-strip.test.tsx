@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Window } from 'happy-dom'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { HealthStripState } from '../../lib'
+import type { ActiveHealthTiles, HealthStripState } from '../../lib'
 
 const domWindow = new Window()
 const domGlobals = [
@@ -82,7 +82,7 @@ function renderStrip(
         <ChannelHealthStrip
           state={props.state}
           slowThresholdMs={props.slowThresholdMs}
-          activeTile={props.activeTile}
+          activeTiles={props.activeTiles}
           onSelect={onSelect}
         />
       </I18nextProvider>
@@ -101,12 +101,14 @@ const alertState: HealthStripState = {
   ],
 }
 
+const noTiles: ActiveHealthTiles = { status: null, health: null }
+
 describe('ChannelHealthStrip', () => {
   it('renders nothing when the strip is hidden', () => {
     const { container } = renderStrip({
       state: { kind: 'hidden' },
       slowThresholdMs: 1000,
-      activeTile: null,
+      activeTiles: noTiles,
     })
     expect(container.childElementCount).toBe(0)
   })
@@ -115,7 +117,7 @@ describe('ChannelHealthStrip', () => {
     renderStrip({
       state: { kind: 'calm', total: 18 },
       slowThresholdMs: 1000,
-      activeTile: null,
+      activeTiles: noTiles,
     })
     expect(screen.getByText('18 channels healthy')).toBeTruthy()
     expect(
@@ -124,7 +126,11 @@ describe('ChannelHealthStrip', () => {
   })
 
   it('renders four real buttons, one per tile, none pressed by default', () => {
-    renderStrip({ state: alertState, slowThresholdMs: 1000, activeTile: null })
+    renderStrip({
+      state: alertState,
+      slowThresholdMs: 1000,
+      activeTiles: noTiles,
+    })
     const buttons = screen.getAllByRole('button')
     expect(buttons).toHaveLength(4)
     for (const button of buttons) {
@@ -136,7 +142,7 @@ describe('ChannelHealthStrip', () => {
     renderStrip({
       state: alertState,
       slowThresholdMs: 1500,
-      activeTile: 'slow',
+      activeTiles: { status: null, health: 'slow' },
     })
     const slowButton = screen.getByRole('button', {
       name: /Slower than 1\.50s/i,
@@ -146,11 +152,29 @@ describe('ChannelHealthStrip', () => {
     expect(activeButton.getAttribute('aria-pressed')).toBe('false')
   })
 
+  it('lights up a status tile and a health tile together', () => {
+    renderStrip({
+      state: alertState,
+      slowThresholdMs: 1000,
+      activeTiles: { status: 'disabled', health: 'untested' },
+    })
+    const disabledButton = screen.getByRole('button', { name: /^Disabled/i })
+    const untestedButton = screen.getByRole('button', {
+      name: /Never tested/i,
+    })
+    expect(disabledButton.getAttribute('aria-pressed')).toBe('true')
+    expect(untestedButton.getAttribute('aria-pressed')).toBe('true')
+    const activeButton = screen.getByRole('button', { name: /^Active/i })
+    const slowButton = screen.getByRole('button', { name: /^Slower/i })
+    expect(activeButton.getAttribute('aria-pressed')).toBe('false')
+    expect(slowButton.getAttribute('aria-pressed')).toBe('false')
+  })
+
   it('calls onSelect with the clicked tile id', () => {
     const { getByRole, onSelect } = renderStrip({
       state: alertState,
       slowThresholdMs: 1000,
-      activeTile: null,
+      activeTiles: noTiles,
     })
     fireEvent.click(getByRole('button', { name: /Never tested/i }))
     expect(onSelect).toHaveBeenCalledWith('untested')

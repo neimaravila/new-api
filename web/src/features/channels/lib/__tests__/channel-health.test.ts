@@ -21,8 +21,10 @@ import { describe, test } from 'node:test'
 
 import {
   healthTileFilterPatch,
-  resolveActiveHealthTile,
+  isHealthTileActive,
+  resolveActiveHealthTiles,
   resolveHealthStripState,
+  type ActiveHealthTiles,
 } from '../channel-health'
 
 const healthy = {
@@ -67,59 +69,121 @@ describe('resolveHealthStripState', () => {
   })
 })
 
-describe('resolveActiveHealthTile', () => {
-  test('is null when neither filter is set', () => {
-    assert.equal(resolveActiveHealthTile([], undefined), null)
+const noTiles: ActiveHealthTiles = { status: null, health: null }
+
+describe('resolveActiveHealthTiles', () => {
+  test('both dimensions are null when neither filter is set', () => {
+    assert.deepEqual(resolveActiveHealthTiles([], undefined), noTiles)
   })
 
-  test('reads enabled/disabled status filters as active/disabled tiles', () => {
-    assert.equal(resolveActiveHealthTile(['enabled'], undefined), 'active')
-    assert.equal(resolveActiveHealthTile(['disabled'], undefined), 'disabled')
+  test('reads enabled/disabled status filters as active/disabled', () => {
+    assert.deepEqual(resolveActiveHealthTiles(['enabled'], undefined), {
+      status: 'active',
+      health: null,
+    })
+    assert.deepEqual(resolveActiveHealthTiles(['disabled'], undefined), {
+      status: 'disabled',
+      health: null,
+    })
   })
 
-  test('reads the health filter as the slow/untested tiles', () => {
-    assert.equal(resolveActiveHealthTile([], 'slow'), 'slow')
-    assert.equal(resolveActiveHealthTile([], 'untested'), 'untested')
+  test('reads the health filter as the slow/untested tile', () => {
+    assert.deepEqual(resolveActiveHealthTiles([], 'slow'), {
+      status: null,
+      health: 'slow',
+    })
+    assert.deepEqual(resolveActiveHealthTiles([], 'untested'), {
+      status: null,
+      health: 'untested',
+    })
   })
 
-  test('is null for filter values the strip never writes', () => {
-    assert.equal(resolveActiveHealthTile(['all'], undefined), null)
-    assert.equal(resolveActiveHealthTile(['enabled', 'disabled'], undefined), null)
+  test('a status tile and a health tile are both active together', () => {
+    assert.deepEqual(resolveActiveHealthTiles(['disabled'], 'untested'), {
+      status: 'disabled',
+      health: 'untested',
+    })
   })
 
-  test('prefers the health filter when a stale URL sets both', () => {
-    assert.equal(resolveActiveHealthTile(['disabled'], 'untested'), 'untested')
+  test('both dimensions are null for filter values the strip never writes', () => {
+    assert.deepEqual(resolveActiveHealthTiles(['all'], undefined), noTiles)
+    assert.deepEqual(
+      resolveActiveHealthTiles(['enabled', 'disabled'], undefined),
+      noTiles
+    )
+  })
+})
+
+describe('isHealthTileActive', () => {
+  test('matches the status dimension for active/disabled, not each other', () => {
+    const tiles: ActiveHealthTiles = { status: 'disabled', health: null }
+    assert.equal(isHealthTileActive('disabled', tiles), true)
+    assert.equal(isHealthTileActive('active', tiles), false)
+  })
+
+  test('matches the health dimension for slow/untested, not each other', () => {
+    const tiles: ActiveHealthTiles = { status: null, health: 'untested' }
+    assert.equal(isHealthTileActive('untested', tiles), true)
+    assert.equal(isHealthTileActive('slow', tiles), false)
+  })
+
+  test('a status tile and a health tile can both read active', () => {
+    const tiles: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    assert.equal(isHealthTileActive('disabled', tiles), true)
+    assert.equal(isHealthTileActive('untested', tiles), true)
   })
 })
 
 describe('healthTileFilterPatch', () => {
   test('active and disabled write the status filter', () => {
-    assert.deepEqual(healthTileFilterPatch('active', null), {
+    assert.deepEqual(healthTileFilterPatch('active', noTiles), {
       status: ['enabled'],
     })
-    assert.deepEqual(healthTileFilterPatch('disabled', null), {
+    assert.deepEqual(healthTileFilterPatch('disabled', noTiles), {
       status: ['disabled'],
     })
   })
 
   test('slow and untested write the health filter', () => {
-    assert.deepEqual(healthTileFilterPatch('slow', null), { health: 'slow' })
-    assert.deepEqual(healthTileFilterPatch('untested', null), {
+    assert.deepEqual(healthTileFilterPatch('slow', noTiles), {
+      health: 'slow',
+    })
+    assert.deepEqual(healthTileFilterPatch('untested', noTiles), {
       health: 'untested',
     })
   })
 
-  test('selecting a different tile replaces the previous choice', () => {
-    assert.deepEqual(healthTileFilterPatch('slow', 'disabled'), {
-      health: 'slow',
+  test('a status tile then a health tile leaves both active (composes)', () => {
+    const afterDisabled: ActiveHealthTiles = { status: 'disabled', health: null }
+    assert.deepEqual(healthTileFilterPatch('untested', afterDisabled), {
+      health: 'untested',
     })
-    assert.deepEqual(healthTileFilterPatch('active', 'untested'), {
+    // The patch only touches `health` — `status` is absent, meaning "leave
+    // it alone", so applying this patch on top of afterDisabled keeps both
+    // status=disabled and health=untested active.
+  })
+
+  test('selecting the other status tile swaps rather than adds', () => {
+    const bothActive: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    assert.deepEqual(healthTileFilterPatch('active', bothActive), {
       status: ['enabled'],
     })
   })
 
-  test('selecting the already-active tile clears it', () => {
-    assert.deepEqual(healthTileFilterPatch('disabled', 'disabled'), {})
-    assert.deepEqual(healthTileFilterPatch('untested', 'untested'), {})
+  test('selecting the other health tile swaps rather than adds', () => {
+    const bothActive: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    assert.deepEqual(healthTileFilterPatch('slow', bothActive), {
+      health: 'slow',
+    })
+  })
+
+  test('selecting an already-lit tile clears only its own dimension', () => {
+    const bothActive: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
+    assert.deepEqual(healthTileFilterPatch('disabled', bothActive), {
+      status: null,
+    })
+    assert.deepEqual(healthTileFilterPatch('untested', bothActive), {
+      health: null,
+    })
   })
 })

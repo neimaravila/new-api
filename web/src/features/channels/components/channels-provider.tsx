@@ -94,10 +94,10 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
 
   const queryClient = useQueryClient()
   const refreshChannels = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all }),
-      queryClient.invalidateQueries({ queryKey: ['channel-ops'] }),
-    ])
+    // channelsQueryKeys.all covers channelsQueryKeys.ops() too (it nests
+    // under lists()), so a single invalidation refreshes the rows and the
+    // health/retry summary together.
+    await queryClient.invalidateQueries({ queryKey: channelsQueryKeys.all })
   }, [queryClient])
   const upstream = useChannelUpstreamUpdates(refreshChannels)
 

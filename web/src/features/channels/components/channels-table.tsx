@@ -56,7 +56,7 @@ import {
   getChannelTypeIcon,
   getChannelTypeLabel,
   healthTileFilterPatch,
-  resolveActiveHealthTile,
+  resolveActiveHealthTiles,
   type HealthStripState,
   type HealthTileId,
 } from '../lib'
@@ -178,21 +178,30 @@ export function ChannelsTable({
     healthFilter === 'slow' || healthFilter === 'untested'
       ? healthFilter
       : undefined
-  const activeHealthTile = resolveActiveHealthTile(
+  const activeHealthTiles = resolveActiveHealthTiles(
     statusFilter,
     healthFilter || undefined
   )
   const handleHealthTileSelect = (tile: HealthTileId) => {
-    const patch = healthTileFilterPatch(tile, activeHealthTile)
+    const patch = healthTileFilterPatch(tile, activeHealthTiles)
     handleColumnFiltersChange((previous) => {
-      const next = previous.filter(
-        (f) => f.id !== 'status' && f.id !== 'health'
-      )
-      if (patch.status) {
-        next.push({ id: 'status', value: patch.status })
+      // A patch only ever carries the one dimension the clicked tile owns
+      // (`status` for Active/Disabled, `health` for Slow/Never tested); the
+      // other dimension's key is absent, so its existing filter entry (if
+      // any) is left untouched below — that's what lets a status tile and a
+      // health tile stay lit together.
+      let next = previous
+      if ('status' in patch) {
+        next = next.filter((f) => f.id !== 'status')
+        if (patch.status) {
+          next = [...next, { id: 'status', value: patch.status }]
+        }
       }
-      if (patch.health) {
-        next.push({ id: 'health', value: patch.health })
+      if ('health' in patch) {
+        next = next.filter((f) => f.id !== 'health')
+        if (patch.health) {
+          next = [...next, { id: 'health', value: patch.health }]
+        }
       }
       return next
     })
@@ -450,7 +459,7 @@ export function ChannelsTable({
       <ChannelHealthStrip
         state={healthState}
         slowThresholdMs={slowThresholdMs}
-        activeTile={activeHealthTile}
+        activeTiles={activeHealthTiles}
         onSelect={handleHealthTileSelect}
       />
       <div className='min-h-0 flex-1'>
