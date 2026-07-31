@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { formatNumber, formatQuota } from '@/lib/format'
+
 import type {
   ReportChannelRow,
   ReportErrorRow,
@@ -38,6 +40,43 @@ const TREND_METRIC_FIELD: Record<ReportTrendMetric, keyof ReportTrendPoint> = {
   failures: 'failures',
 }
 
+/**
+ * Renders one chart value the way the table under that chart renders it.
+ *
+ * Left alone, VChart prints the raw datum on axis labels and tooltips, which
+ * shows quota in internal units rather than currency and token counts without
+ * separators. Every builder below routes its value through one of these.
+ */
+type ChartValueFormat = (value: number) => string
+
+const formatCount: ChartValueFormat = (value) => formatNumber(value)
+const formatLatency: ChartValueFormat = (value) => `${formatNumber(value)} ms`
+
+const TREND_METRIC_FORMAT: Record<ReportTrendMetric, ChartValueFormat> = {
+  quota: formatQuota,
+  requests: formatCount,
+  tokens: formatCount,
+  failures: formatCount,
+}
+
+function valueAxisLabel(format: ChartValueFormat): Record<string, unknown> {
+  return { formatMethod: (value: number) => format(Number(value) || 0) }
+}
+
+function valueTooltip(
+  keyField: string,
+  valueField: string,
+  format: ChartValueFormat
+): Record<string, unknown> {
+  const content = [
+    {
+      key: (datum: Record<string, unknown>) => datum?.[keyField],
+      value: (datum: Record<string, unknown>) => format(Number(datum?.[valueField]) || 0),
+    },
+  ]
+  return { mark: { content }, dimension: { content } }
+}
+
 export function buildTrendSpec(
   points: ReportTrendPoint[],
   metric: ReportTrendMetric,
@@ -46,6 +85,7 @@ export function buildTrendSpec(
   if (points.length === 0) return null
 
   const field = TREND_METRIC_FIELD[metric]
+  const format = TREND_METRIC_FORMAT[metric]
   const values = points.map((item) => ({
     time: item.bucket_label,
     value: Number(item[field]) || 0,
@@ -64,6 +104,11 @@ export function buildTrendSpec(
     line: { style: { lineWidth: 2 } },
     point: { visible: false },
     crosshair: { xField: { visible: true, line: { visible: true } } },
+    axes: [
+      { orient: 'bottom', type: 'band' },
+      { orient: 'left', type: 'linear', label: valueAxisLabel(format) },
+    ],
+    tooltip: valueTooltip('series', 'value', format),
     background: { fill: 'transparent' },
     animation: true,
   }
@@ -91,6 +136,7 @@ export function buildModelCostSpec(models: ReportModelRow[]): ReportChartSpec | 
       { orient: 'left', type: 'band' },
       { orient: 'bottom', type: 'linear', visible: false },
     ],
+    tooltip: valueTooltip('name', 'quota', formatQuota),
     background: { fill: 'transparent' },
     animation: true,
   }
@@ -129,6 +175,7 @@ export function buildErrorShareSpec(
     label: { visible: true },
     color: getDashboardChartColors(values.length),
     pie: { state: { hover: { outerRadius: 0.85, stroke: '#000', lineWidth: 1 } } },
+    tooltip: valueTooltip('type', 'value', formatCount),
     background: { fill: 'transparent' },
     animation: true,
   }
@@ -159,8 +206,9 @@ export function buildPerformanceSpec(
     color: getDashboardChartColors(2).slice(0, 2),
     axes: [
       { orient: 'left', type: 'band' },
-      { orient: 'bottom', type: 'linear' },
+      { orient: 'bottom', type: 'linear', label: valueAxisLabel(formatLatency) },
     ],
+    tooltip: valueTooltip('series', 'value', formatLatency),
     background: { fill: 'transparent' },
     animation: true,
   }
@@ -191,8 +239,9 @@ export function buildTokenAnatomySpec(
     bar: { style: { stroke: 'transparent', lineWidth: 2 } },
     axes: [
       { orient: 'left', type: 'band' },
-      { orient: 'bottom', type: 'linear' },
+      { orient: 'bottom', type: 'linear', label: valueAxisLabel(formatCount) },
     ],
+    tooltip: valueTooltip('series', 'value', formatCount),
     background: { fill: 'transparent' },
     animation: true,
   }
@@ -237,6 +286,7 @@ export function buildChannelCostSpec(
       { orient: 'left', type: 'band' },
       { orient: 'bottom', type: 'linear', visible: false },
     ],
+    tooltip: valueTooltip('name', 'quota', formatQuota),
     background: { fill: 'transparent' },
     animation: true,
   }
@@ -265,6 +315,11 @@ export function buildStreamSpec(
     seriesField: 'name',
     legends: { visible: false },
     color: getDashboardChartColors(2).slice(0, 2),
+    axes: [
+      { orient: 'bottom', type: 'band' },
+      { orient: 'left', type: 'linear', label: valueAxisLabel(formatCount) },
+    ],
+    tooltip: valueTooltip('name', 'value', formatCount),
     background: { fill: 'transparent' },
     animation: true,
   }

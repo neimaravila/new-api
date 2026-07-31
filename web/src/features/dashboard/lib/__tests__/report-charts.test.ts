@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
+import { formatNumber, formatQuota } from '@/lib/format'
+
 import {
   ERROR_DONUT_MAX_SLICES,
   buildChannelCostSpec,
@@ -27,6 +29,7 @@ import {
   buildStreamSpec,
   buildTokenAnatomySpec,
   buildTrendSpec,
+  type ReportChartSpec,
 } from '../report-charts'
 import type {
   ReportChannelRow,
@@ -247,5 +250,50 @@ describe('buildStreamSpec', () => {
       { name: 'Stream', value: 7 },
       { name: 'Non-stream', value: 3 },
     ])
+  })
+})
+
+describe('chart value formatting', () => {
+  interface AxisSpec {
+    orient: string
+    label?: { formatMethod?: (value: number) => string }
+  }
+  interface TooltipSpec {
+    mark: { content: { value: (datum: Record<string, unknown>) => string }[] }
+  }
+
+  const valueAxisFormat = (spec: ReportChartSpec | null, orient: string) => {
+    const axes = spec?.axes as AxisSpec[]
+    return axes.find((axis) => axis.orient === orient)?.label?.formatMethod
+  }
+
+  it('renders trend cost on the value axis as currency, not raw quota units', () => {
+    const spec = buildTrendSpec([point({ quota: 500_000 })], 'quota', 'Cost')
+    const format = valueAxisFormat(spec, 'left')
+    expect(format?.(500_000)).toBe(formatQuota(500_000))
+  })
+
+  it('renders trend counts with separators rather than bare integers', () => {
+    const spec = buildTrendSpec([point({ requests: 12_345 })], 'requests', 'Requests')
+    const format = valueAxisFormat(spec, 'left')
+    expect(format?.(12_345)).toBe(formatNumber(12_345))
+  })
+
+  it('formats the trend tooltip with the selected metric unit', () => {
+    const spec = buildTrendSpec([point({ quota: 500_000 })], 'quota', 'Cost')
+    const tooltip = spec?.tooltip as TooltipSpec
+    expect(tooltip.mark.content[0].value({ value: 500_000 })).toBe(formatQuota(500_000))
+  })
+
+  it('formats model cost tooltips as currency', () => {
+    const spec = buildModelCostSpec([model('gpt-4o', 500_000)])
+    const tooltip = spec?.tooltip as TooltipSpec
+    expect(tooltip.mark.content[0].value({ quota: 500_000 })).toBe(formatQuota(500_000))
+  })
+
+  it('labels latency values with their millisecond unit', () => {
+    const spec = buildPerformanceSpec([perfRow('gpt-4o', 500, 900)], 'Avg', 'p95')
+    const format = valueAxisFormat(spec, 'bottom')
+    expect(format?.(900)).toBe(`${formatNumber(900)} ms`)
   })
 })
