@@ -100,7 +100,7 @@ func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRan
 	if err != nil {
 		return dto.ReportSummary{}, err
 	}
-	modelPerf, err := computeReportPerformance(scope, start, end, "model_name")
+	modelPerf, err := computeReportPerformance(scope, start, end, reportPerfByModel)
 	if err != nil {
 		return dto.ReportSummary{}, err
 	}
@@ -133,7 +133,7 @@ func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRan
 			return dto.ReportSummary{}, err
 		}
 		summary.Channels = channels
-		channelPerf, err := computeReportPerformance(scope, start, end, "channel_id")
+		channelPerf, err := computeReportPerformance(scope, start, end, reportPerfByChannel)
 		if err != nil {
 			return dto.ReportSummary{}, err
 		}
@@ -338,9 +338,22 @@ func computeReportErrors(scope reportRoleScope, start int64, end int64) ([]dto.R
 
 // ---- performance (avg + p95 + throughput) ----
 
-func computeReportPerformance(scope reportRoleScope, start int64, end int64, groupCol string) ([]dto.ReportPerformanceRow, error) {
+// reportPerfDimension pairs a grouping column with the predicate that drops rows carrying no
+// value for it. The predicate is column-typed on purpose: channel_id is an integer column, and
+// PostgreSQL rejects `channel_id <> ''` with SQLSTATE 22P02 instead of coercing like SQLite/MySQL.
+type reportPerfDimension struct {
+	column   string
+	presence string
+}
+
+var (
+	reportPerfByModel   = reportPerfDimension{column: "model_name", presence: "model_name <> ''"}
+	reportPerfByChannel = reportPerfDimension{column: "channel_id", presence: "channel_id <> 0"}
+)
+
+func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim reportPerfDimension) ([]dto.ReportPerformanceRow, error) {
 	// Aggregate average + throughput in the DB; compute p95 from a bounded sample per group in Go.
-	aggExpr := groupCol + " as name, " +
+	aggExpr := dim.column + " as name, " +
 		"COALESCE(sum(use_time), 0) as latency_sum, " +
 		"sum(case when type = ? then 1 else 0 end) as consumers, " +
 		"count(*) as requests, " +
@@ -348,8 +361,8 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, gro
 	tx := model.LOG_DB.Table("logs").
 		Select(aggExpr, model.LogTypeConsume).
 		Where("created_at >= ? and created_at <= ?", start, end).
-		Where(groupCol + " <> ''").
-		Group(groupCol).
+		Where(dim.presence).
+		Group(dim.column).
 		Order("latency_sum desc").
 		Limit(reportPerformanceLimit)
 	tx = scope.apply(tx)
@@ -367,7 +380,7 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, gro
 
 	rows := make([]dto.ReportPerformanceRow, 0, len(rawRows))
 	for _, r := range rawRows {
-		p95, err := reportGroupP95(scope, start, end, groupCol, r.Name)
+		p95, err := reportGroupP95(scope, start, end, dim.column, r.Name)
 		if err != nil {
 			return nil, err
 		}

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,7 +11,35 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+// recordingLogger captures the SQL GORM actually issues. Report queries run against SQLite in
+// tests, and SQLite coerces comparisons that PostgreSQL rejects outright, so asserting on the
+// emitted statement is the only way to guard cross-database predicate typing here.
+type recordingLogger struct {
+	logger.Interface
+	statements *[]string
+}
+
+func (r recordingLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
+	sql, _ := fc()
+	*r.statements = append(*r.statements, sql)
+}
+
+// recordLogSQL routes model.LOG_DB through a recording logger for the duration of the test.
+func recordLogSQL(t *testing.T) *[]string {
+	t.Helper()
+	statements := make([]string, 0, 8)
+	previous := model.LOG_DB
+	model.LOG_DB = previous.Session(&gorm.Session{
+		NewDB:  true,
+		Logger: recordingLogger{Interface: logger.Default, statements: &statements},
+	})
+	t.Cleanup(func() { model.LOG_DB = previous })
+	return &statements
+}
 
 // seedReportFixture inserts a representative mix of logs for users 1 (alice) and 2 (bob).
 // Returns the window that covers every seeded row.
@@ -85,6 +115,29 @@ func TestGetReportSummaryAdminScopesGlobal(t *testing.T) {
 		assert.GreaterOrEqual(t, p.BucketTimestamp, start)
 		assert.LessOrEqual(t, p.BucketTimestamp, end+3600)
 	}
+}
+
+// channel_id is an integer column: PostgreSQL fails the whole admin report with SQLSTATE 22P02
+// when the channel performance aggregation filters it with `channel_id <> ''`.
+func TestReportChannelPerformanceFiltersChannelIDNumerically(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	start, end := seedReportFixture(t)
+	statements := recordLogSQL(t)
+
+	rows, err := computeReportPerformance(reportScope(99, "admin", common.RoleAdminUser), start, end, reportPerfByChannel)
+	require.NoError(t, err)
+	require.NotEmpty(t, rows)
+
+	aggregate := ""
+	for _, sql := range *statements {
+		if strings.Contains(sql, "GROUP BY") && strings.Contains(sql, "channel_id") {
+			aggregate = sql
+			break
+		}
+	}
+	require.NotEmpty(t, aggregate, "channel aggregation was not recorded: %v", *statements)
+	assert.NotContains(t, aggregate, "channel_id <> ''")
+	assert.Contains(t, aggregate, "channel_id <> 0")
 }
 
 func TestGetReportSummaryRegularUserScoped(t *testing.T) {
