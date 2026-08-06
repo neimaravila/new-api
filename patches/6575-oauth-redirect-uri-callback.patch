@@ -1,0 +1,117 @@
+From 3519ad2cb6229c17334cc2f757a38b8dbf8aa541 Mon Sep 17 00:00:00 2001
+From: feitianbubu <feitianbubu@qq.com>
+Date: Fri, 31 Jul 2026 23:57:32 +0800
+Subject: [PATCH] fix: derive oauth token exchange redirect_uri from callback
+ request
+
+---
+ oauth/generic.go      |  3 +--
+ oauth/oidc.go         | 14 +++++++++++---
+ oauth/redirect_uri.go | 26 ++++++++++++++++++++++++++
+ 3 files changed, 38 insertions(+), 5 deletions(-)
+ create mode 100644 oauth/redirect_uri.go
+
+diff --git a/oauth/generic.go b/oauth/generic.go
+index 11bbb9b625f..23f93815694 100644
+--- a/oauth/generic.go
++++ b/oauth/generic.go
+@@ -18,7 +18,6 @@ import (
+ 	"github.com/QuantumNous/new-api/i18n"
+ 	"github.com/QuantumNous/new-api/logger"
+ 	"github.com/QuantumNous/new-api/model"
+-	"github.com/QuantumNous/new-api/setting/system_setting"
+ 	"github.com/gin-gonic/gin"
+ 	"github.com/samber/lo"
+ 	"github.com/tidwall/gjson"
+@@ -94,7 +93,7 @@ func (p *GenericOAuthProvider) ExchangeToken(ctx context.Context, code string, c
+ 
+ 	logger.LogDebug(ctx, "[OAuth-Generic-%s] ExchangeToken: code=%s...", p.config.Slug, code[:min(len(code), 10)])
+ 
+-	redirectUri := fmt.Sprintf("%s/oauth/%s", system_setting.ServerAddress, p.config.Slug)
++	redirectUri := callbackRedirectURI(c, "/oauth/"+p.config.Slug)
+ 	values := url.Values{}
+ 	values.Set("grant_type", "authorization_code")
+ 	values.Set("code", code)
+diff --git a/oauth/oidc.go b/oauth/oidc.go
+index 25874329027..56dbffc48eb 100644
+--- a/oauth/oidc.go
++++ b/oauth/oidc.go
+@@ -4,11 +4,13 @@ import (
+ 	"context"
+ 	"encoding/json"
+ 	"fmt"
++	"io"
+ 	"net/http"
+ 	"net/url"
+ 	"strings"
+ 	"time"
+ 
++	"github.com/QuantumNous/new-api/common"
+ 	"github.com/QuantumNous/new-api/i18n"
+ 	"github.com/QuantumNous/new-api/logger"
+ 	"github.com/QuantumNous/new-api/model"
+@@ -56,7 +58,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Co
+ 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: code=%s...", code[:min(len(code), 10)])
+ 
+ 	settings := system_setting.GetOIDCSettings()
+-	redirectUri := fmt.Sprintf("%s/oauth/oidc", system_setting.ServerAddress)
++	redirectUri := callbackRedirectURI(c, "/oauth/oidc")
+ 	values := url.Values{}
+ 	values.Set("client_id", settings.ClientId)
+ 	values.Set("client_secret", settings.ClientSecret)
+@@ -85,15 +87,21 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Co
+ 
+ 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken response status: %d", res.StatusCode)
+ 
++	bodyBytes, err := io.ReadAll(res.Body)
++	if err != nil {
++		logger.LogError(ctx, fmt.Sprintf("[OAuth-OIDC] ExchangeToken read body error: %s", err.Error()))
++		return nil, NewOAuthErrorWithRaw(i18n.MsgOAuthConnectFailed, map[string]any{"Provider": "OIDC"}, err.Error())
++	}
++
+ 	var oidcResponse oidcOAuthResponse
+-	err = json.NewDecoder(res.Body).Decode(&oidcResponse)
++	err = common.Unmarshal(bodyBytes, &oidcResponse)
+ 	if err != nil {
+ 		logger.LogError(ctx, fmt.Sprintf("[OAuth-OIDC] ExchangeToken decode error: %s", err.Error()))
+ 		return nil, err
+ 	}
+ 
+ 	if oidcResponse.AccessToken == "" {
+-		logger.LogError(ctx, "[OAuth-OIDC] ExchangeToken failed: empty access token")
++		logger.LogError(ctx, fmt.Sprintf("[OAuth-OIDC] ExchangeToken failed: empty access token, response: %s", string(bodyBytes[:min(len(bodyBytes), 500)])))
+ 		return nil, NewOAuthError(i18n.MsgOAuthTokenFailed, map[string]any{"Provider": "OIDC"})
+ 	}
+ 
+diff --git a/oauth/redirect_uri.go b/oauth/redirect_uri.go
+new file mode 100644
+index 00000000000..f81dde9fe3b
+--- /dev/null
++++ b/oauth/redirect_uri.go
+@@ -0,0 +1,26 @@
++package oauth
++
++import (
++	"fmt"
++	"strings"
++
++	"github.com/QuantumNous/new-api/setting/system_setting"
++	"github.com/gin-gonic/gin"
++)
++
++// callbackRedirectURI rebuilds the redirect_uri the frontend sent in the
++// authorize request (window.location.origin + path). The token exchange must
++// send the exact same value, so derive it from the callback request instead of
++// ServerAddress, or multi-domain deployments fail with invalid_grant.
++func callbackRedirectURI(c *gin.Context, path string) string {
++	if c == nil || c.Request == nil || c.Request.Host == "" {
++		return system_setting.ServerAddress + path
++	}
++	scheme := "https"
++	if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
++		scheme = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
++	} else if c.Request.TLS == nil {
++		scheme = "http"
++	}
++	return fmt.Sprintf("%s://%s%s", scheme, c.Request.Host, path)
++}

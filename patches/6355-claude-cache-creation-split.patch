@@ -1,0 +1,35 @@
+diff --git a/service/billing_usage.go b/service/billing_usage.go
+index a8d47917b39..48615adc414 100644
+--- a/service/billing_usage.go
++++ b/service/billing_usage.go
+@@ -133,6 +133,11 @@ func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
+ 	if cacheCreation1h == 0 {
+ 		cacheCreation1h = claudeUsage.ClaudeCacheCreation1hTokens
+ 	}
++	// If both split values are still 0 but there's a total, default to 5m
++	// (Claude standard cache TTL is 5 minutes).
++	if cacheCreation5m == 0 && cacheCreation1h == 0 && claudeUsage.CacheCreationInputTokens > 0 {
++		cacheCreation5m = claudeUsage.CacheCreationInputTokens
++	}
+ 
+ 	usage := &dto.Usage{
+ 		PromptTokens:                claudeUsage.InputTokens,
+diff --git a/service/tiered_settle.go b/service/tiered_settle.go
+index 05337bd774e..81dd2a716a3 100644
+--- a/service/tiered_settle.go
++++ b/service/tiered_settle.go
+@@ -26,8 +26,12 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
+ 	cc1h := float64(0)
+ 
+ 	if usage.UsageSemantic == "anthropic" {
+-		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
+-		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
++		if usage.ClaudeCacheCreation1hTokens > 0 {
++			cc1h = float64(usage.ClaudeCacheCreation1hTokens)
++		}
++		if usage.ClaudeCacheCreation5mTokens > 0 {
++			cc5m = float64(usage.ClaudeCacheCreation5mTokens)
++		}
+ 	}
+ 
+ 	img := float64(usage.PromptTokensDetails.ImageTokens)

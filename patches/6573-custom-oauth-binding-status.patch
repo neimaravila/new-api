@@ -1,0 +1,58 @@
+From 75189105fa900e07232b59bfedb14d2492d1938c Mon Sep 17 00:00:00 2001
+From: feitianbubu <feitianbubu@qq.com>
+Date: Fri, 31 Jul 2026 23:37:12 +0800
+Subject: [PATCH] fix: custom oauth binding status never shown due to id type
+ mismatch
+
+---
+ web/src/features/profile/api.ts                             | 6 +++---
+ .../profile/components/tabs/account-bindings-tab.tsx        | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/web/src/features/profile/api.ts b/web/src/features/profile/api.ts
+index 9a603092ecd..4186bf6a258 100644
+--- a/web/src/features/profile/api.ts
++++ b/web/src/features/profile/api.ts
+@@ -173,9 +173,9 @@ export async function revokeOtherLoginSessions(): Promise<ApiResponse> {
+ // ============================================================================
+ 
+ export interface CustomOAuthBinding {
+-  provider_id: string
++  provider_id: number
+   provider_name: string
+-  external_id?: string
++  provider_user_id?: string
+ }
+ 
+ /**
+@@ -192,7 +192,7 @@ export async function getSelfOAuthBindings(): Promise<
+  * Unbind a custom OAuth provider for current user
+  */
+ export async function unbindCustomOAuth(
+-  providerId: string
++  providerId: number
+ ): Promise<ApiResponse> {
+   const res = await api.delete(`/api/user/oauth/bindings/${providerId}`)
+   return res.data
+diff --git a/web/src/features/profile/components/tabs/account-bindings-tab.tsx b/web/src/features/profile/components/tabs/account-bindings-tab.tsx
+index 188f0cde139..58d7be828a6 100644
+--- a/web/src/features/profile/components/tabs/account-bindings-tab.tsx
++++ b/web/src/features/profile/components/tabs/account-bindings-tab.tsx
+@@ -475,7 +475,7 @@ export function AccountBindingsTab({
+           <div className='grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3'>
+             {customProviders.map((provider) => {
+               const binding = customBindings.find(
+-                (b) => b.provider_id === String(provider.id)
++                (b) => b.provider_id === provider.id
+               )
+               const isBound = !!binding
+               return (
+@@ -500,7 +500,7 @@ export function AccountBindingsTab({
+                       </div>
+                       <p className='text-muted-foreground truncate text-xs'>
+                         {isBound
+-                          ? binding?.external_id || t('Bound')
++                          ? binding?.provider_user_id || t('Bound')
+                           : t('Not bound')}
+                       </p>
+                     </div>

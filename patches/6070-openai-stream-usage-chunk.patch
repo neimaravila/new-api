@@ -1,0 +1,155 @@
+From ce2960f0e9055ca66d48de59aa5afd2d6ad77f38 Mon Sep 17 00:00:00 2001
+From: Ankairis <ankairis@163.com>
+Date: Mon, 3 Aug 2026 12:28:07 +0800
+Subject: [PATCH] fix(stream): preserve usage chunk before non-standard
+ upstream frames
+
+---
+ relay/channel/openai/relay-openai.go          | 29 ++++++-
+ .../openai/relay_openai_stream_usage_test.go  | 78 +++++++++++++++++++
+ 2 files changed, 106 insertions(+), 1 deletion(-)
+ create mode 100644 relay/channel/openai/relay_openai_stream_usage_test.go
+
+diff --git a/relay/channel/openai/relay-openai.go b/relay/channel/openai/relay-openai.go
+index 9a0619eb27f..a7af222ac04 100644
+--- a/relay/channel/openai/relay-openai.go
++++ b/relay/channel/openai/relay-openai.go
+@@ -119,6 +119,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 	var usage = &dto.Usage{}
+ 	var lastStreamData string
+ 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
++	var usageStreamData string      // 存储含有 usage 的最后一个 chunk，备用
+ 	seenStreamToolCalls := make(map[string]struct{})
+ 	var streamFunctionCallNames []string
+ 
+@@ -139,6 +140,16 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 			}
+ 
+ 			lastStreamData = data
++			// 检测当前 chunk 是否含有 usage，保存备用
++			// (OpenCode.ai 等上游在 usage chunk 后还会发非标准块，会覆盖 lastStreamData)
++			if strings.Contains(data, "\"usage\"") {
++				var chunkWithUsage dto.ChatCompletionsStreamResponse
++				if err := common.UnmarshalJsonStr(data, &chunkWithUsage); err == nil && chunkWithUsage.Usage != nil {
++					if service.ValidUsage(chunkWithUsage.Usage) {
++						usageStreamData = data
++					}
++				}
++			}
+ 			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
+ 			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
+ 				logger.LogError(c, "error processing stream token data: "+err.Error())
+@@ -178,12 +189,28 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 		}
+ 	}
+ 
++	if !containStreamUsage {
++		// 先尝试从之前保存的 usage chunk 提取真实 usage
++		if usageStreamData != "" {
++			var lastChunk dto.ChatCompletionsStreamResponse
++			if err := common.UnmarshalJsonStr(usageStreamData, &lastChunk); err == nil && lastChunk.Usage != nil && service.ValidUsage(lastChunk.Usage) {
++				usage = lastChunk.Usage
++				containStreamUsage = true
++			}
++		}
++	}
++
+ 	if !containStreamUsage {
+ 		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+ 		usage.CompletionTokens += toolCount * 7
+ 	}
+ 
+-	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
++	// 传给 applyUsagePostProcessing 时优先用 usageStreamData（含真实 usage）
++	postProcessBody := common.StringToByteSlice(lastStreamData)
++	if usageStreamData != "" {
++		postProcessBody = common.StringToByteSlice(usageStreamData)
++	}
++	applyUsagePostProcessing(info, usage, postProcessBody)
+ 
+ 	for _, name := range streamFunctionCallNames {
+ 		info.CountBillableToolCall(dto.BuildInCallFunctionCall, name)
+diff --git a/relay/channel/openai/relay_openai_stream_usage_test.go b/relay/channel/openai/relay_openai_stream_usage_test.go
+new file mode 100644
+index 00000000000..c96af410ffa
+--- /dev/null
++++ b/relay/channel/openai/relay_openai_stream_usage_test.go
+@@ -0,0 +1,78 @@
++package openai
++
++import (
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/QuantumNous/new-api/constant"
++	relaycommon "github.com/QuantumNous/new-api/relay/common"
++	relayconstant "github.com/QuantumNous/new-api/relay/constant"
++	"github.com/QuantumNous/new-api/relaykit/types"
++	"github.com/gin-gonic/gin"
++	"github.com/stretchr/testify/require"
++)
++
++func newChatStreamTestContext(t *testing.T, body string) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
++	t.Helper()
++
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
++
++	resp := &http.Response{
++		StatusCode: http.StatusOK,
++		Body:       io.NopCloser(strings.NewReader(body)),
++		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
++	}
++	info := &relaycommon.RelayInfo{
++		ChannelMeta: &relaycommon.ChannelMeta{
++			ChannelType:       constant.ChannelTypeMoonshot,
++			UpstreamModelName: "test-model",
++		},
++		IsStream:    true,
++		RelayMode:   relayconstant.RelayModeChatCompletions,
++		RelayFormat: types.RelayFormatOpenAI,
++	}
++	return c, recorder, resp, info
++}
++
++// TestOaiStreamHandlerRecoversUsageFromEarlierChunk guards the fix for
++// upstreams (e.g. OpenCode.ai) that send a non-standard frame AFTER the
++// usage-bearing finish chunk. That trailing frame used to overwrite
++// lastStreamData, so the real usage — and the cached_tokens extracted from the
++// chunk body by applyUsagePostProcessing — was lost and replaced by an
++// estimate. The handler must recover usage from the last chunk that actually
++// carried it.
++func TestOaiStreamHandlerRecoversUsageFromEarlierChunk(t *testing.T) {
++	oldMode := gin.Mode()
++	gin.SetMode(gin.TestMode)
++	t.Cleanup(func() { gin.SetMode(oldMode) })
++
++	oldTimeout := constant.StreamingTimeout
++	constant.StreamingTimeout = 30
++	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
++
++	body := strings.Join([]string{
++		`data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"Hello"}}]}`,
++		// Moonshot 风格：cached_tokens 在 choices[].usage，不在顶层 usage。
++		`data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"cached_tokens":100}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}`,
++		// 上游在 usage chunk 之后追加的非标准尾随块（x-opencode-type）。
++		`data: {"x-opencode-type":"generation_end"}`,
++		`data: [DONE]`,
++	}, "\n")
++
++	c, recorder, resp, info := newChatStreamTestContext(t, body)
++
++	usage, err := OaiStreamHandler(c, info, resp)
++
++	require.Nil(t, err)
++	require.Equal(t, 10, usage.PromptTokens, "real usage must be recovered from the earlier usage chunk, not estimated")
++	require.Equal(t, 20, usage.CompletionTokens)
++	require.Equal(t, 30, usage.TotalTokens)
++	require.Equal(t, 100, usage.PromptTokensDetails.CachedTokens, "cached_tokens must be extracted from the usage chunk body, not the trailing non-standard frame")
++	require.Contains(t, recorder.Body.String(), "Hello")
++	require.Contains(t, recorder.Body.String(), "x-opencode-type")
++}

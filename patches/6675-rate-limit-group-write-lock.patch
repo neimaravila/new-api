@@ -1,0 +1,300 @@
+From ff584b89ecd8d52cd9b791ace72456d82ca2441c Mon Sep 17 00:00:00 2001
+From: guopengnaivoc <274611261+guopengnaivoc@users.noreply.github.com>
+Date: Wed, 5 Aug 2026 10:02:52 -0700
+Subject: [PATCH] fix(setting): take a write lock when replacing the rate limit
+ group map
+
+UpdateModelRequestRateLimitGroupByJSONString is a writer that acquired RLock.
+sync.RWMutex admits any number of concurrent read-lock holders, so that writer
+ran genuinely in parallel with GetGroupRateLimit, which also only takes RLock.
+
+This is not an admin-action window. The writer is reached from
+model/option.go:547 inside updateOptionMap, so SyncOptions rewrites the map once
+per SYNC_FREQUENCY (default 60s) whether or not anything changed, while the
+reader sits in the ModelRequestRateLimit middleware registered on both the /v1
+and Gemini relay routers and runs on every request.
+
+Measured on 0ab02020 (go1.26.5 darwin/arm64) with six readers against one
+writer: 3 of 3 runs died with "fatal error: concurrent map read and map write"
+at rate_limit.go:46, and go test -race reported 2 races with the write side at
+rate_limit.go:34. After this change: 0 crashes across 3 runs, 0 races.
+
+Both files also cleared the global map before unmarshalling, so invalid JSON
+wiped the live configuration and left it wiped. That path is reachable: neither
+updater is validated on the periodic sync - CheckModelRequestRateLimitGroup only
+runs on the admin save path (controller/option.go:303), and user usable groups
+have no validation at all. Parsing now happens into a local map outside the lock
+and the global reference is replaced only on success.
+
+user_usable_group.go already took the correct write lock, so only its
+clear-then-refill half needed fixing; its lock is untouched.
+
+Verified that both maps and their mutexes are only ever touched inside their own
+files, so no call site needed to change.
+
+Both files also called encoding/json directly, which AGENTS.md forbids; those
+call sites now use the common wrappers.
+
+The same fix was proposed earlier in #5212 by @zhao8899 and closed by its author
+without any human review; the defect is still present. This change was derived
+independently but overlaps substantially, and credits that PR.
+
+Refs: docs/bugfix/003-ratelimit-write-lock-bug.md
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ setting/rate_limit.go             | 23 ++++++---
+ setting/rate_limit_test.go        | 79 +++++++++++++++++++++++++++++++
+ setting/user_usable_group.go      | 14 ++++--
+ setting/user_usable_group_test.go | 58 +++++++++++++++++++++++
+ 4 files changed, 163 insertions(+), 11 deletions(-)
+ create mode 100644 setting/rate_limit_test.go
+ create mode 100644 setting/user_usable_group_test.go
+
+diff --git a/setting/rate_limit.go b/setting/rate_limit.go
+index 413f3958d75..a4f07d9298f 100644
+--- a/setting/rate_limit.go
++++ b/setting/rate_limit.go
+@@ -1,7 +1,6 @@
+ package setting
+ 
+ import (
+-	"encoding/json"
+ 	"fmt"
+ 	"math"
+ 	"sync"
+@@ -20,7 +19,7 @@ func ModelRequestRateLimitGroup2JSONString() string {
+ 	ModelRequestRateLimitMutex.RLock()
+ 	defer ModelRequestRateLimitMutex.RUnlock()
+ 
+-	jsonBytes, err := json.Marshal(ModelRequestRateLimitGroup)
++	jsonBytes, err := common.Marshal(ModelRequestRateLimitGroup)
+ 	if err != nil {
+ 		common.SysLog("error marshalling model ratio: " + err.Error())
+ 	}
+@@ -28,11 +27,21 @@ func ModelRequestRateLimitGroup2JSONString() string {
+ }
+ 
+ func UpdateModelRequestRateLimitGroupByJSONString(jsonStr string) error {
+-	ModelRequestRateLimitMutex.RLock()
+-	defer ModelRequestRateLimitMutex.RUnlock()
++	// 先在锁外解析到局部 map：解析失败时正在生效的限流配置必须原样保留。
++	// 原先的写法是先清空全局 map 再反序列化，非法 JSON 会让限流配置被清空且不再恢复。
++	parsed := make(map[string][2]int)
++	if err := common.Unmarshal([]byte(jsonStr), &parsed); err != nil {
++		return err
++	}
++
++	// 必须是写锁。这里原先取的是 RLock，而 RWMutex 允许多个读锁持有者同时进入，
++	// 因此这个写函数会与 GetGroupRateLimit 真正并发地访问同一个 map，
++	// 被 Go 运行时判定为并发读写并终止进程。
++	ModelRequestRateLimitMutex.Lock()
++	defer ModelRequestRateLimitMutex.Unlock()
+ 
+-	ModelRequestRateLimitGroup = make(map[string][2]int)
+-	return json.Unmarshal([]byte(jsonStr), &ModelRequestRateLimitGroup)
++	ModelRequestRateLimitGroup = parsed
++	return nil
+ }
+ 
+ func GetGroupRateLimit(group string) (totalCount, successCount int, found bool) {
+@@ -52,7 +61,7 @@ func GetGroupRateLimit(group string) (totalCount, successCount int, found bool)
+ 
+ func CheckModelRequestRateLimitGroup(jsonStr string) error {
+ 	checkModelRequestRateLimitGroup := make(map[string][2]int)
+-	err := json.Unmarshal([]byte(jsonStr), &checkModelRequestRateLimitGroup)
++	err := common.Unmarshal([]byte(jsonStr), &checkModelRequestRateLimitGroup)
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/setting/rate_limit_test.go b/setting/rate_limit_test.go
+new file mode 100644
+index 00000000000..1e201589c5c
+--- /dev/null
++++ b/setting/rate_limit_test.go
+@@ -0,0 +1,79 @@
++package setting
++
++import (
++	"testing"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func restoreRateLimitGroup(t *testing.T) {
++	t.Helper()
++	ModelRequestRateLimitMutex.RLock()
++	orig := ModelRequestRateLimitGroup
++	ModelRequestRateLimitMutex.RUnlock()
++	t.Cleanup(func() {
++		ModelRequestRateLimitMutex.Lock()
++		ModelRequestRateLimitGroup = orig
++		ModelRequestRateLimitMutex.Unlock()
++	})
++}
++
++// 解析失败必须原样保留正在生效的配置。
++//
++// 原先的写法是先把全局 map 清空再反序列化，非法 JSON 会让限流配置整体失效且不再恢复——
++// 而周期同步路径不经过 CheckModelRequestRateLimitGroup，数据库里的非法值可以直接走到这里。
++func TestUpdateRateLimitGroupKeepsPreviousConfigOnParseError(t *testing.T) {
++	restoreRateLimitGroup(t)
++
++	require.NoError(t, UpdateModelRequestRateLimitGroupByJSONString(`{"default":[100,50],"vip":[200,100]}`))
++
++	require.Error(t, UpdateModelRequestRateLimitGroupByJSONString(`not json`))
++
++	total, success, found := GetGroupRateLimit("default")
++	assert.True(t, found, "解析失败不应清空已生效的限流配置")
++	assert.Equal(t, 100, total)
++	assert.Equal(t, 50, success)
++
++	_, _, found = GetGroupRateLimit("vip")
++	assert.True(t, found)
++}
++
++// 成功的更新必须整体替换，被移除的分组不能残留。
++func TestUpdateRateLimitGroupReplacesRemovedGroups(t *testing.T) {
++	restoreRateLimitGroup(t)
++
++	require.NoError(t, UpdateModelRequestRateLimitGroupByJSONString(`{"default":[100,50],"vip":[200,100]}`))
++	_, _, found := GetGroupRateLimit("vip")
++	require.True(t, found)
++
++	require.NoError(t, UpdateModelRequestRateLimitGroupByJSONString(`{"default":[300,150]}`))
++
++	total, success, found := GetGroupRateLimit("default")
++	assert.True(t, found)
++	assert.Equal(t, 300, total)
++	assert.Equal(t, 150, success)
++
++	_, _, found = GetGroupRateLimit("vip")
++	assert.False(t, found, "被移除的分组应查不到")
++}
++
++func TestGetGroupRateLimitReportsMissingGroup(t *testing.T) {
++	restoreRateLimitGroup(t)
++
++	require.NoError(t, UpdateModelRequestRateLimitGroupByJSONString(`{"default":[100,50]}`))
++
++	total, success, found := GetGroupRateLimit("nonexistent")
++	assert.False(t, found)
++	assert.Zero(t, total)
++	assert.Zero(t, success)
++}
++
++// 序列化形式必须保持不变，否则升级后数据库中已有的行会读不出来。
++func TestRateLimitGroupSerializationRoundTrip(t *testing.T) {
++	restoreRateLimitGroup(t)
++
++	require.NoError(t, UpdateModelRequestRateLimitGroupByJSONString(`{"default":[100,50]}`))
++
++	assert.JSONEq(t, `{"default":[100,50]}`, ModelRequestRateLimitGroup2JSONString())
++}
+diff --git a/setting/user_usable_group.go b/setting/user_usable_group.go
+index eb04b7f3053..4e20f3b275f 100644
+--- a/setting/user_usable_group.go
++++ b/setting/user_usable_group.go
+@@ -1,7 +1,6 @@
+ package setting
+ 
+ import (
+-	"encoding/json"
+ 	"sync"
+ 
+ 	"github.com/QuantumNous/new-api/common"
+@@ -28,7 +27,7 @@ func UserUsableGroups2JSONString() string {
+ 	userUsableGroupsMutex.RLock()
+ 	defer userUsableGroupsMutex.RUnlock()
+ 
+-	jsonBytes, err := json.Marshal(userUsableGroups)
++	jsonBytes, err := common.Marshal(userUsableGroups)
+ 	if err != nil {
+ 		common.SysLog("error marshalling user groups: " + err.Error())
+ 	}
+@@ -36,11 +35,18 @@ func UserUsableGroups2JSONString() string {
+ }
+ 
+ func UpdateUserUsableGroupsByJSONString(jsonStr string) error {
++	// 先在锁外解析到局部 map：解析失败时正在生效的分组配置必须原样保留。
++	// 原先的写法是先清空全局 map 再反序列化，非法 JSON 会让分组配置被清空且不再恢复。
++	parsed := make(map[string]string)
++	if err := common.Unmarshal([]byte(jsonStr), &parsed); err != nil {
++		return err
++	}
++
+ 	userUsableGroupsMutex.Lock()
+ 	defer userUsableGroupsMutex.Unlock()
+ 
+-	userUsableGroups = make(map[string]string)
+-	return json.Unmarshal([]byte(jsonStr), &userUsableGroups)
++	userUsableGroups = parsed
++	return nil
+ }
+ 
+ func GetUsableGroupDescription(groupName string) string {
+diff --git a/setting/user_usable_group_test.go b/setting/user_usable_group_test.go
+new file mode 100644
+index 00000000000..02f79bc044f
+--- /dev/null
++++ b/setting/user_usable_group_test.go
+@@ -0,0 +1,58 @@
++package setting
++
++import (
++	"testing"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func restoreUserUsableGroups(t *testing.T) {
++	t.Helper()
++	orig := GetUserUsableGroupsCopy()
++	t.Cleanup(func() {
++		userUsableGroupsMutex.Lock()
++		userUsableGroups = orig
++		userUsableGroupsMutex.Unlock()
++	})
++}
++
++// 与限流分组同源的缺陷：该函数的锁本身是正确的，但同样先清空再反序列化，
++// 非法 JSON 会让可用分组配置整体失效且不再恢复。触发路径同为周期同步
++// （model/option.go:561），且该路径不经过任何保存前校验。
++func TestUpdateUserUsableGroupsKeepsPreviousConfigOnParseError(t *testing.T) {
++	restoreUserUsableGroups(t)
++
++	require.NoError(t, UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
++
++	require.Error(t, UpdateUserUsableGroupsByJSONString(`not json`))
++
++	groups := GetUserUsableGroupsCopy()
++	assert.Len(t, groups, 2, "解析失败不应清空已生效的分组配置")
++	assert.Equal(t, "默认分组", groups["default"])
++	assert.Equal(t, "vip分组", GetUsableGroupDescription("vip"))
++}
++
++func TestUpdateUserUsableGroupsReplacesRemovedGroups(t *testing.T) {
++	restoreUserUsableGroups(t)
++
++	require.NoError(t, UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`))
++	require.Len(t, GetUserUsableGroupsCopy(), 2)
++
++	require.NoError(t, UpdateUserUsableGroupsByJSONString(`{"default":"默认分组"}`))
++
++	groups := GetUserUsableGroupsCopy()
++	assert.Len(t, groups, 1)
++	assert.NotContains(t, groups, "vip", "被移除的分组应查不到")
++	// 未配置的分组回落为分组名本身
++	assert.Equal(t, "vip", GetUsableGroupDescription("vip"))
++}
++
++// 序列化形式必须保持不变，否则升级后数据库中已有的行会读不出来。
++func TestUserUsableGroupsSerializationRoundTrip(t *testing.T) {
++	restoreUserUsableGroups(t)
++
++	require.NoError(t, UpdateUserUsableGroupsByJSONString(`{"default":"默认分组"}`))
++
++	assert.JSONEq(t, `{"default":"默认分组"}`, UserUsableGroups2JSONString())
++}

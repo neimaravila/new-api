@@ -1,0 +1,95 @@
+From aec301f06caf51af9b303a81f5be27a1e016427d Mon Sep 17 00:00:00 2001
+From: wangjie <345127857@qq.com>
+Date: Wed, 5 Aug 2026 15:23:33 +0800
+Subject: [PATCH] fix(doubao): honor the documented duration field for video
+ tasks
+
+The Doubao video task adaptor only read req.Seconds and ignored the
+duration field documented in the official OpenAPI spec
+(POST /v1/video/generations), so durations passed via duration were
+silently dropped and fell back to the upstream default of 5s.
+
+Make duration take precedence with seconds as a fallback, matching
+the behavior of the ali/sora adaptors. Add unit tests covering
+duration priority, seconds fallback, and unset duration.
+---
+ relay/channel/task/doubao/adaptor.go      |  6 ++-
+ relay/channel/task/doubao/adaptor_test.go | 52 +++++++++++++++++++++++
+ 2 files changed, 57 insertions(+), 1 deletion(-)
+ create mode 100644 relay/channel/task/doubao/adaptor_test.go
+
+diff --git a/relay/channel/task/doubao/adaptor.go b/relay/channel/task/doubao/adaptor.go
+index 69302a67629..99fb3c1d287 100644
+--- a/relay/channel/task/doubao/adaptor.go
++++ b/relay/channel/task/doubao/adaptor.go
+@@ -294,7 +294,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
+ 		return nil, errors.Wrap(err, "unmarshal metadata failed")
+ 	}
+ 
+-	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
++	sec := req.Duration
++	if sec <= 0 {
++		sec, _ = strconv.Atoi(req.Seconds)
++	}
++	if sec > 0 {
+ 		r.Duration = lo.ToPtr(dto.IntValue(sec))
+ 	}
+ 
+diff --git a/relay/channel/task/doubao/adaptor_test.go b/relay/channel/task/doubao/adaptor_test.go
+new file mode 100644
+index 00000000000..56632b10979
+--- /dev/null
++++ b/relay/channel/task/doubao/adaptor_test.go
+@@ -0,0 +1,52 @@
++package doubao
++
++import (
++	"testing"
++
++	relaycommon "github.com/QuantumNous/new-api/relay/common"
++	"github.com/stretchr/testify/require"
++)
++
++func TestConvertToRequestPayloadDurationPrefersDurationField(t *testing.T) {
++	adaptor := &TaskAdaptor{}
++	req := relaycommon.TaskSubmitReq{
++		Model:    "doubao-seedance-2.0",
++		Prompt:   "a cute girl dancing",
++		Duration: 7,
++		Seconds:  "10",
++	}
++
++	payload, err := adaptor.convertToRequestPayload(&req)
++
++	require.NoError(t, err)
++	require.NotNil(t, payload.Duration)
++	require.Equal(t, 7, int(*payload.Duration))
++}
++
++func TestConvertToRequestPayloadDurationFallsBackToSeconds(t *testing.T) {
++	adaptor := &TaskAdaptor{}
++	req := relaycommon.TaskSubmitReq{
++		Model:   "doubao-seedance-2.0",
++		Prompt:  "a cute girl dancing",
++		Seconds: "7",
++	}
++
++	payload, err := adaptor.convertToRequestPayload(&req)
++
++	require.NoError(t, err)
++	require.NotNil(t, payload.Duration)
++	require.Equal(t, 7, int(*payload.Duration))
++}
++
++func TestConvertToRequestPayloadDurationEmptyLeavesUnset(t *testing.T) {
++	adaptor := &TaskAdaptor{}
++	req := relaycommon.TaskSubmitReq{
++		Model:  "doubao-seedance-2.0",
++		Prompt: "a cute girl dancing",
++	}
++
++	payload, err := adaptor.convertToRequestPayload(&req)
++
++	require.NoError(t, err)
++	require.Nil(t, payload.Duration)
++}

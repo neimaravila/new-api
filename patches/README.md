@@ -44,3 +44,21 @@ stale (already-merged) patch can't silently break things.
 - Name: `<PR-number>-<short-slug>.patch` (e.g. `6394-claude-parallel-tool-block.patch`).
 - One PR per file.
 - Prefer small, focused, `mergeable` PRs — large refactors are painful to carry.
+
+## When a PR has several commits
+
+`patch -p1` walks a `.patch` commit by commit, so a PR whose later commits edit
+lines its earlier commits just wrote can fail even though the end state applies
+fine. Download `pull/<NUMBER>.diff` instead — the squashed diff — and save it
+under the same `<PR-number>-<short-slug>.patch` name. That is what
+`6355-claude-cache-creation-split.patch` is.
+
+## Known quirks
+
+- `6302-openai-claude-cached-tokens.patch` applies with fuzz, not an exact
+  match, and it deliberately breaks an upstream golden test:
+  `relaykit/relayconvert` asserts `input_tokens: 10` where the fix yields `7`.
+  The image build does not run tests, so this only shows up in a local
+  `go test ./relayconvert/...`. Upstream's PR head also lives under
+  `service/relayconvert/` paths — re-downloading it means rewriting them to
+  `relaykit/`.
