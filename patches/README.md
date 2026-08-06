@@ -53,6 +53,19 @@ fine. Download `pull/<NUMBER>.diff` instead — the squashed diff — and save i
 under the same `<PR-number>-<short-slug>.patch` name. That is what
 `6355-claude-cache-creation-split.patch` is.
 
+## Reconciled patches
+
+`6629-deepseek-v4-stream-edges.patch` is **not** a plain download. PR #6629 and
+PR #6394 both rewrite the OpenAI→Claude stream lifecycle, so #6629 was
+re-anchored on top of #6394 and regenerated; its commit message records what
+changed and how to redo it. Re-download it and you get the two rejects back.
+
+Acceptance for that pair is both PRs' tests green together:
+
+```bash
+cd relaykit && GOWORK=off go test -count=1 ./relayconvert/internal/oai_chat/
+```
+
 ## Known quirks
 
 - `6302-openai-claude-cached-tokens.patch` applies with fuzz, not an exact

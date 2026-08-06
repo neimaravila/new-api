@@ -1,0 +1,432 @@
+From 14799c906344d7ac0e923aeaa5ad99bc63fffb13 Mon Sep 17 00:00:00 2001
+From: Neimar Avila <neimar.avila@vsgroup.com.br>
+Date: Thu, 6 Aug 2026 00:49:29 -0300
+Subject: [PATCH] fix(relay): handle DeepSeek V4 streaming edge cases in
+ OpenAI->Claude
+
+Upstream PR #6629 (PengJunchen), reconciled onto PR #6394, which we also
+carry. Both rewrite the same OpenAI->Claude stream lifecycle, so two hunks
+could not be taken verbatim:
+
+- convmeta/meta.go: #6394 appends ToolCallOpenIndexes to the same struct
+  tail where #6629 appends HasContentBlock. Both fields are kept.
+- to_claude_messages_resp.go: `state.HasContentBlock = true` on the
+  tool-call branch is re-anchored after #6394's ToolCallOpenIndexes
+  initialisation.
+
+Everything else applies unchanged, and the two fixes turn out to be
+orthogonal: appendEmptyTextFallback only runs when neither a text nor a
+tool_use block was ever emitted, so LastMessagesType is None or Thinking
+on that path and #6394's rewritten LastMessageTypeTools branch of
+stopOpenBlocks is unreachable there.
+
+To refresh: apply the patches sorting before this one, run
+`patch -p1 < 6629.patch` from GitHub, re-anchor the two rejects, and
+regenerate. Acceptance is both PRs' tests green together:
+`cd relaykit && GOWORK=off go test -count=1 ./relayconvert/internal/oai_chat/`
+---
+ relaykit/relayconvert/convmeta/meta.go        |   5 +
+ .../oai_chat/to_claude_messages_resp.go       |  57 ++++-
+ .../oai_chat/to_claude_messages_resp_test.go  | 235 ++++++++++++++++++
+ 3 files changed, 296 insertions(+), 1 deletion(-)
+
+diff --git a/relaykit/relayconvert/convmeta/meta.go b/relaykit/relayconvert/convmeta/meta.go
+index dddbadff..8e0b344e 100644
+--- a/relaykit/relayconvert/convmeta/meta.go
++++ b/relaykit/relayconvert/convmeta/meta.go
+@@ -64,6 +64,11 @@ type ClaudeConvertInfo struct {
+ 	// block indexes; nil outside a tools run. Guards delta/stop so they never
+ 	// target an index without an active content_block_start (#4389).
+ 	ToolCallOpenIndexes map[int]bool
++
++	// HasContentBlock tracks whether any non-thinking content block (text or
++	// tool_use) has been emitted in the stream. Used to detect thinking-only
++	// streams that need an empty text block fallback before message_stop.
++	HasContentBlock bool
+ }
+ 
+ const (
+diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
+index a328e092..9ec715e7 100644
+--- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
++++ b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
+@@ -54,6 +54,41 @@ func stopOpenBlocks(state *convmeta.ClaudeConvertInfo) []*dto.ClaudeResponse {
+ 	}
+ }
+ 
++// appendEmptyTextFallback adds an empty text content block when the stream
++// has not emitted any non-thinking content block (text or tool_use). This
++// handles the case where a reasoning model (e.g. DeepSeek V4-Flash with max
++// reasoning_effort) consumes the entire max_tokens budget on reasoning,
++// leaving content empty. Anthropic's streaming protocol requires at least one
++// non-thinking content block; without it, Claude Code reports an empty or
++// malformed response.
++//
++// Must be called AFTER stopOpenBlocks has closed any open block.
++func appendEmptyTextFallback(state *convmeta.ClaudeConvertInfo, responses []*dto.ClaudeResponse) []*dto.ClaudeResponse {
++	if state == nil || state.HasContentBlock {
++		return responses
++	}
++	// stopOpenBlocks has already advanced the index for thinking blocks, so
++	// state.Index points to the next free slot. For the empty-stream case
++	// (LastMessagesType == None), state.Index is 0.
++	textIndex := state.Index
++	if state.LastMessagesType != convmeta.LastMessageTypeNone {
++		textIndex = state.Index + 1
++	}
++	responses = append(responses,
++		&dto.ClaudeResponse{
++			Index: kitutil.GetPointer[int](textIndex),
++			Type:  "content_block_start",
++			ContentBlock: &dto.ClaudeMediaMessage{
++				Type: "text",
++				Text: kitutil.GetPointer[string](""),
++			},
++		},
++		generateStopBlock(textIndex),
++	)
++	state.HasContentBlock = true
++	return responses
++}
++
+ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
+ 	if oaiUsage == nil {
+ 		return nil
+@@ -177,6 +212,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 			state.ToolCallBaseIndex = 0
+ 			state.ToolCallMaxIndexOffset = 0
+ 			state.ToolCallOpenIndexes = make(map[int]bool)
++			state.HasContentBlock = true
+ 			toolCalls := openAIResponse.Choices[0].Delta.ToolCalls
+ 			if len(toolCalls) == 0 {
+ 				if first := openAIResponse.GetFirstToolCall(); first != nil {
+@@ -256,7 +292,10 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 					},
+ 				})
+ 				state.LastMessagesType = convmeta.LastMessageTypeThinking
+-			} else if content != "" {
++			} else if content != "" && state.LastMessagesType != convmeta.LastMessageTypeTools {
++				// Bug #1: skip text content after tool_use — sglang dsv4 parser
++				// emits trailing content='\n' after tool_use completes, and
++				// Anthropic streaming requires tool_use to be the final block.
+ 				if state.LastMessagesType != convmeta.LastMessageTypeText {
+ 					stopOpenBlocksAndAdvance()
+ 				}
+@@ -279,6 +318,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 					},
+ 				})
+ 				state.LastMessagesType = convmeta.LastMessageTypeText
++				state.HasContentBlock = true
+ 			}
+ 		}
+ 
+@@ -293,6 +333,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 				return claudeResponses
+ 			}
+ 			appendStopOpenBlocks()
++			claudeResponses = appendEmptyTextFallback(state, claudeResponses)
+ 			claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
+ 				Type:  "message_delta",
+ 				Usage: buildClaudeUsageFromOpenAIUsage(oaiUsage),
+@@ -316,6 +357,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 		}
+ 		if oaiUsage != nil {
+ 			appendStopOpenBlocks()
++			claudeResponses = appendEmptyTextFallback(state, claudeResponses)
+ 			stopReason := stopReasonOpenAI2Claude(state.FinishReason)
+ 			if stopReason == "" {
+ 				stopReason = "end_turn"
+@@ -359,6 +401,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 				state.ToolCallOpenIndexes = make(map[int]bool)
+ 			}
+ 			state.LastMessagesType = convmeta.LastMessageTypeTools
++			state.HasContentBlock = true
+ 			base := state.ToolCallBaseIndex
+ 			maxOffset := state.ToolCallMaxIndexOffset
+ 
+@@ -415,6 +458,15 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 		} else {
+ 			reasoning := chosenChoice.Delta.GetReasoningContent()
+ 			textContent := chosenChoice.Delta.GetContentString()
++			// Bug #1: Discard trailing text-only chunks emitted after tool_use
++			// by some upstreams (e.g. DeepSeek V4 via sglang dsv4 parser emits
++			// content='\n' after tool_calls). A text block after tool_use
++			// violates Anthropic's streaming content-block lifecycle and
++			// triggers "Content block not found" in Claude Code. Reasoning
++			// content is still allowed since it switches to a thinking block.
++			if reasoning == "" && textContent != "" && state.LastMessagesType == convmeta.LastMessageTypeTools {
++				textContent = ""
++			}
+ 			if reasoning != "" || textContent != "" {
+ 				if reasoning != "" {
+ 					if state.LastMessagesType != convmeta.LastMessageTypeThinking {
+@@ -448,6 +500,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 						})
+ 					}
+ 					state.LastMessagesType = convmeta.LastMessageTypeText
++					state.HasContentBlock = true
+ 					claudeResponse.Delta = &dto.ClaudeMediaMessage{
+ 						Type: "text_delta",
+ 						Text: kitutil.GetPointer[string](textContent),
+@@ -465,6 +518,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 
+ 		if doneChunk || state.Done {
+ 			appendStopOpenBlocks()
++			claudeResponses = appendEmptyTextFallback(state, claudeResponses)
+ 			oaiUsage := openAIResponse.Usage
+ 			if oaiUsage == nil {
+ 				oaiUsage = state.Usage
+@@ -503,6 +557,7 @@ func FinalizeStreamResponseOpenAI2Claude(info convmeta.Meta) []*dto.ClaudeRespon
+ 		stopReason = "end_turn"
+ 	}
+ 	responses := stopOpenBlocks(state)
++	responses = appendEmptyTextFallback(state, responses)
+ 	responses = append(responses,
+ 		&dto.ClaudeResponse{
+ 			Type:  "message_delta",
+diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
+index 2f75be3b..40560fa0 100644
+--- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
++++ b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp_test.go
+@@ -374,3 +374,238 @@ func TestStreamResponseOpenAI2ClaudeReplayedToolNameDoesNotDuplicateStart(t *tes
+ func ptr[T any](value T) *T {
+ 	return &value
+ }
++
++// TestStreamResponseOpenAI2ClaudeDiscardsTrailingTextAfterToolUse verifies
++// Bug #1: sglang dsv4 parser emits trailing content='\n' after tool_use
++// completes. Anthropic streaming requires tool_use to be the final content
++// block, so the trailing text must be discarded, not opened as a new text
++// block. Without this fix Claude Code reports "Content block not found".
++func TestStreamResponseOpenAI2ClaudeDiscardsTrailingTextAfterToolUse(t *testing.T) {
++	info := &convmeta.Values{
++		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{
++			LastMessagesType: convmeta.LastMessageTypeNone,
++		},
++	}
++
++	// Chunk 1: text content
++	info.SendResponseCount = 1
++	textResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Content: ptr("Let me check the weather.")}},
++		},
++	}, info)
++	require.Len(t, textResponses, 3)
++	assert.Equal(t, "message_start", textResponses[0].Type)
++	assert.Equal(t, "content_block_start", textResponses[1].Type)
++	assert.Equal(t, "text", textResponses[1].ContentBlock.Type)
++
++	// Chunk 2: tool_use
++	info.SendResponseCount = 2
++	toolResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
++				ToolCalls: []dto.ToolCallResponse{
++					{Index: ptr(0), ID: "call_1", Type: "function",
++						Function: dto.FunctionResponse{Name: "get_weather", Arguments: `{"city":"Shanghai"}`}},
++				},
++			}},
++		},
++	}, info)
++	require.True(t, len(toolResponses) >= 2)
++	assert.Equal(t, "content_block_stop", toolResponses[0].Type)
++	assert.Equal(t, 0, toolResponses[0].GetIndex())
++	assert.Equal(t, "content_block_start", toolResponses[1].Type)
++	assert.Equal(t, "tool_use", toolResponses[1].ContentBlock.Type)
++
++	// Chunk 3: trailing content='\n' from sglang dsv4 — must be DISCARDED
++	info.SendResponseCount = 3
++	trailingResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Content: ptr("\n")}},
++		},
++	}, info)
++	assert.Empty(t, trailingResponses, "trailing text after tool_use must be discarded")
++
++	// Chunk 4: finish_reason=tool_calls + usage
++	info.SendResponseCount = 4
++	finishResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{FinishReason: ptr("tool_calls")},
++		},
++		Usage: &dto.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
++	}, info)
++	require.True(t, len(finishResponses) >= 2)
++	assert.Equal(t, "content_block_stop", finishResponses[0].Type)
++	assert.Equal(t, 1, finishResponses[0].GetIndex(), "should close tool_use at index 1")
++	assert.Equal(t, "message_delta", finishResponses[1].Type)
++	require.NotNil(t, finishResponses[1].Delta.StopReason)
++	assert.Equal(t, "tool_use", *finishResponses[1].Delta.StopReason)
++}
++
++// TestStreamResponseOpenAI2ClaudeAppendsEmptyTextForThinkingOnlyStream
++// verifies Bug #2: DeepSeek V4-Flash with max reasoning_effort can consume
++// the entire max_tokens budget on reasoning (finish_reason=length, content
++// empty). The stream then has only thinking blocks and no text/tool_use
++// block, which Claude Code rejects as empty/malformed. The fix appends an
++// empty text block as fallback.
++func TestStreamResponseOpenAI2ClaudeAppendsEmptyTextForThinkingOnlyStream(t *testing.T) {
++	info := &convmeta.Values{
++		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{
++			LastMessagesType: convmeta.LastMessageTypeNone,
++		},
++	}
++
++	// Chunk 1: reasoning content (thinking)
++	info.SendResponseCount = 1
++	thinkingResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ReasoningContent: ptr("thinking hard...")}},
++		},
++	}, info)
++	require.True(t, len(thinkingResponses) >= 3)
++	assert.Equal(t, "message_start", thinkingResponses[0].Type)
++	assert.Equal(t, "content_block_start", thinkingResponses[1].Type)
++	assert.Equal(t, "thinking", thinkingResponses[1].ContentBlock.Type)
++
++	// Chunk 2: more reasoning
++	info.SendResponseCount = 2
++	moreThinking := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ReasoningContent: ptr("still thinking...")}},
++		},
++	}, info)
++	require.Len(t, moreThinking, 1)
++	assert.Equal(t, "content_block_delta", moreThinking[0].Type)
++
++	// Chunk 3: finish_reason=length + usage (all budget consumed by thinking)
++	info.SendResponseCount = 3
++	finishResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{FinishReason: ptr("length")},
++		},
++		Usage: &dto.Usage{PromptTokens: 10, CompletionTokens: 2000, TotalTokens: 2010},
++	}, info)
++
++	// Bug #2 fix: empty text block appended after thinking block.
++	// Sequence: content_block_stop(0) → content_block_start(1, text) →
++	//           content_block_stop(1) → message_delta → message_stop
++	require.Len(t, finishResponses, 5)
++	assert.Equal(t, "content_block_stop", finishResponses[0].Type)
++	assert.Equal(t, 0, finishResponses[0].GetIndex(), "close thinking at index 0")
++	assert.Equal(t, "content_block_start", finishResponses[1].Type)
++	assert.Equal(t, 1, finishResponses[1].GetIndex(), "empty text at index 1")
++	require.NotNil(t, finishResponses[1].ContentBlock)
++	assert.Equal(t, "text", finishResponses[1].ContentBlock.Type)
++	assert.Equal(t, "content_block_stop", finishResponses[2].Type)
++	assert.Equal(t, 1, finishResponses[2].GetIndex(), "close empty text at index 1")
++	assert.Equal(t, "message_delta", finishResponses[3].Type)
++	require.NotNil(t, finishResponses[3].Delta.StopReason)
++	assert.Equal(t, "max_tokens", *finishResponses[3].Delta.StopReason)
++	assert.Equal(t, "message_stop", finishResponses[4].Type)
++}
++
++// TestFinalizeStreamResponseOpenAI2ClaudeAppendsEmptyTextForThinkingOnly
++// verifies Bug #2 fix in the Finalize path (stream ended without
++// finish_reason, e.g. upstream connection drop during thinking).
++func TestFinalizeStreamResponseOpenAI2ClaudeAppendsEmptyTextForThinkingOnly(t *testing.T) {
++	info := &convmeta.Values{
++		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{
++			LastMessagesType: convmeta.LastMessageTypeNone,
++		},
++	}
++
++	// Chunk 1: reasoning only
++	info.SendResponseCount = 1
++	StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ReasoningContent: ptr("thinking...")}},
++		},
++	}, info)
++
++	// Stream ends without finish_reason — Finalize is called
++	finalResponses := FinalizeStreamResponseOpenAI2Claude(info)
++	// Sequence: content_block_stop(0) → content_block_start(1, text) →
++	//           content_block_stop(1) → message_delta → message_stop
++	require.Len(t, finalResponses, 5)
++	assert.Equal(t, "content_block_stop", finalResponses[0].Type)
++	assert.Equal(t, 0, finalResponses[0].GetIndex())
++	assert.Equal(t, "content_block_start", finalResponses[1].Type)
++	assert.Equal(t, 1, finalResponses[1].GetIndex())
++	assert.Equal(t, "text", finalResponses[1].ContentBlock.Type)
++	assert.Equal(t, "content_block_stop", finalResponses[2].Type)
++	assert.Equal(t, 1, finalResponses[2].GetIndex())
++	assert.Equal(t, "message_delta", finalResponses[3].Type)
++	assert.Equal(t, "message_stop", finalResponses[4].Type)
++}
++
++// TestStreamResponseOpenAI2ClaudeThinkingThenTextDoesNotGetFallback is a
++// negative test for Bug #2: when a stream has thinking followed by actual
++// text content, no empty text fallback should be appended. The HasContentBlock
++// flag prevents false-positive fallback insertion.
++func TestStreamResponseOpenAI2ClaudeThinkingThenTextDoesNotGetFallback(t *testing.T) {
++	info := &convmeta.Values{
++		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{
++			LastMessagesType: convmeta.LastMessageTypeNone,
++		},
++	}
++
++	// Chunk 1: reasoning
++	info.SendResponseCount = 1
++	StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ReasoningContent: ptr("Thinking...")}},
++		},
++	}, info)
++	assert.False(t, info.ClaudeConvertInfo.HasContentBlock, "thinking alone should not set HasContentBlock")
++
++	// Chunk 2: text content
++	info.SendResponseCount = 2
++	StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Content: ptr("Hello!")}},
++		},
++	}, info)
++	assert.True(t, info.ClaudeConvertInfo.HasContentBlock, "text content should set HasContentBlock")
++
++	// Chunk 3: finish
++	info.SendResponseCount = 3
++	finishResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
++		Id:    "chatcmpl_1",
++		Model: "deepseek-v4-flash",
++		Choices: []dto.ChatCompletionsStreamResponseChoice{
++			{FinishReason: ptr("stop")},
++		},
++		Usage: &dto.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
++	}, info)
++	require.NotEmpty(t, finishResponses)
++
++	// Count text blocks — should be 0 in finishResponses (the real text block
++	// was already opened in chunk 2; finish only closes it).
++	textStartCount := 0
++	for _, r := range finishResponses {
++		if r.Type == "content_block_start" && r.ContentBlock != nil && r.ContentBlock.Type == "text" {
++			textStartCount++
++		}
++	}
++	assert.Equal(t, 0, textStartCount, "no fallback text block should be added when content already exists")
++}
+-- 
+2.50.1 (Apple Git-155)
+
