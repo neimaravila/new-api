@@ -49,6 +49,9 @@ token.expired: "Este token expirou"
 token.exhausted: "A cota deste token está esgotada TokenStatusExhausted[sk-{{.Prefix}}***{{.Suffix}}]"
 token.status_unavailable: "O status deste token está indisponível"
 token.db_error: "Token inválido, erro de consulta ao banco de dados, entre em contato com o administrador"
+token.auto_groups_too_many: "Um token pode selecionar no máximo {{.Max}} grupos Auto"
+token.auto_groups_duplicate: "O grupo Auto {{.Group}} está duplicado"
+token.auto_groups_invalid: "O grupo Auto {{.Group}} está indisponível ou não autorizado"
 
 # Redemption messages
 redemption.name_length: "O comprimento do nome do código de resgate deve estar entre 1 e 20"
