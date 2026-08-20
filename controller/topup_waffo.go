@@ -123,8 +123,11 @@ func RequestWaffoAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("top-up amount cannot be less than %d", waffoMinTopup)})
 		return
 	}
-
 	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+		return
+	}
+
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "failed to get user group"})
@@ -157,8 +160,11 @@ func RequestWaffoPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("top-up amount cannot be less than %d", waffoMinTopup)})
 		return
 	}
-
 	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+		return
+	}
+
 	user, err := model.GetUserById(id, false)
 	if err != nil || user == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "user does not exist"})

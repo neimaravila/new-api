@@ -18,11 +18,23 @@ curl -sL https://github.com/QuantumNous/new-api/pull/<NUMBER>.patch \
   -o patches/<NUMBER>-<short-slug>.patch
 
 # 2. verify it applies cleanly on our current code
-patch -p1 --dry-run < patches/<NUMBER>-<short-slug>.patch
+patch -p1 --dry-run --force < patches/<NUMBER>-<short-slug>.patch
 
 # 3. rebuild — the build applies it automatically
 docker compose -f docker-compose.yml -f docker-compose.prod-local.yml up -d --build new-api
 ```
+
+## Verifying locally on macOS
+
+Pass `--force` when you dry-run by hand. Apple's `patch` (BSD 2.0-12u11) detects
+an already-applied patch, prints `Reversed (or previously applied) patch
+detected!  Assume -R? [y]`, and **exits 0** — so a patch that is already merged
+upstream looks like it applied cleanly. `--force` turns that into the honest
+failure. `git apply --check` is stricter still, but it rejects the patches we
+carry that only apply with fuzz, so it is a second opinion, not the gate.
+
+The real gate is the image build: Alpine's GNU `patch` exits non-zero on a
+failed hunk, which is what `apply-patches.sh` relies on.
 
 ## Removing a patch after it's merged upstream
 

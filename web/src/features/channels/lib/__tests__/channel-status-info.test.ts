@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { describe, expect, test } from 'vitest'
 
 import { parseChannelStatusInfo } from '../channel-status-info'
 
@@ -25,36 +24,33 @@ const empty = { statusReason: '', statusTime: null }
 
 describe('parseChannelStatusInfo', () => {
   test('reads both fields', () => {
-    assert.deepEqual(
-      parseChannelStatusInfo('{"status_reason":"401 unauthorized","status_time":1700000000}'),
-      { statusReason: '401 unauthorized', statusTime: 1700000000 }
-    )
+    expect(parseChannelStatusInfo('{"status_reason":"401 unauthorized","status_time":1700000000}')).toStrictEqual({ statusReason: '401 unauthorized', statusTime: 1700000000 })
   })
 
   test('returns empty for an empty string', () => {
-    assert.deepEqual(parseChannelStatusInfo(''), empty)
+    expect(parseChannelStatusInfo('')).toStrictEqual(empty)
   })
 
   test('returns empty for undefined', () => {
-    assert.deepEqual(parseChannelStatusInfo(undefined), empty)
+    expect(parseChannelStatusInfo(undefined)).toStrictEqual(empty)
   })
 
   test('returns empty for malformed JSON instead of throwing', () => {
-    assert.deepEqual(parseChannelStatusInfo('{"status_reason":'), empty)
+    expect(parseChannelStatusInfo('{"status_reason":')).toStrictEqual(empty)
   })
 
   test('returns empty for JSON that is not an object', () => {
-    assert.deepEqual(parseChannelStatusInfo('"just a string"'), empty)
+    expect(parseChannelStatusInfo('"just a string"')).toStrictEqual(empty)
   })
 
   test('tolerates a missing status_reason', () => {
-    assert.deepEqual(parseChannelStatusInfo('{"status_time":1700000000}'), {
+    expect(parseChannelStatusInfo('{"status_time":1700000000}')).toStrictEqual({
       statusReason: '',
       statusTime: 1700000000,
     })
   })
 
   test('ignores a non-numeric status_time', () => {
-    assert.deepEqual(parseChannelStatusInfo('{"status_time":"yesterday"}'), empty)
+    expect(parseChannelStatusInfo('{"status_time":"yesterday"}')).toStrictEqual(empty)
   })
 })

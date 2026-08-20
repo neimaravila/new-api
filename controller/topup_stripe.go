@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhook"
@@ -47,10 +48,17 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("top-up amount cannot be less than %d", getStripeMinTopup())})
 		return
 	}
+	if req.Amount > 10000 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "top-up amount cannot be greater than 10000"})
+		return
+	}
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "failed to get user group"})
+		return
+	}
+	if rejectInvalidCreditedQuota(c, id, getStripeCreditedQuota(req.Amount, group)) {
 		return
 	}
 	payMoney := getStripePayMoney(float64(req.Amount), group)
@@ -86,8 +94,17 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, err := model.GetUserById(id, false)
+	if err != nil || user == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "user does not exist"})
+		return
+	}
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
+	if rejectInvalidCreditedQuota(c, id,
+		decimal.NewFromFloat(chargedMoney).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+	) {
+		return
+	}
 
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
@@ -392,6 +409,16 @@ func GetChargedAmount(count float64, user model.User) float64 {
 	}
 
 	return count * topUpGroupRatio
+}
+
+func getStripeCreditedQuota(amount int64, group string) decimal.Decimal {
+	topUpGroupRatio := common.GetTopupGroupRatio(group)
+	if topUpGroupRatio == 0 {
+		topUpGroupRatio = 1
+	}
+	return decimal.NewFromInt(amount).
+		Mul(decimal.NewFromFloat(topUpGroupRatio)).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 }
 
 func getStripePayMoney(amount float64, group string) float64 {

@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { describe, expect, test } from 'vitest'
 
 import { QueryClient } from '@tanstack/react-query'
 
@@ -26,18 +25,15 @@ import { channelsQueryKeys, isChannelOpsQueryKey } from '../channel-actions'
 
 describe('isChannelOpsQueryKey', () => {
   test('matches channelsQueryKeys.ops()', () => {
-    assert.equal(isChannelOpsQueryKey(channelsQueryKeys.ops()), true)
+    expect(isChannelOpsQueryKey(channelsQueryKeys.ops())).toBe(true)
   })
 
   test('does not match a list() key, whose third element is a params object', () => {
-    assert.equal(
-      isChannelOpsQueryKey(channelsQueryKeys.list({ status: 'enabled' })),
-      false
-    )
+    expect(isChannelOpsQueryKey(channelsQueryKeys.list({ status: 'enabled' }))).toBe(false)
   })
 
   test('does not match the bare lists() prefix', () => {
-    assert.equal(isChannelOpsQueryKey(channelsQueryKeys.lists()), false)
+    expect(isChannelOpsQueryKey(channelsQueryKeys.lists())).toBe(false)
   })
 })
 
@@ -101,12 +97,12 @@ describe('setQueriesData scoped to lists() and the ops entry', () => {
     queryClient.setQueryData(listKey, listPayload)
     queryClient.setQueryData(opsKey, opsPayload)
 
-    assert.throws(() => {
+    expect(() => {
       queryClient.setQueriesData<GetChannelsResponse>(
         { queryKey: channelsQueryKeys.lists() },
         listShapedUpdater
       )
-    })
+    }).toThrow()
   })
 
   test('with the predicate, the ops entry is excluded and the list entry still updates', () => {
@@ -114,7 +110,7 @@ describe('setQueriesData scoped to lists() and the ops entry', () => {
     queryClient.setQueryData(listKey, listPayload)
     queryClient.setQueryData(opsKey, opsPayload)
 
-    assert.doesNotThrow(() => {
+    expect(() => {
       queryClient.setQueriesData<GetChannelsResponse>(
         {
           queryKey: channelsQueryKeys.lists(),
@@ -122,14 +118,14 @@ describe('setQueriesData scoped to lists() and the ops entry', () => {
         },
         listShapedUpdater
       )
-    })
+    }).not.toThrow()
 
     // The ops entry was never handed to the updater, so it is byte-for-byte
     // the same object we seeded.
-    assert.equal(queryClient.getQueryData(opsKey), opsPayload)
+    expect(queryClient.getQueryData(opsKey)).toBe(opsPayload)
 
     // The list entry, in contrast, did go through the updater.
     const updatedList = queryClient.getQueryData<GetChannelsResponse>(listKey)
-    assert.equal(updatedList?.data?.items[0]?.test_time, 999)
+    expect(updatedList?.data?.items[0]?.test_time).toBe(999)
   })
 })

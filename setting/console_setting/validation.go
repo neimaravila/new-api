@@ -1,13 +1,15 @@
 package console_setting
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf16"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 var (
@@ -24,10 +26,14 @@ var (
 
 func parseJSONArray(jsonStr string, typeName string) ([]map[string]interface{}, error) {
 	var list []map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &list); err != nil {
+	if err := common.UnmarshalJsonStr(jsonStr, &list); err != nil {
 		return nil, fmt.Errorf("%s invalid format: %s", typeName, err.Error())
 	}
 	return list, nil
+}
+
+func exceedsMaxCharacters(s string, max int) bool {
+	return len(utf16.Encode([]rune(s))) > max
 }
 
 func validateURL(urlStr string, index int, itemType string) error {
@@ -55,7 +61,7 @@ func getJSONList(jsonStr string) []map[string]interface{} {
 		return []map[string]interface{}{}
 	}
 	var list []map[string]interface{}
-	json.Unmarshal([]byte(jsonStr), &list)
+	_ = common.UnmarshalJsonStr(jsonStr, &list)
 	return list
 }
 
@@ -110,13 +116,13 @@ func validateApiInfo(apiInfoStr string) error {
 			return err
 		}
 
-		if len(urlStr) > 500 {
+		if exceedsMaxCharacters(urlStr, 500) {
 			return fmt.Errorf("API info item #%d URL length cannot exceed 500 characters", i+1)
 		}
-		if len(route) > 100 {
+		if exceedsMaxCharacters(route, 100) {
 			return fmt.Errorf("API info item #%d route description length cannot exceed 100 characters", i+1)
 		}
-		if len(description) > 200 {
+		if exceedsMaxCharacters(description, 200) {
 			return fmt.Errorf("API info item #%d description length cannot exceed 200 characters", i+1)
 		}
 
@@ -172,12 +178,12 @@ func validateAnnouncements(announcementsStr string) error {
 				}
 			}
 		}
-		if len(content) > 500 {
+		if exceedsMaxCharacters(content, 500) {
 			return fmt.Errorf("announcement item #%d content length cannot exceed 500 characters", i+1)
 		}
 		if extra, exists := ann["extra"]; exists {
-			if extraStr, ok := extra.(string); ok && len(extraStr) > 200 {
-				return fmt.Errorf("announcement item #%d description length cannot exceed 200 characters", i+1)
+			if extraStr, ok := extra.(string); ok && exceedsMaxCharacters(extraStr, 100) {
+				return fmt.Errorf("announcement item #%d description length cannot exceed 100 characters", i+1)
 			}
 		}
 	}
@@ -201,10 +207,10 @@ func validateFAQ(faqStr string) error {
 		if !ok || answer == "" {
 			return fmt.Errorf("FAQ item #%d is missing the answer field", i+1)
 		}
-		if len(question) > 200 {
+		if exceedsMaxCharacters(question, 200) {
 			return fmt.Errorf("FAQ item #%d question length cannot exceed 200 characters", i+1)
 		}
-		if len(answer) > 1000 {
+		if exceedsMaxCharacters(answer, 1000) {
 			return fmt.Errorf("FAQ item #%d answer length cannot exceed 1000 characters", i+1)
 		}
 	}
@@ -272,16 +278,16 @@ func validateUptimeKumaGroups(groupsStr string) error {
 			return err
 		}
 
-		if len(categoryName) > 50 {
+		if exceedsMaxCharacters(categoryName, 50) {
 			return fmt.Errorf("group item #%d category name length cannot exceed 50 characters", i+1)
 		}
-		if len(urlStr) > 500 {
+		if exceedsMaxCharacters(urlStr, 500) {
 			return fmt.Errorf("group item #%d URL length cannot exceed 500 characters", i+1)
 		}
-		if len(slug) > 100 {
+		if exceedsMaxCharacters(slug, 100) {
 			return fmt.Errorf("group item #%d Slug length cannot exceed 100 characters", i+1)
 		}
-		if len(description) > 200 {
+		if exceedsMaxCharacters(description, 200) {
 			return fmt.Errorf("group item #%d description length cannot exceed 200 characters", i+1)
 		}
 

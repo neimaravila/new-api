@@ -16,47 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Window } from 'happy-dom'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StubVChart } from './vchart-stub'
-
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-  'history',
-  'location',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
 
 beforeEach(() => {
   document.body.replaceChildren()
 })
 
-afterAll(() => {
-  domWindow.close()
-})
-
 // Stub out @visactor/react-vchart so the canvas-backed chart never mounts under
-// happy-dom once `ReportChart`'s async theme import resolves. Only that
+// jsdom once `ReportChart`'s async theme import resolves. Only that
 // third-party boundary is mocked: the panels and `ReportChart` itself stay real.
 vi.mock('@visactor/react-vchart', () => ({ VChart: StubVChart }))
 
@@ -96,7 +65,7 @@ function trendPoint(bucketTimestamp: number, bucketLabel: string) {
 
 describe('report sub-panels', () => {
   it('renders one table row per model with its cost', async () => {
-    const { queryByText, getAllByRole, findByTestId } = renderNode(
+    const { getAllByRole, findByTestId } = renderNode(
       <ReportModelPanel
         loading={false}
         models={[
@@ -109,9 +78,14 @@ describe('report sub-panels', () => {
     // The panel renders a chart next to the table; waiting for it also lets the
     // chart's async theme setup settle before the test ends.
     expect(await findByTestId('chart-spec')).not.toBeNull()
-    expect(getAllByRole('row')).toHaveLength(3)
-    expect(queryByText('gpt-4o')).not.toBeNull()
-    expect(queryByText(formatQuota(350))).not.toBeNull()
+    const rows = getAllByRole('row')
+    expect(rows).toHaveLength(3)
+    // Read the cells instead of querying by text: Intl renders the currency with
+    // a non-breaking space, which testing-library normalises away in the DOM but
+    // not in the expected string, so a text query never matches.
+    const cells = within(rows[1]).getAllByRole('cell').map((cell) => cell.textContent)
+    expect(cells).toContain('gpt-4o')
+    expect(cells).toContain(formatQuota(350))
   })
 
   it('renders an empty state when there are no models', () => {
@@ -137,7 +111,7 @@ describe('report sub-panels', () => {
   })
 
   it('channel panel (admin) lists channels with cost and error rate', () => {
-    const { queryByText, getAllByRole } = renderNode(
+    const { getAllByRole } = renderNode(
       <ReportChannelPanel
         loading={false}
         channels={[
@@ -145,9 +119,11 @@ describe('report sub-panels', () => {
         ]}
       />
     )
-    expect(queryByText('OpenAI')).not.toBeNull()
-    expect(queryByText(formatQuota(500))).not.toBeNull()
-    expect(getAllByRole('row')).toHaveLength(2)
+    const rows = getAllByRole('row')
+    expect(rows).toHaveLength(2)
+    const cells = within(rows[1]).getAllByRole('cell').map((cell) => cell.textContent)
+    expect(cells).toContain('OpenAI')
+    expect(cells).toContain(formatQuota(500))
   })
 
   it('trend panel names the selected metric and repeats every bucket as text', async () => {

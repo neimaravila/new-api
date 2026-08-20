@@ -104,25 +104,14 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 			webSearchAdded = true
 			continue // será adicionada como server-tool abaixo
 		}
-		if params, ok := tool.Function.Parameters.(map[string]any); ok {
-			claudeTool := dto.Tool{
-				Name:        tool.Function.Name,
-				Description: tool.Function.Description,
-			}
-			claudeTool.InputSchema = make(map[string]interface{})
-			if params["type"] != nil {
-				claudeTool.InputSchema["type"] = params["type"].(string)
-			}
-			claudeTool.InputSchema["properties"] = params["properties"]
-			claudeTool.InputSchema["required"] = params["required"]
-			for key, value := range params {
-				if key == "type" || key == "properties" || key == "required" {
-					continue
-				}
-				claudeTool.InputSchema[key] = value
-			}
-			claudeTools = append(claudeTools, &claudeTool)
+		if _, ok := tool.Function.Parameters.(map[string]any); !ok && tool.Type != "function" {
+			continue
 		}
+		claudeTools = append(claudeTools, &dto.Tool{
+			Name:        tool.Function.Name,
+			Description: tool.Function.Description,
+			InputSchema: sharedclaude.FunctionParametersToInputSchema(tool.Function.Parameters),
+		})
 	}
 
 	// Server-tool web_search: ativada por web_search_options (caminho OpenAI) ou
@@ -139,7 +128,9 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		Model:         textRequest.Model,
 		StopSequences: nil,
 		Temperature:   textRequest.Temperature,
-		Tools:         claudeTools,
+	}
+	if len(claudeTools) > 0 {
+		claudeRequest.Tools = claudeTools
 	}
 	if maxTokens := textRequest.GetMaxTokens(); maxTokens > 0 {
 		claudeRequest.MaxTokens = kitutil.GetPointer(maxTokens)

@@ -16,10 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
-
 import type { TFunction } from 'i18next'
+import { describe, expect, test } from 'vitest'
 
 import {
   healthTileFilterPatch,
@@ -48,11 +46,11 @@ const healthy = {
 
 describe('resolveHealthStripState', () => {
   test('hides the strip when the summary is missing', () => {
-    assert.deepEqual(resolveHealthStripState(undefined), { kind: 'hidden' })
+    expect(resolveHealthStripState(undefined)).toStrictEqual({ kind: 'hidden' })
   })
 
   test('collapses to a single line when nothing is wrong', () => {
-    assert.deepEqual(resolveHealthStripState(healthy), {
+    expect(resolveHealthStripState(healthy)).toStrictEqual({
       kind: 'calm',
       total: 18,
     })
@@ -60,8 +58,8 @@ describe('resolveHealthStripState', () => {
 
   test('shows every tile when any bucket is non-empty', () => {
     const state = resolveHealthStripState({ ...healthy, active: 12, slow: 3 })
-    assert.equal(state.kind, 'alert')
-    assert.deepEqual(state.kind === 'alert' ? state.tiles : [], [
+    expect(state.kind).toBe('alert')
+    expect(state.kind === 'alert' ? state.tiles : []).toStrictEqual([
       { id: 'active', count: 12 },
       { id: 'disabled', count: 0 },
       { id: 'slow', count: 3 },
@@ -71,12 +69,12 @@ describe('resolveHealthStripState', () => {
 
   test('a lone untested channel is enough to expand the strip', () => {
     const state = resolveHealthStripState({ ...healthy, untested: 1 })
-    assert.equal(state.kind, 'alert')
+    expect(state.kind).toBe('alert')
   })
 
   test('an instance with no channels at all stays collapsed', () => {
     const state = resolveHealthStripState({ ...healthy, active: 0 })
-    assert.deepEqual(state, { kind: 'calm', total: 0 })
+    expect(state).toStrictEqual({ kind: 'calm', total: 0 })
   })
 })
 
@@ -84,82 +82,81 @@ const noTiles: ActiveHealthTiles = { status: null, health: null }
 
 describe('resolveActiveHealthTiles', () => {
   test('both dimensions are null when neither filter is set', () => {
-    assert.deepEqual(resolveActiveHealthTiles([], undefined), noTiles)
+    expect(resolveActiveHealthTiles([], undefined)).toStrictEqual(noTiles)
   })
 
   test('reads enabled/disabled status filters as active/disabled', () => {
-    assert.deepEqual(resolveActiveHealthTiles(['enabled'], undefined), {
+    expect(resolveActiveHealthTiles(['enabled'], undefined)).toStrictEqual({
       status: 'active',
       health: null,
     })
-    assert.deepEqual(resolveActiveHealthTiles(['disabled'], undefined), {
+    expect(resolveActiveHealthTiles(['disabled'], undefined)).toStrictEqual({
       status: 'disabled',
       health: null,
     })
   })
 
   test('reads the health filter as the slow/untested tile', () => {
-    assert.deepEqual(resolveActiveHealthTiles([], 'slow'), {
+    expect(resolveActiveHealthTiles([], 'slow')).toStrictEqual({
       status: null,
       health: 'slow',
     })
-    assert.deepEqual(resolveActiveHealthTiles([], 'untested'), {
+    expect(resolveActiveHealthTiles([], 'untested')).toStrictEqual({
       status: null,
       health: 'untested',
     })
   })
 
   test('a status tile and a health tile are both active together', () => {
-    assert.deepEqual(resolveActiveHealthTiles(['disabled'], 'untested'), {
+    expect(resolveActiveHealthTiles(['disabled'], 'untested')).toStrictEqual({
       status: 'disabled',
       health: 'untested',
     })
   })
 
   test('both dimensions are null for filter values the strip never writes', () => {
-    assert.deepEqual(resolveActiveHealthTiles(['all'], undefined), noTiles)
-    assert.deepEqual(
-      resolveActiveHealthTiles(['enabled', 'disabled'], undefined),
-      noTiles
-    )
+    expect(resolveActiveHealthTiles(['all'], undefined)).toStrictEqual(noTiles)
+    expect(
+      resolveActiveHealthTiles(['enabled', 'disabled'], undefined)
+    ).toStrictEqual(noTiles)
   })
 })
 
 describe('isHealthTileActive', () => {
   test('matches the status dimension for active/disabled, not each other', () => {
     const tiles: ActiveHealthTiles = { status: 'disabled', health: null }
-    assert.equal(isHealthTileActive('disabled', tiles), true)
-    assert.equal(isHealthTileActive('active', tiles), false)
+    expect(isHealthTileActive('disabled', tiles)).toBe(true)
+    expect(isHealthTileActive('active', tiles)).toBe(false)
   })
 
   test('matches the health dimension for slow/untested, not each other', () => {
     const tiles: ActiveHealthTiles = { status: null, health: 'untested' }
-    assert.equal(isHealthTileActive('untested', tiles), true)
-    assert.equal(isHealthTileActive('slow', tiles), false)
+    expect(isHealthTileActive('untested', tiles)).toBe(true)
+    expect(isHealthTileActive('slow', tiles)).toBe(false)
   })
 
   test('a status tile and a health tile can both read active', () => {
     const tiles: ActiveHealthTiles = { status: 'disabled', health: 'untested' }
-    assert.equal(isHealthTileActive('disabled', tiles), true)
-    assert.equal(isHealthTileActive('untested', tiles), true)
+    expect(isHealthTileActive('disabled', tiles)).toBe(true)
+    expect(isHealthTileActive('untested', tiles)).toBe(true)
   })
 })
 
 describe('healthTileFilterPatch', () => {
   test('active and disabled write the status filter', () => {
-    assert.deepEqual(healthTileFilterPatch('active', noTiles), {
+    expect(healthTileFilterPatch('active', noTiles)).toStrictEqual({
       status: ['enabled'],
     })
-    assert.deepEqual(healthTileFilterPatch('disabled', noTiles), {
+    expect(healthTileFilterPatch('disabled', noTiles)).toStrictEqual({
       status: ['disabled'],
     })
   })
 
   test('slow and untested write the health filter', () => {
-    assert.deepEqual(healthTileFilterPatch('slow', noTiles), {
+    expect(healthTileFilterPatch('slow', noTiles)).toStrictEqual({
       health: 'slow',
     })
-    assert.deepEqual(healthTileFilterPatch('untested', noTiles), {
+    expect(healthTileFilterPatch('untested', noTiles)).toStrictEqual({
       health: 'untested',
     })
   })
@@ -169,7 +166,7 @@ describe('healthTileFilterPatch', () => {
       status: 'disabled',
       health: null,
     }
-    assert.deepEqual(healthTileFilterPatch('untested', afterDisabled), {
+    expect(healthTileFilterPatch('untested', afterDisabled)).toStrictEqual({
       health: 'untested',
     })
     // The patch only touches `health` — `status` is absent, meaning "leave
@@ -182,7 +179,7 @@ describe('healthTileFilterPatch', () => {
       status: 'disabled',
       health: 'untested',
     }
-    assert.deepEqual(healthTileFilterPatch('active', bothActive), {
+    expect(healthTileFilterPatch('active', bothActive)).toStrictEqual({
       status: ['enabled'],
     })
   })
@@ -192,7 +189,7 @@ describe('healthTileFilterPatch', () => {
       status: 'disabled',
       health: 'untested',
     }
-    assert.deepEqual(healthTileFilterPatch('slow', bothActive), {
+    expect(healthTileFilterPatch('slow', bothActive)).toStrictEqual({
       health: 'slow',
     })
   })
@@ -202,10 +199,10 @@ describe('healthTileFilterPatch', () => {
       status: 'disabled',
       health: 'untested',
     }
-    assert.deepEqual(healthTileFilterPatch('disabled', bothActive), {
+    expect(healthTileFilterPatch('disabled', bothActive)).toStrictEqual({
       status: null,
     })
-    assert.deepEqual(healthTileFilterPatch('untested', bothActive), {
+    expect(healthTileFilterPatch('untested', bothActive)).toStrictEqual({
       health: null,
     })
   })
@@ -213,16 +210,16 @@ describe('healthTileFilterPatch', () => {
 
 describe('healthTileLabel', () => {
   test('active and disabled read their plain status label', () => {
-    assert.equal(healthTileLabel('active', 1000, fakeT), 'Active')
-    assert.equal(healthTileLabel('disabled', 1000, fakeT), 'Disabled')
+    expect(healthTileLabel('active', 1000, fakeT)).toBe('Active')
+    expect(healthTileLabel('disabled', 1000, fakeT)).toBe('Disabled')
   })
 
   test('untested reads a fixed label independent of the threshold', () => {
-    assert.equal(healthTileLabel('untested', 1000, fakeT), 'Never tested')
+    expect(healthTileLabel('untested', 1000, fakeT)).toBe('Never tested')
   })
 
   test('slow interpolates the server-provided threshold, same as the tile', () => {
-    assert.equal(healthTileLabel('slow', 1500, fakeT), 'Slower than 1.50s')
-    assert.equal(healthTileLabel('slow', 500, fakeT), 'Slower than 500ms')
+    expect(healthTileLabel('slow', 1500, fakeT)).toBe('Slower than 1.50s')
+    expect(healthTileLabel('slow', 500, fakeT)).toBe('Slower than 500ms')
   })
 })

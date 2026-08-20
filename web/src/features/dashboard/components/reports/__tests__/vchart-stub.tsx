@@ -34,7 +34,7 @@ interface StubVChartProps {
 
 /**
  * Stand-in for `@visactor/react-vchart`'s `VChart`, which needs a real canvas
- * and throws under happy-dom. Every report test that renders a chart mocks that
+ * and throws under jsdom. Every report test that renders a chart mocks that
  * boundary with this one component, so the mock a `bun test` process ends up
  * with is the same no matter which test file registered it last.
  *
