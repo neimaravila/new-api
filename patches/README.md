@@ -80,6 +80,16 @@ Acceptance for that pair is both PRs' tests green together:
 cd relaykit && GOWORK=off go test -count=1 ./relayconvert/internal/oai_chat/
 ```
 
+`7033-sse-direct-forward.patch` is the second one. PR #7033 and PR #6070 both
+rewrite the `StreamScannerHandler` callback in
+`relay/channel/openai/relay-openai.go`, so #7033 was re-anchored on top of
+#6070; its header records the merge and how to redo it. Downloading it plain
+gives one reject.
+
+```bash
+go test -count=1 ./relay/channel/openai/
+```
+
 ## Known quirks
 
 - `6302-openai-claude-cached-tokens.patch` applies with fuzz, not an exact

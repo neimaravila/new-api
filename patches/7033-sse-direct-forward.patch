@@ -1,0 +1,529 @@
+From ab1f78de286f2faf503e6dd3f234feac9f7cc687 Mon Sep 17 00:00:00 2001
+From: lizhanju <lizhanju@infrawaves.com>
+Date: Thu, 27 Aug 2026 00:55:05 +0800
+Subject: [PATCH] fix(relay): forward SSE frames immediately instead of lagging
+ one frame behind
+
+OaiStreamHandler held every frame in lastStreamData and only wrote the
+previous frame out when the next one arrived, so the client received
+frame 1 at frame 2's arrival time. Against upstreams that pause after a
+short opening frame (a role-only delta, or a block-buffered tool-call
+parser) this inflates client-visible first-token latency by the whole
+upstream frame interval, and makes FirstResponseTime diverge from what
+the client actually observes.
+
+Forward every frame carrying choices the moment it is read; hold only a
+usage-only candidate (usage present, choices empty) for one step - the
+single shape handleLastResponse may swallow before the client sees it.
+Scoped to RelayFormatOpenAI: Claude/Gemini conversions keep the
+lag-by-one path because their terminal frame feeds HandleFinalResponse
+for closing events.
+
+One behavior change worth naming: a terminal frame that combines choices
+with usage (finish_reason/tool_calls + usage) is now delivered to the
+client, where the old path swallowed it. The delivered frame is the
+upstream's own legal frame and billing still reads usage off it, so the
+divergence only ever adds data.
+
+Closes #7005
+
+Reconciled onto PR #6070, which we also carry. Both rewrite the
+StreamScannerHandler callback in relay/channel/openai/relay-openai.go: #6070
+stashes the usage-bearing chunk in usageStreamData because upstreams like
+OpenCode.ai emit non-standard frames after it and overwrite lastStreamData,
+while #7033 turns the callback's "if len(data) > 0" body into an early return.
+Downloading #7033 gives one reject on that hunk.
+
+The two fixes are orthogonal — #6070 is about billing reading real usage,
+#7033 about not delaying frame N until frame N+1 — so the reconciliation is
+mechanical: take #7033's restructured callback and put #6070's usageStreamData
+capture back where it was, immediately after "lastStreamData = data". The
+second relay-openai.go hunk and both other files are unchanged from the PR.
+
+To redo: apply #6070 first, then
+  git apply --exclude=relay/channel/openai/relay-openai.go pull/7033.diff
+and hand-merge that one callback.
+
+Acceptance is both PRs' tests green together:
+
+    go test -count=1 ./relay/channel/openai/
+---
+diff --git a/relay/channel/openai/helper.go b/relay/channel/openai/helper.go
+index f28b3f0..f12a957 100644
+--- a/relay/channel/openai/helper.go
++++ b/relay/channel/openai/helper.go
+@@ -107,22 +107,44 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
+ 	return nil
+ }
+ 
+-func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
++// processTokenData accumulates text/tool tokens from one SSE frame and reports
++// whether the direct-forward path must hold the frame for the end-of-stream
++// usage verdict. Only a usage-only candidate is held: the frame carries a
++// usage object (present, non-null) and its choices are empty — the one shape
++// handleLastResponse may swallow before the client sees it. Any frame with
++// choices (role/content/reasoning/tool_calls/finish_reason, with or without a
++// piggybacked usage) streams through immediately; the verdict's
++// content/reasoning check is constant-false on empty choices, so hold and
++// swallow stay decided by the same predicate. Note this treats an absent
++// choices key the same as an explicit empty array — the closed DTO cannot
++// tell them apart, and both only occur on usage/keep-alive shaped frames.
++func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) (bool, error) {
+ 	switch relayMode {
+ 	case relayconstant.RelayModeChatCompletions:
+ 		var streamResponse dto.ChatCompletionsStreamResponse
+ 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
+-			return err
++			return false, err
+ 		}
+-		return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
++		holdForUsageVerdict := streamResponse.Usage != nil && len(streamResponse.Choices) == 0
++		return holdForUsageVerdict, ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
+ 	case relayconstant.RelayModeCompletions:
+ 		var streamResponse dto.CompletionsStreamResponse
+ 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
+-			return err
++			return false, err
+ 		}
+ 		processCompletionsStreamResponse(streamResponse, responseTextBuilder)
++		// CompletionsStreamResponse carries no usage field, but
++		// handleLastResponse parses the terminal frame as a chat stream
++		// response and can still find one; probe the same way so the
++		// hold/swallow verdict matches.
++		var usageProbe struct {
++			Usage *dto.Usage `json:"usage"`
++		}
++		if err := common.UnmarshalJsonStr(data, &usageProbe); err == nil && usageProbe.Usage != nil && len(streamResponse.Choices) == 0 {
++			return true, nil
++		}
+ 	}
+-	return nil
++	return false, nil
+ }
+ 
+ func processCompletionsStreamResponse(streamResponse dto.CompletionsStreamResponse, responseTextBuilder *strings.Builder) {
+diff --git a/relay/channel/openai/relay-openai.go b/relay/channel/openai/relay-openai.go
+index a7af222..4db2f7a 100644
+--- a/relay/channel/openai/relay-openai.go
++++ b/relay/channel/openai/relay-openai.go
+@@ -126,35 +126,76 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 	// 检查是否为音频模型
+ 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
+ 
++	// Direct forward (selective hold): forward every frame the moment it is
++	// read instead of lagging one frame behind. Only a usage-only candidate
++	// (usage object present, choices empty) is held for one step — the one
++	// shape handleLastResponse may swallow before the client sees it; every
++	// frame with choices streams through untouched, including frames with a
++	// piggybacked usage. A consequence worth naming: a terminal frame that
++	// combines choices with usage (finish_reason/tool_calls + usage) is
++	// delivered to the client, where the lag-by-one path swallowed it — the
++	// delivered frame is the upstream's own legal frame and billing still
++	// reads usage off the terminal frame, so the divergence only ever adds
++	// data. This removes the gateway-added first-token delay against
++	// upstreams that stay silent between their first and second frames
++	// (block-buffered tool-call parsers). Scoped to the OpenAI relay format:
++	// Claude/Gemini conversions hand the terminal frame to
++	// HandleFinalResponse for their closing events, so they keep the
++	// lag-by-one path.
++	directForward := info.RelayFormat == types.RelayFormatOpenAI
++	var pendingUsageFrame string
++
+ 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+-		if lastStreamData != "" {
++		if !directForward && lastStreamData != "" {
+ 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+ 				common.SysLog("error handling stream format: " + err.Error())
+ 				sr.Error(err)
+ 			}
+ 		}
+-		if len(data) > 0 {
+-			// 对音频模型，保存倒数第二个stream data
+-			if isAudioModel && lastStreamData != "" {
+-				secondLastStreamData = lastStreamData
+-			}
++		if len(data) == 0 {
++			return
++		}
++		// 对音频模型，保存倒数第二个stream data
++		if isAudioModel && lastStreamData != "" {
++			secondLastStreamData = lastStreamData
++		}
+ 
+-			lastStreamData = data
+-			// 检测当前 chunk 是否含有 usage，保存备用
+-			// (OpenCode.ai 等上游在 usage chunk 后还会发非标准块，会覆盖 lastStreamData)
+-			if strings.Contains(data, "\"usage\"") {
+-				var chunkWithUsage dto.ChatCompletionsStreamResponse
+-				if err := common.UnmarshalJsonStr(data, &chunkWithUsage); err == nil && chunkWithUsage.Usage != nil {
+-					if service.ValidUsage(chunkWithUsage.Usage) {
+-						usageStreamData = data
+-					}
++		lastStreamData = data
++		// 检测当前 chunk 是否含有 usage，保存备用
++		// (OpenCode.ai 等上游在 usage chunk 后还会发非标准块，会覆盖 lastStreamData)
++		if strings.Contains(data, "\"usage\"") {
++			var chunkWithUsage dto.ChatCompletionsStreamResponse
++			if err := common.UnmarshalJsonStr(data, &chunkWithUsage); err == nil && chunkWithUsage.Usage != nil {
++				if service.ValidUsage(chunkWithUsage.Usage) {
++					usageStreamData = data
+ 				}
+ 			}
+-			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
+-			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
+-				logger.LogError(c, "error processing stream token data: "+err.Error())
++		}
++		collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
++		holdForUsageVerdict, err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount)
++		if err != nil {
++			logger.LogError(c, "error processing stream token data: "+err.Error())
++			sr.Error(err)
++		}
++		if !directForward {
++			return
++		}
++		// The arrival of this frame proves the held usage frame was not
++		// terminal; release it in order before handling the current one.
++		if pendingUsageFrame != "" {
++			if err := HandleStreamFormat(c, info, pendingUsageFrame, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
++				common.SysLog("error handling stream format: " + err.Error())
+ 				sr.Error(err)
+ 			}
++			pendingUsageFrame = ""
++		}
++		if holdForUsageVerdict {
++			pendingUsageFrame = data
++			return
++		}
++		if err := HandleStreamFormat(c, info, data, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
++			common.SysLog("error handling stream format: " + err.Error())
++			sr.Error(err)
+ 		}
+ 	})
+ 
+@@ -184,7 +225,13 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 	}
+ 
+ 	if info.RelayFormat == types.RelayFormatOpenAI {
+-		if shouldSendLastResp {
++		if directForward {
++			// Every non-usage frame has already been forwarded the moment it
++			// was read; only a held usage frame still awaits the verdict.
++			if pendingUsageFrame != "" && shouldSendLastResp {
++				_ = sendStreamData(c, info, pendingUsageFrame, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
++			}
++		} else if shouldSendLastResp {
+ 			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+ 		}
+ 	}
+diff --git a/relay/channel/openai/relay-openai_stream_test.go b/relay/channel/openai/relay-openai_stream_test.go
+new file mode 100644
+index 0000000..8fd8569
+--- /dev/null
++++ b/relay/channel/openai/relay-openai_stream_test.go
+@@ -0,0 +1,305 @@
++package openai
++
++import (
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/QuantumNous/new-api/constant"
++	relaycommon "github.com/QuantumNous/new-api/relay/common"
++	relayconstant "github.com/QuantumNous/new-api/relay/constant"
++	"github.com/QuantumNous/new-api/relaykit/types"
++
++	"github.com/gin-gonic/gin"
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func init() {
++	gin.SetMode(gin.TestMode)
++	if constant.StreamingTimeout == 0 {
++		constant.StreamingTimeout = 30
++	}
++}
++
++// Upstream SSE frames used across scenarios. Content frames must round-trip
++// verbatim through the relay (ForceFormat / ThinkingToContent are off).
++const (
++	frameRole      = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`
++	frameContent1  = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{"content":"hello streaming world"}}]}`
++	frameContent2  = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{"content":"second chunk"}}]}`
++	frameFinish    = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`
++	frameUsageOnly = `{"id":"chatcmpl-t","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
++	frameMidUsage  = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{"content":"with usage"}}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}`
++	// Terminal frames that combine choices with a piggybacked usage: the
++	// lag-by-one path swallowed these when the client did not ask for usage;
++	// direct forward delivers them (choices non-empty → never held), which
++	// only ever adds the upstream's own legal data.
++	frameToolUsage   = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"write","arguments":"{}"}}]}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
++	frameFinishUsage = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
++	// usage present but not billable under ValidUsage (only total_tokens):
++	// held as a usage-only candidate, then delivered because the verdict
++	// cannot bill it; billing falls back to local estimation — same
++	// transcript and billing as the lag-by-one path.
++	frameTotalOnlyUsage = `{"id":"chatcmpl-t","choices":[],"usage":{"total_tokens":15}}`
++	// Mixed content+usage frame carrying an upstream extension field; direct
++	// forward must pass it through verbatim without waiting for the next
++	// frame.
++	frameMixedUsageExt = `{"id":"chatcmpl-t","choices":[{"index":0,"delta":{"content":"mixed"}}],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11},"matched_stop":"<|close|>tools<|sep|>"}`
++)
++
++func setupOaiStreamTest(w http.ResponseWriter, body io.Reader, includeUsage bool) (*gin.Context, *http.Response, *relaycommon.RelayInfo) {
++	c, _ := gin.CreateTestContext(w)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
++
++	resp := &http.Response{Body: io.NopCloser(body)}
++	info := &relaycommon.RelayInfo{
++		ChannelMeta:        &relaycommon.ChannelMeta{UpstreamModelName: "gpt-test"},
++		RelayFormat:        types.RelayFormatOpenAI,
++		RelayMode:          relayconstant.RelayModeChatCompletions,
++		ShouldIncludeUsage: includeUsage,
++	}
++	return c, resp, info
++}
++
++func buildSSE(frames ...string) string {
++	var b strings.Builder
++	for _, f := range frames {
++		b.WriteString("data: " + f + "\n\n")
++	}
++	b.WriteString("data: [DONE]\n\n")
++	return b.String()
++}
++
++// extractDataLines returns the payload of every `data:` event the relay wrote.
++func extractDataLines(body string) []string {
++	var out []string
++	for _, line := range strings.Split(body, "\n") {
++		if payload, ok := strings.CutPrefix(strings.TrimSpace(line), "data: "); ok {
++			out = append(out, payload)
++		}
++	}
++	return out
++}
++
++// The delivery contract of the direct-forward path against the legacy verdict
++// semantics: every frame is delivered exactly once in order, the usage-only
++// terminal frame is swallowed or kept per stream_options.include_usage, and a
++// synthetic usage frame is appended only when the client asked for usage the
++// upstream never sent.
++func TestOaiStreamHandlerDirectForwardFrameDelivery(t *testing.T) {
++	tests := []struct {
++		name          string
++		includeUsage  bool
++		frames        []string
++		wantForwarded []string
++		wantSynthetic bool // a locally built usage frame precedes [DONE]
++		wantPrompt    int  // 0 means: local estimation expected (upstream sent no usage)
++	}{
++		{
++			name:          "plain stream forwards every frame verbatim",
++			frames:        []string{frameRole, frameContent1, frameFinish},
++			wantForwarded: []string{frameRole, frameContent1, frameFinish},
++		},
++		{
++			name:          "usage-only terminal frame swallowed when client did not ask",
++			frames:        []string{frameRole, frameContent1, frameFinish, frameUsageOnly},
++			wantForwarded: []string{frameRole, frameContent1, frameFinish},
++			wantPrompt:    10,
++		},
++		{
++			name:          "usage-only terminal frame kept when client asked",
++			includeUsage:  true,
++			frames:        []string{frameRole, frameContent1, frameFinish, frameUsageOnly},
++			wantForwarded: []string{frameRole, frameContent1, frameFinish, frameUsageOnly},
++			wantPrompt:    10,
++		},
++		{
++			name:          "synthetic usage frame appended when upstream sent none",
++			includeUsage:  true,
++			frames:        []string{frameRole, frameContent1, frameFinish},
++			wantForwarded: []string{frameRole, frameContent1, frameFinish},
++			wantSynthetic: true,
++		},
++		{
++			name:          "mid-stream usage frame released in order",
++			frames:        []string{frameRole, frameMidUsage, frameContent2, frameFinish},
++			wantForwarded: []string{frameRole, frameMidUsage, frameContent2, frameFinish},
++		},
++		{
++			name:          "terminal tool_calls+usage frame delivered, usage still billed",
++			frames:        []string{frameRole, frameContent1, frameToolUsage},
++			wantForwarded: []string{frameRole, frameContent1, frameToolUsage},
++			wantPrompt:    10,
++		},
++		{
++			name:          "terminal finish_reason+usage frame delivered, usage still billed",
++			frames:        []string{frameRole, frameContent1, frameFinishUsage},
++			wantForwarded: []string{frameRole, frameContent1, frameFinishUsage},
++			wantPrompt:    10,
++		},
++		{
++			name:          "usage-only frame without billable tokens delivered, billing falls back to estimation",
++			frames:        []string{frameRole, frameContent1, frameFinish, frameTotalOnlyUsage},
++			wantForwarded: []string{frameRole, frameContent1, frameFinish, frameTotalOnlyUsage},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			recorder := httptest.NewRecorder()
++			c, resp, info := setupOaiStreamTest(recorder, strings.NewReader(buildSSE(tt.frames...)), tt.includeUsage)
++
++			usage, apiErr := OaiStreamHandler(c, info, resp)
++			require.Nil(t, apiErr)
++			require.NotNil(t, usage)
++
++			got := extractDataLines(recorder.Body.String())
++			require.NotEmpty(t, got)
++			assert.Equal(t, "[DONE]", got[len(got)-1], "stream must terminate with [DONE]")
++			payload := got[:len(got)-1]
++
++			if tt.wantSynthetic {
++				require.Len(t, payload, len(tt.wantForwarded)+1)
++				assert.Contains(t, payload[len(payload)-1], `"prompt_tokens"`,
++					"client asked for usage the upstream never sent: relay appends its own usage frame")
++				payload = payload[:len(payload)-1]
++			}
++			assert.Equal(t, tt.wantForwarded, payload, "frames must be delivered exactly once, in order")
++
++			if tt.wantPrompt > 0 {
++				assert.Equal(t, tt.wantPrompt, usage.PromptTokens, "usage must come from the upstream terminal frame")
++			} else {
++				assert.Positive(t, usage.CompletionTokens, "no upstream usage: relay falls back to local estimation")
++			}
++		})
++	}
++}
++
++// syncFrameRecorder is a race-free ResponseWriter for the causality test: the
++// handler writes from its own goroutine while the test polls snapshot().
++type syncFrameRecorder struct {
++	mu     sync.Mutex
++	header http.Header
++	buf    strings.Builder
++}
++
++func newSyncFrameRecorder() *syncFrameRecorder {
++	return &syncFrameRecorder{header: make(http.Header)}
++}
++
++func (r *syncFrameRecorder) Header() http.Header { return r.header }
++func (r *syncFrameRecorder) WriteHeader(int)     {}
++func (r *syncFrameRecorder) Flush()              {}
++func (r *syncFrameRecorder) Write(p []byte) (int, error) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	return r.buf.Write(p)
++}
++func (r *syncFrameRecorder) snapshot() string {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	return r.buf.String()
++}
++
++// The core contract this change exists for: with direct forward on, a frame is
++// delivered downstream without waiting for the NEXT upstream frame. The
++// upstream is a pipe fed one frame at a time; each write must become visible
++// downstream while the pipe stays open and silent — under lag-by-one this test
++// fails because nothing is forwarded until the following frame lands.
++func TestOaiStreamHandlerDirectForwardDoesNotWaitForNextFrame(t *testing.T) {
++	pr, pw := io.Pipe()
++	recorder := newSyncFrameRecorder()
++	c, resp, info := setupOaiStreamTest(recorder, pr, false)
++
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		_, _ = OaiStreamHandler(c, info, resp)
++	}()
++
++	writeFrame := func(frame string) {
++		_, err := pw.Write([]byte("data: " + frame + "\n\n"))
++		require.NoError(t, err)
++	}
++
++	waitForwarded := func(marker string) {
++		require.Eventually(t, func() bool {
++			return strings.Contains(recorder.snapshot(), marker)
++		}, 3*time.Second, 5*time.Millisecond,
++			"frame %q must be forwarded before any later frame arrives", marker)
++	}
++
++	writeFrame(frameRole)
++	waitForwarded(`"role":"assistant"`)
++
++	// Mixed content+usage frame with an upstream extension field: must go out
++	// immediately (choices non-empty → never held) and verbatim.
++	writeFrame(frameMixedUsageExt)
++	waitForwarded(`"matched_stop":"<|close|>tools<|sep|>"`)
++
++	writeFrame(frameContent1)
++	waitForwarded("hello streaming world")
++
++	writeFrame(frameFinish)
++	waitForwarded(`"finish_reason":"stop"`)
++
++	writeFrame("[DONE]")
++	require.NoError(t, pw.Close())
++	select {
++	case <-done:
++	case <-time.After(5 * time.Second):
++		t.Fatal("handler did not finish after [DONE]")
++	}
++
++	got := extractDataLines(recorder.snapshot())
++	assert.Equal(t, []string{frameRole, frameMixedUsageExt, frameContent1, frameFinish, "[DONE]"}, got,
++		"final transcript must match the upstream frames exactly once, in order, verbatim")
++}
++
++// processTokenData's hold report decides which frames the direct-forward path
++// holds for the terminal verdict. A usage-only candidate is a frame whose
++// usage object is present with empty choices; any frame with choices streams
++// immediately, even with a piggybacked usage — a wrong report either leaks a
++// swallowable usage-only frame or re-introduces the one-frame lag on business
++// frames.
++func TestProcessTokenDataUsageReport(t *testing.T) {
++	tests := []struct {
++		name      string
++		relayMode int
++		data      string
++		want      bool
++		wantErr   bool
++	}{
++		{name: "chat usage-only frame held", relayMode: relayconstant.RelayModeChatCompletions, data: frameUsageOnly, want: true},
++		{name: "chat usage-only frame with unbillable usage still held", relayMode: relayconstant.RelayModeChatCompletions, data: frameTotalOnlyUsage, want: true},
++		{name: "chat usage-only frame with zeroed usage still held", relayMode: relayconstant.RelayModeChatCompletions, data: `{"id":"x","choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0}}`, want: true},
++		{name: "chat frame with usage null not held", relayMode: relayconstant.RelayModeChatCompletions, data: `{"id":"x","choices":[],"usage":null}`, want: false},
++		{name: "chat content frame not held", relayMode: relayconstant.RelayModeChatCompletions, data: frameContent1, want: false},
++		{name: "chat content+usage mixed frame not held", relayMode: relayconstant.RelayModeChatCompletions, data: frameMidUsage, want: false},
++		{name: "chat tool_calls+usage mixed frame not held", relayMode: relayconstant.RelayModeChatCompletions, data: frameToolUsage, want: false},
++		{name: "chat finish_reason+usage frame not held", relayMode: relayconstant.RelayModeChatCompletions, data: frameFinishUsage, want: false},
++		{name: "chat frame malformed", relayMode: relayconstant.RelayModeChatCompletions, data: `{not json`, wantErr: true},
++		{name: "completions frame without usage not held", relayMode: relayconstant.RelayModeCompletions, data: `{"choices":[{"text":"a"}]}`, want: false},
++		{name: "completions text+usage mixed frame not held", relayMode: relayconstant.RelayModeCompletions, data: `{"choices":[{"text":"a"}],"usage":{"prompt_tokens":7,"completion_tokens":2}}`, want: false},
++		{name: "completions usage-only frame held", relayMode: relayconstant.RelayModeCompletions, data: `{"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2}}`, want: true},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			var sb strings.Builder
++			var toolCount int
++			got, err := processTokenData(tt.relayMode, tt.data, &sb, &toolCount)
++			if tt.wantErr {
++				require.Error(t, err)
++				return
++			}
++			require.NoError(t, err)
++			assert.Equal(t, tt.want, got)
++		})
++	}
++}
