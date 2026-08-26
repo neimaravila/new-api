@@ -57,6 +57,23 @@ stale (already-merged) patch can't silently break things.
 - One PR per file.
 - Prefer small, focused, `mergeable` PRs — large refactors are painful to carry.
 
+## Markdown hunks must be stripped
+
+`.dockerignore` excludes `*.md` from the build context, so
+`scripts/apply-patches.sh` runs against a tree with no `README.md`. A patch
+carrying a `README.md` hunk applies fine in a local dry-run and then fails the
+image build — the one failure mode the local check cannot see.
+
+Before adding a patch, check it:
+
+```bash
+grep '^diff --git a/.*\.md ' patches/<N>-<slug>.patch
+```
+
+If it hits, delete those hunks and say so in the patch header.
+`6949-upstream-header-timeout.patch` is the one that needed it. `.env.example`
+is *not* excluded, so those hunks stay.
+
 ## When a PR has several commits
 
 `patch -p1` walks a `.patch` commit by commit, so a PR whose later commits edit

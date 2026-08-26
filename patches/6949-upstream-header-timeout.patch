@@ -1,3 +1,13 @@
+The README.md hunk from PR #6949 is dropped. .dockerignore excludes *.md from
+the build context, so scripts/apply-patches.sh runs against a tree with no
+README.md and the hunk fails the build — while a local dry-run passes, because
+the file is there. The dropped hunk only documented the new
+RELAY_RESPONSE_HEADER_TIMEOUT variable; .env.example is not excluded and is
+kept. Re-download pull/6949.diff and you get the README.md hunk back.
+
+Downloaded as pull/6949.diff, not .patch: the PR has two commits and the second
+edits lines the first wrote, which `patch -p1` cannot walk.
+
 diff --git a/.env.example b/.env.example
 index 3b8a2a5b9534..1e0736921bb4 100644
 --- a/.env.example
@@ -13,18 +23,6 @@ index 3b8a2a5b9534..1e0736921bb4 100644
  # 流模式无响应超时时间，单位秒，如果出现空补全可以尝试改为更大值
  # STREAMING_TIMEOUT=300
  
-diff --git a/README.md b/README.md
-index 91778e659d3f..d05f8e58ca71 100644
---- a/README.md
-+++ b/README.md
-@@ -327,6 +327,7 @@ docker run --name new-api -d --restart always \
- | `SQL_DSN` | Database connection string | - |
- | `REDIS_CONN_STRING` | Redis connection string | - |
- | `RELAY_IDLE_CONN_TIMEOUT` | Idle keep-alive timeout for relay HTTP clients, seconds. Defaults to Go standard library behavior; set `0` to disable | `90` |
-+| `RELAY_RESPONSE_HEADER_TIMEOUT` | How long the relay waits for upstream **response headers**, seconds; set `0` to disable. Only bounds the header wait -- streaming after the headers arrive is unaffected. Note that non-streaming upstreams usually send headers only once generation finishes, so leave headroom | `1800` |
- | `STREAMING_TIMEOUT` | Streaming timeout (seconds) | `300` |
- | `STREAM_SCANNER_MAX_BUFFER_MB` | Max per-line buffer (MB) for the stream scanner; increase when upstream sends huge image/base64 payloads | `64` |
- | `MAX_REQUEST_BODY_MB` | Max request body size (MB, counted **after decompression**; prevents huge requests/zip bombs from exhausting memory). Exceeding it returns `413` | `32` |
 diff --git a/common/constants.go b/common/constants.go
 index d6b4fb52284c..4e99f5b2f7aa 100644
 --- a/common/constants.go
