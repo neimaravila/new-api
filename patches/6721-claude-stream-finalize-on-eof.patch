@@ -1,0 +1,40 @@
+From 72b4defcf5ec1f55c13b632bcd0936ee7524572a Mon Sep 17 00:00:00 2001
+From: StevenK <kuangzhenfeng123@163.com>
+Date: Sat, 8 Aug 2026 16:12:42 +0800
+Subject: [PATCH] fix: finalize Claude streams after upstream EOF
+
+---
+ relay/channel/openai/helper.go           | 4 +++-
+ relaykit/relayconvert/response_compat.go | 4 ++++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/relay/channel/openai/helper.go b/relay/channel/openai/helper.go
+index 666235ff5633..f28b3f020287 100644
+--- a/relay/channel/openai/helper.go
++++ b/relay/channel/openai/helper.go
+@@ -194,7 +194,9 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
+ 		for _, resp := range claudeResponses {
+ 			_ = helper.ClaudeData(c, *resp)
+ 		}
+-		info.ClaudeConvertInfo.Done = true
++		for _, resp := range relayconvert.FinalizeStreamResponseOpenAI2Claude(info) {
++			_ = helper.ClaudeData(c, *resp)
++		}
+ 
+ 	case types.RelayFormatGemini:
+ 		var streamResponse dto.ChatCompletionsStreamResponse
+diff --git a/relaykit/relayconvert/response_compat.go b/relaykit/relayconvert/response_compat.go
+index 68c57cd9d13b..a061f2419aa3 100644
+--- a/relaykit/relayconvert/response_compat.go
++++ b/relaykit/relayconvert/response_compat.go
+@@ -28,6 +28,10 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 	return oaichat.StreamResponseOpenAI2Claude(openAIResponse, info)
+ }
+ 
++func FinalizeStreamResponseOpenAI2Claude(info convmeta.Meta) []*dto.ClaudeResponse {
++	return oaichat.FinalizeStreamResponseOpenAI2Claude(info)
++}
++
+ func StopReasonClaudeToOpenAI(reason string) string {
+ 	return claudemessages.StopReasonClaudeToOpenAI(reason)
+ }

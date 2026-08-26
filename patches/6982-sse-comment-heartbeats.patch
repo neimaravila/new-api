@@ -1,0 +1,232 @@
+diff --git a/relay/helper/stream_scanner.go b/relay/helper/stream_scanner.go
+index f88bef5206fc..aad791f689fd 100644
+--- a/relay/helper/stream_scanner.go
++++ b/relay/helper/stream_scanner.go
+@@ -196,7 +196,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
+ 		})
+ 	}
+ 
+-	dataChan := make(chan string, 10)
++	type streamEvent struct {
++		data      string
++		heartbeat bool
++	}
++	streamChan := make(chan streamEvent, 10)
+ 
+ 	wg.Add(1)
+ 	gopool.Go(func() {
+@@ -209,13 +213,43 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
+ 			wg.Done()
+ 		}()
+ 		sr := newStreamResult(info.StreamStatus)
+-		for data := range dataChan {
++		downstreamDataWritten := false
++		for event := range streamChan {
++			if event.heartbeat {
++				var err error
++				func() {
++					writeMutex.Lock()
++					defer writeMutex.Unlock()
++					// A generated ping may have committed the response already. Only a write
++					// from the data handler should unlock upstream heartbeat forwarding.
++					if !downstreamDataWritten {
++						return
++					}
++					ExtendWriteDeadline(c)
++					err = PingData(c)
++				}()
++				if err != nil {
++					logger.LogError(c, "upstream heartbeat relay error: "+err.Error())
++					if c.Request.Context().Err() != nil {
++						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
++					} else {
++						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
++					}
++					return
++				}
++				continue
++			}
++
+ 			sr.reset()
+ 			func() {
+ 				writeMutex.Lock()
+ 				defer writeMutex.Unlock()
+ 				ExtendWriteDeadline(c)
+-				dataHandler(data, sr)
++				writtenBefore := c.Writer.Size()
++				dataHandler(event.data, sr)
++				writtenAfter := c.Writer.Size()
++				downstreamDataWritten = downstreamDataWritten ||
++					(writtenAfter > 0 && writtenAfter > writtenBefore)
+ 			}()
+ 			if sr.IsStopped() {
+ 				return
+@@ -227,7 +261,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
+ 	wg.Add(1)
+ 	common.RelayCtxGo(ctx, func() {
+ 		defer func() {
+-			close(dataChan)
++			close(streamChan)
+ 			if r := recover(); r != nil {
+ 				logger.LogError(c, fmt.Sprintf("scanner goroutine panic: %v", r))
+ 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPanic, fmt.Errorf("scanner panic: %v", r))
+@@ -251,6 +285,17 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
+ 			data := scanner.Text()
+ 			logger.LogDebug(c, "stream scanner data: %s", data)
+ 
++			if strings.HasPrefix(data, ":") {
++				select {
++				case streamChan <- streamEvent{heartbeat: true}:
++				case <-ctx.Done():
++					return
++				case <-stopChan:
++					return
++				}
++				continue
++			}
++
+ 			if len(data) < 6 {
+ 				continue
+ 			}
+@@ -267,7 +312,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
+ 				info.ReceivedResponseCount++
+ 
+ 				select {
+-				case dataChan <- data:
++				case streamChan <- streamEvent{data: data}:
+ 				case <-ctx.Done():
+ 					return
+ 				case <-stopChan:
+diff --git a/relay/helper/stream_scanner_test.go b/relay/helper/stream_scanner_test.go
+index a211951287d2..af31dec8b0b7 100644
+--- a/relay/helper/stream_scanner_test.go
++++ b/relay/helper/stream_scanner_test.go
+@@ -197,6 +197,128 @@ func TestStreamScannerHandler_SkipsNonDataLines(t *testing.T) {
+ 	assert.Equal(t, int64(100), count.Load())
+ }
+ 
++func TestStreamScannerHandler_RelaysUpstreamCommentAfterData(t *testing.T) {
++	pr, pw := io.Pipe()
++	t.Cleanup(func() {
++		_ = pr.Close()
++		_ = pw.Close()
++	})
++
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
++
++	resp := &http.Response{Body: pr}
++	info := &relaycommon.RelayInfo{
++		DisablePing: true,
++		ChannelMeta: &relaycommon.ChannelMeta{},
++	}
++
++	firstHandled := make(chan struct{})
++	done := make(chan struct{})
++	var writeErr error
++	go func() {
++		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
++			writeErr = StringData(c, data)
++			if data == "first" {
++				close(firstHandled)
++			}
++		})
++		close(done)
++	}()
++
++	_, err := fmt.Fprint(pw, "data: first\n")
++	require.NoError(t, err)
++
++	select {
++	case <-firstHandled:
++	case <-time.After(2 * time.Second):
++		t.Fatal("timed out waiting for first data frame")
++	}
++
++	_, err = fmt.Fprint(pw, ": upstream-private-heartbeat\n\ndata: [DONE]\n")
++	require.NoError(t, err)
++	require.NoError(t, pw.Close())
++
++	select {
++	case <-done:
++	case <-time.After(2 * time.Second):
++		t.Fatal("timed out waiting for stream to finish")
++	}
++
++	require.NoError(t, writeErr)
++	assert.Contains(t, recorder.Body.String(), "data: first")
++	assert.Contains(t, recorder.Body.String(), ": PING\n\n")
++	assert.NotContains(t, recorder.Body.String(), "upstream-private-heartbeat")
++	assert.Equal(t, 1, info.ReceivedResponseCount)
++	require.NotNil(t, info.StreamStatus)
++	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
++}
++
++func TestStreamScannerHandler_SkipsUpstreamCommentBeforeData(t *testing.T) {
++	body := ": upstream-private-heartbeat\n\ndata: [DONE]\n"
++	c, resp, info := setupStreamTest(t, strings.NewReader(body))
++	info.DisablePing = true
++
++	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
++		_ = StringData(c, data)
++	})
++
++	assert.False(t, c.Writer.Written(), "a heartbeat must not commit the response before the first data frame")
++	assert.Equal(t, 0, info.ReceivedResponseCount)
++	require.NotNil(t, info.StreamStatus)
++	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
++}
++
++func TestStreamScannerHandler_PriorPingDoesNotUnlockUpstreamComment(t *testing.T) {
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
++	require.NoError(t, PingData(c))
++	require.Equal(t, 1, strings.Count(recorder.Body.String(), ": PING\n\n"))
++
++	body := ": upstream-private-heartbeat\n\ndata: [DONE]\n"
++	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
++	info := &relaycommon.RelayInfo{
++		DisablePing: true,
++		ChannelMeta: &relaycommon.ChannelMeta{},
++	}
++
++	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
++		_ = StringData(c, data)
++	})
++
++	assert.Equal(t, 1, strings.Count(recorder.Body.String(), ": PING\n\n"),
++		"a periodic ping must not make an upstream comment look like post-data traffic")
++	assert.NotContains(t, recorder.Body.String(), "upstream-private-heartbeat")
++	assert.Equal(t, 0, info.ReceivedResponseCount)
++	require.NotNil(t, info.StreamStatus)
++	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
++}
++
++func TestStreamScannerHandler_HeaderOnlyFlushDoesNotUnlockUpstreamComment(t *testing.T) {
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
++
++	body := "data: first\n\n: upstream-private-heartbeat\n\ndata: [DONE]\n"
++	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
++	info := &relaycommon.RelayInfo{
++		DisablePing: true,
++		ChannelMeta: &relaycommon.ChannelMeta{},
++	}
++
++	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
++		_ = FlushWriter(c)
++	})
++
++	assert.NotContains(t, recorder.Body.String(), ": PING\n\n",
++		"a header-only flush must not count as a downstream data frame")
++	assert.Equal(t, 1, info.ReceivedResponseCount)
++	require.NotNil(t, info.StreamStatus)
++	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
++}
++
+ func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
+ 	t.Parallel()
+ 

@@ -63,7 +63,9 @@ stale (already-merged) patch can't silently break things.
 lines its earlier commits just wrote can fail even though the end state applies
 fine. Download `pull/<NUMBER>.diff` instead — the squashed diff — and save it
 under the same `<PR-number>-<short-slug>.patch` name. That is what
-`6355-claude-cache-creation-split.patch` is.
+`6355-claude-cache-creation-split.patch`, `6949-upstream-header-timeout.patch`
+and `6982-sse-comment-heartbeats.patch` are — each failed as a multi-commit
+`.patch` and applies cleanly as the squashed `.diff`.
 
 ## Reconciled patches
 

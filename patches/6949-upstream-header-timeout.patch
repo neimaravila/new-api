@@ -1,0 +1,158 @@
+diff --git a/.env.example b/.env.example
+index 3b8a2a5b9534..1e0736921bb4 100644
+--- a/.env.example
++++ b/.env.example
+@@ -60,6 +60,10 @@
+ # RELAY_TIMEOUT=0
+ # Relay HTTP 客户端空闲连接超时时间，单位秒，默认跟随 Go 标准库，设置为0表示不限制
+ # RELAY_IDLE_CONN_TIMEOUT=90
++# 等待上游返回响应头的超时时间，单位秒，默认 1800，设置为 0 表示不限制。
++# 仅约束「等待响应头」这一段；响应头返回之后的流式传输不受影响。
++# 注意：非流式请求通常要等上游生成完毕才会返回响应头，因此该值需留足余量。
++# RELAY_RESPONSE_HEADER_TIMEOUT=1800
+ # 流模式无响应超时时间，单位秒，如果出现空补全可以尝试改为更大值
+ # STREAMING_TIMEOUT=300
+ 
+diff --git a/README.md b/README.md
+index 91778e659d3f..d05f8e58ca71 100644
+--- a/README.md
++++ b/README.md
+@@ -327,6 +327,7 @@ docker run --name new-api -d --restart always \
+ | `SQL_DSN` | Database connection string | - |
+ | `REDIS_CONN_STRING` | Redis connection string | - |
+ | `RELAY_IDLE_CONN_TIMEOUT` | Idle keep-alive timeout for relay HTTP clients, seconds. Defaults to Go standard library behavior; set `0` to disable | `90` |
++| `RELAY_RESPONSE_HEADER_TIMEOUT` | How long the relay waits for upstream **response headers**, seconds; set `0` to disable. Only bounds the header wait -- streaming after the headers arrive is unaffected. Note that non-streaming upstreams usually send headers only once generation finishes, so leave headroom | `1800` |
+ | `STREAMING_TIMEOUT` | Streaming timeout (seconds) | `300` |
+ | `STREAM_SCANNER_MAX_BUFFER_MB` | Max per-line buffer (MB) for the stream scanner; increase when upstream sends huge image/base64 payloads | `64` |
+ | `MAX_REQUEST_BODY_MB` | Max request body size (MB, counted **after decompression**; prevents huge requests/zip bombs from exhausting memory). Exceeding it returns `413` | `32` |
+diff --git a/common/constants.go b/common/constants.go
+index d6b4fb52284c..4e99f5b2f7aa 100644
+--- a/common/constants.go
++++ b/common/constants.go
+@@ -162,6 +162,16 @@ var BatchUpdateInterval int
+ var RelayTimeout int // unit is second
+ 
+ var RelayIdleConnTimeout int // unit is second
++
++// RelayResponseHeaderTimeout limits how long the relay transport waits for the
++// upstream response headers after the request has been fully written.
++// 0 disables it (previous behaviour: wait forever).
++//
++// Note this is NOT the same as RelayTimeout (http.Client.Timeout), which covers
++// the whole response read and therefore breaks legitimate long streaming calls.
++// ResponseHeaderTimeout only bounds the wait for the response headers; once the
++// headers arrive, streaming is unaffected.
++var RelayResponseHeaderTimeout int // unit is second
+ var RelayMaxIdleConns int
+ var RelayMaxIdleConnsPerHost int
+ 
+diff --git a/common/init.go b/common/init.go
+index 4d4c62b27cac..80c6874003c2 100644
+--- a/common/init.go
++++ b/common/init.go
+@@ -110,6 +110,7 @@ func InitEnv() {
+ 	BatchUpdateInterval = GetEnvOrDefault("BATCH_UPDATE_INTERVAL", 5)
+ 	RelayTimeout = GetEnvOrDefault("RELAY_TIMEOUT", 0)
+ 	RelayIdleConnTimeout = GetEnvOrDefault("RELAY_IDLE_CONN_TIMEOUT", 90)
++	RelayResponseHeaderTimeout = GetEnvOrDefault("RELAY_RESPONSE_HEADER_TIMEOUT", 1800)
+ 	RelayMaxIdleConns = GetEnvOrDefault("RELAY_MAX_IDLE_CONNS", 500)
+ 	RelayMaxIdleConnsPerHost = GetEnvOrDefault("RELAY_MAX_IDLE_CONNS_PER_HOST", 100)
+ 
+diff --git a/service/http_client.go b/service/http_client.go
+index f5c19eafedc8..19523fb13827 100644
+--- a/service/http_client.go
++++ b/service/http_client.go
+@@ -4,6 +4,7 @@ import (
+ 	"context"
+ 	"crypto/tls"
+ 	"fmt"
++	"math"
+ 	"net"
+ 	"net/http"
+ 	"net/url"
+@@ -71,6 +72,10 @@ func ValidateSSRFProtectedFetchURL(urlStr string) error {
+ 	return validateURLWithCurrentFetchSetting(urlStr, true)
+ }
+ 
++// maxTimeoutSeconds is the largest number of seconds that still converts to a
++// time.Duration without overflowing (~292 years).
++const maxTimeoutSeconds = int(math.MaxInt64 / int64(time.Second))
++
+ func newRelayHTTPTransport() *http.Transport {
+ 	var transport *http.Transport
+ 	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok && defaultTransport != nil {
+@@ -91,6 +96,24 @@ func newRelayHTTPTransport() *http.Transport {
+ 	transport.MaxIdleConns = common.RelayMaxIdleConns
+ 	transport.MaxIdleConnsPerHost = common.RelayMaxIdleConnsPerHost
+ 	transport.IdleConnTimeout = time.Duration(common.RelayIdleConnTimeout) * time.Second
++	// Bound the wait for upstream response headers. Without it, an upstream that
++	// accepts the connection but never responds (and never sends FIN/RST) parks the
++	// goroutine forever, and every buffer that request owns -- the raw body read by
++	// io.ReadAll, the decoded messages, and the re-marshalled upstream body -- stays
++	// reachable for the lifetime of the process.
++	//
++	// This only covers the wait for the headers; streaming after the headers arrive
++	// is not affected. Set RELAY_RESPONSE_HEADER_TIMEOUT=0 to restore the old
++	// unbounded behaviour.
++	if seconds := common.RelayResponseHeaderTimeout; seconds > 0 {
++		// Clamp before converting: seconds beyond maxTimeoutSeconds overflow
++		// time.Duration and can wrap into a tiny positive timeout, which would cut
++		// every relay request instead of only the stuck ones.
++		if seconds > maxTimeoutSeconds {
++			seconds = maxTimeoutSeconds
++		}
++		transport.ResponseHeaderTimeout = time.Duration(seconds) * time.Second
++	}
+ 	transport.ForceAttemptHTTP2 = true
+ 	if common.TLSInsecureSkipVerify {
+ 		transport.TLSClientConfig = common.InsecureTLSConfig
+diff --git a/service/http_client_response_header_timeout_test.go b/service/http_client_response_header_timeout_test.go
+new file mode 100644
+index 000000000000..491a3015a218
+--- /dev/null
++++ b/service/http_client_response_header_timeout_test.go
+@@ -0,0 +1,44 @@
++package service
++
++import (
++	"math"
++	"testing"
++	"time"
++
++	"github.com/QuantumNous/new-api/common"
++
++	"github.com/stretchr/testify/require"
++)
++
++// The relay transport must bound how long it waits for upstream response headers.
++// Without it an upstream that accepts the connection but never answers parks the
++// goroutine forever and keeps the whole request body reachable, which shows up as
++// unbounded heap growth and eventually OOM.
++func TestNewRelayHTTPTransportResponseHeaderTimeout(t *testing.T) {
++	original := common.RelayResponseHeaderTimeout
++	defer func() { common.RelayResponseHeaderTimeout = original }()
++
++	t.Run("applies configured timeout", func(t *testing.T) {
++		common.RelayResponseHeaderTimeout = 42
++		require.Equal(t, 42*time.Second, newRelayHTTPTransport().ResponseHeaderTimeout)
++	})
++
++	t.Run("zero keeps it unset", func(t *testing.T) {
++		common.RelayResponseHeaderTimeout = 0
++		require.Zero(t, newRelayHTTPTransport().ResponseHeaderTimeout)
++	})
++
++	t.Run("negative keeps it unset", func(t *testing.T) {
++		common.RelayResponseHeaderTimeout = -1
++		require.Zero(t, newRelayHTTPTransport().ResponseHeaderTimeout)
++	})
++
++	// A value large enough to overflow time.Duration must not wrap into a tiny
++	// positive timeout, which would cut every relay request.
++	t.Run("overflowing value is clamped", func(t *testing.T) {
++		common.RelayResponseHeaderTimeout = math.MaxInt64
++		got := newRelayHTTPTransport().ResponseHeaderTimeout
++		require.Positive(t, got)
++		require.Equal(t, time.Duration(maxTimeoutSeconds)*time.Second, got)
++	})
++}
