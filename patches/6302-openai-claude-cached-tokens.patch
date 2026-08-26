@@ -1,3 +1,16 @@
+Local addition on top of the downloaded PR: the golden snapshot hunk below.
+
+relaykit/relayconvert/testdata/golden/response/openai_to_claude.golden.json
+pinned the pre-fix output (input_tokens 10 alongside cache_read_input_tokens 3,
+from prompt_tokens 10) — the very double count this PR removes. Upstream CI runs
+the relaykit module with GOWORK=off, so PR #6302 is red there until the snapshot
+is regenerated. Regenerate with:
+
+    cd relaykit && GOWORK=off go test -count=1 -run TestGolden ./relayconvert/ -update
+
+Only input_tokens moves (10 -> 7); billing_usage.openai_usage keeps
+prompt_tokens 10, so the billing path is untouched.
+
 diff --git a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go b/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
 index 7f0c6b8be5f..c77bc8e631e 100644
 --- a/relaykit/relayconvert/internal/oai_chat/to_claude_messages_resp.go
@@ -82,3 +95,16 @@ index facd873e709..8ec95f06f3a 100644
  func TestStreamResponseOpenAI2ClaudeClosesTextThinkingAndToolBlocks(t *testing.T) {
  	info := &relaycommon.RelayInfo{
  		ClaudeConvertInfo: &relaycommon.ClaudeConvertInfo{
+diff --git a/relaykit/relayconvert/testdata/golden/response/openai_to_claude.golden.json b/relaykit/relayconvert/testdata/golden/response/openai_to_claude.golden.json
+index b6d3c2f..e4b826f 100644
+--- a/relaykit/relayconvert/testdata/golden/response/openai_to_claude.golden.json
++++ b/relaykit/relayconvert/testdata/golden/response/openai_to_claude.golden.json
+@@ -19,7 +19,7 @@
+   "stop_reason": "tool_use",
+   "model": "gpt-test",
+   "usage": {
+-    "input_tokens": 10,
++    "input_tokens": 7,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 3,
+     "output_tokens": 5,
