@@ -42,37 +42,22 @@ independently but overlaps substantially, and credits that PR.
 Refs: docs/bugfix/003-ratelimit-write-lock-bug.md
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
----
- setting/rate_limit.go             | 23 ++++++---
- setting/rate_limit_test.go        | 79 +++++++++++++++++++++++++++++++
- setting/user_usable_group.go      | 14 ++++--
- setting/user_usable_group_test.go | 58 +++++++++++++++++++++++
- 4 files changed, 163 insertions(+), 11 deletions(-)
- create mode 100644 setting/rate_limit_test.go
- create mode 100644 setting/user_usable_group_test.go
 
+Re-anchored on upstream v1.0.0-rc.26 (2026-08-26). Upstream PR #7025
+("refactor: deprecate int32") independently landed this PR's encoding/json ->
+common.* wrapper conversion in setting/rate_limit.go and rewrote the count
+bound there, so those three hunks are now no-ops upstream and were dropped.
+What remains for that file is the actual defect: the RLock -> Lock change plus
+parsing into a local map before taking the lock. setting/user_usable_group.go
+and both test files are unchanged from the original PR. To redo this:
+re-download pull/6675.patch and drop every rate_limit.go hunk except the
+UpdateModelRequestRateLimitGroupByJSONString one.
+---
 diff --git a/setting/rate_limit.go b/setting/rate_limit.go
-index 413f3958d75..a4f07d9298f 100644
+index d046ae1..44f3071 100644
 --- a/setting/rate_limit.go
 +++ b/setting/rate_limit.go
-@@ -1,7 +1,6 @@
- package setting
- 
- import (
--	"encoding/json"
- 	"fmt"
- 	"math"
- 	"sync"
-@@ -20,7 +19,7 @@ func ModelRequestRateLimitGroup2JSONString() string {
- 	ModelRequestRateLimitMutex.RLock()
- 	defer ModelRequestRateLimitMutex.RUnlock()
- 
--	jsonBytes, err := json.Marshal(ModelRequestRateLimitGroup)
-+	jsonBytes, err := common.Marshal(ModelRequestRateLimitGroup)
- 	if err != nil {
- 		common.SysLog("error marshalling model ratio: " + err.Error())
- 	}
-@@ -28,11 +27,21 @@ func ModelRequestRateLimitGroup2JSONString() string {
+@@ -37,11 +37,21 @@ func ModelRequestRateLimitGroup2JSONString() string {
  }
  
  func UpdateModelRequestRateLimitGroupByJSONString(jsonStr string) error {
@@ -92,24 +77,15 @@ index 413f3958d75..a4f07d9298f 100644
 +	defer ModelRequestRateLimitMutex.Unlock()
  
 -	ModelRequestRateLimitGroup = make(map[string][2]int)
--	return json.Unmarshal([]byte(jsonStr), &ModelRequestRateLimitGroup)
+-	return common.Unmarshal([]byte(jsonStr), &ModelRequestRateLimitGroup)
 +	ModelRequestRateLimitGroup = parsed
 +	return nil
  }
  
  func GetGroupRateLimit(group string) (totalCount, successCount int, found bool) {
-@@ -52,7 +61,7 @@ func GetGroupRateLimit(group string) (totalCount, successCount int, found bool)
- 
- func CheckModelRequestRateLimitGroup(jsonStr string) error {
- 	checkModelRequestRateLimitGroup := make(map[string][2]int)
--	err := json.Unmarshal([]byte(jsonStr), &checkModelRequestRateLimitGroup)
-+	err := common.Unmarshal([]byte(jsonStr), &checkModelRequestRateLimitGroup)
- 	if err != nil {
- 		return err
- 	}
 diff --git a/setting/rate_limit_test.go b/setting/rate_limit_test.go
 new file mode 100644
-index 00000000000..1e201589c5c
+index 0000000..1e20158
 --- /dev/null
 +++ b/setting/rate_limit_test.go
 @@ -0,0 +1,79 @@
@@ -193,7 +169,7 @@ index 00000000000..1e201589c5c
 +	assert.JSONEq(t, `{"default":[100,50]}`, ModelRequestRateLimitGroup2JSONString())
 +}
 diff --git a/setting/user_usable_group.go b/setting/user_usable_group.go
-index eb04b7f3053..4e20f3b275f 100644
+index b356216..5d42253 100644
 --- a/setting/user_usable_group.go
 +++ b/setting/user_usable_group.go
 @@ -1,7 +1,6 @@
@@ -236,7 +212,7 @@ index eb04b7f3053..4e20f3b275f 100644
  func GetUsableGroupDescription(groupName string) string {
 diff --git a/setting/user_usable_group_test.go b/setting/user_usable_group_test.go
 new file mode 100644
-index 00000000000..02f79bc044f
+index 0000000..02f79bc
 --- /dev/null
 +++ b/setting/user_usable_group_test.go
 @@ -0,0 +1,58 @@
