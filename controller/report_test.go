@@ -109,3 +109,33 @@ func TestGetReportExportHandlerReturnsCSV(t *testing.T) {
 	assert.Contains(t, body, "new-api report")
 	assert.Contains(t, body, "models,gpt-4o,")
 }
+
+// Admin aggregations cover every user, so a scoped access token that reached
+// the route with usage:read only gets the admin view when it also holds log:read.
+func TestDashboardViewerRoleScopesAccessTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name   string
+		role   int
+		legacy bool
+		scopes []string
+		want   int
+	}{
+		{"admin session", common.RoleAdminUser, false, nil, common.RoleAdminUser},
+		{"admin token with usage:read only", common.RoleAdminUser, false, []string{"usage:read"}, common.RoleCommonUser},
+		{"admin token with log:read", common.RoleAdminUser, false, []string{"usage:read", "log:read"}, common.RoleAdminUser},
+		{"root token with usage:read only", common.RoleRootUser, false, []string{"usage:read"}, common.RoleCommonUser},
+		{"admin legacy token", common.RoleAdminUser, true, []string{}, common.RoleAdminUser},
+		{"common user token", common.RoleCommonUser, false, []string{"usage:read"}, common.RoleCommonUser},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Set("role", tc.role)
+			if tc.scopes != nil {
+				c.Set("access_token_legacy", tc.legacy)
+				c.Set("access_token_scopes", tc.scopes)
+			}
+			assert.Equal(t, tc.want, dashboardViewerRole(c))
+		})
+	}
+}

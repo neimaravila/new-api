@@ -16,7 +16,7 @@ import (
 func GetReportSummary(c *gin.Context) {
 	userID := c.GetInt("id")
 	username := c.GetString("username")
-	role := c.GetInt("role")
+	role := dashboardViewerRole(c)
 
 	timeRange := dto.ReportTimeRange(c.DefaultQuery("range", string(dto.ReportRangeLast7Days)))
 	granularity := dto.ReportGranularity(c.DefaultQuery("granularity", ""))
@@ -33,7 +33,7 @@ func GetReportSummary(c *gin.Context) {
 func GetReportExport(c *gin.Context) {
 	userID := c.GetInt("id")
 	username := c.GetString("username")
-	role := c.GetInt("role")
+	role := dashboardViewerRole(c)
 
 	timeRange := dto.ReportTimeRange(c.DefaultQuery("range", string(dto.ReportRangeLast7Days)))
 	granularity := dto.ReportGranularity(c.DefaultQuery("granularity", ""))
@@ -50,4 +50,24 @@ func GetReportExport(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	c.Header("Content-Length", strconv.Itoa(len(csv)))
 	c.String(http.StatusOK, csv)
+}
+
+// dashboardViewerRole is the role the dashboard and report aggregations scope
+// to. A scoped access token reaches these routes with usage:read, so it gets
+// the site-wide admin view only when it also holds log:read, the scope that
+// guards the admin log and data routes.
+func dashboardViewerRole(c *gin.Context) int {
+	role := c.GetInt("role")
+	if role < common.RoleAdminUser || c.GetBool("access_token_legacy") {
+		return role
+	}
+	scopes, scoped := c.Get("access_token_scopes")
+	if !scoped {
+		return role
+	}
+	granted, _ := scopes.([]string)
+	if service.AccessTokenScopeGranted(granted, "log:read") {
+		return role
+	}
+	return common.RoleCommonUser
 }

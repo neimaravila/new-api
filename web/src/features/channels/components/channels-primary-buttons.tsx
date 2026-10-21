@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
+import { getRouteApi } from '@tanstack/react-router'
 import {
   Plus,
   MoreHorizontal,
@@ -24,6 +25,7 @@ import {
   Trash2,
   TestTube,
   DollarSign,
+  ListChecks,
   RefreshCw,
   ArrowUpFromLine,
 } from 'lucide-react'
@@ -34,6 +36,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -42,6 +45,8 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Tooltip,
   TooltipContent,
@@ -60,11 +65,25 @@ import {
   handleTestAllChannels,
   handleUpdateAllBalances,
 } from '../lib'
+import type { ChannelSortBy } from '../types'
+import { ChannelSortControl } from './channel-priority-controls'
 import { useChannels } from './channels-provider'
+
+const route = getRouteApi('/_authenticated/channels/')
 
 export function ChannelsPrimaryButtons() {
   const { t } = useTranslation()
-  const { setOpen, setCurrentRow, upstream } = useChannels()
+  const navigate = route.useNavigate()
+  const {
+    setOpen,
+    setCurrentRow,
+    sorting,
+    setSorting,
+    batchMode,
+    setBatchMode,
+    setPriorityActionContainer,
+    upstream,
+  } = useChannels()
   const queryClient = useQueryClient()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)
@@ -78,7 +97,37 @@ export function ChannelsPrimaryButtons() {
 
   return (
     <>
-      <div className='flex items-center gap-2'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <div ref={setPriorityActionContainer} className='empty:hidden' />
+        {/* Desktop: batch toggle visible; label grouping lives in the table toolbar */}
+        <div className='bg-muted/40 text-muted-foreground has-data-checked:text-foreground hidden h-8 shrink-0 items-center gap-2 rounded-lg border px-2.5 sm:flex'>
+          <Label
+            htmlFor='channel-batch-mode'
+            className='cursor-pointer gap-1.5 text-xs whitespace-nowrap'
+          >
+            <ListChecks className='size-3.5' aria-hidden />
+            {t('Batch Operations')}
+          </Label>
+          <Switch
+            id='channel-batch-mode'
+            size='sm'
+            checked={batchMode}
+            onCheckedChange={setBatchMode}
+          />
+        </div>
+
+        <ChannelSortControl
+          field={(sorting[0]?.id ?? 'priority') as ChannelSortBy}
+          desc={sorting[0]?.desc ?? true}
+          onChange={(field, desc) => {
+            setSorting([{ id: field, desc }])
+            void navigate({
+              search: (previous) => ({ ...previous, page: 1 }),
+              replace: true,
+            })
+          }}
+        />
+
         {/* Create Channel */}
         <Tooltip>
           <TooltipTrigger render={<span className='inline-flex' />}>
@@ -88,7 +137,6 @@ export function ChannelsPrimaryButtons() {
                 setCurrentRow(null)
                 setOpen('create-channel')
               }}
-              size='sm'
               disabled={!canEditSensitive}
             >
               <Plus className='h-4 w-4' />
@@ -105,10 +153,25 @@ export function ChannelsPrimaryButtons() {
 
         {/* More Actions */}
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant='outline' size='sm' />}>
-            <MoreHorizontal className='h-4 w-4' />
+          <DropdownMenuTrigger
+            render={<Button variant='outline' size='icon' />}
+            aria-label={t('More actions')}
+          >
+            <MoreHorizontal className='size-4' aria-hidden />
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-56'>
+            {/* Mobile-only: batch toggle */}
+            <DropdownMenuCheckboxItem
+              className='sm:hidden'
+              checked={batchMode}
+              onCheckedChange={setBatchMode}
+            >
+              <ListChecks className='mr-2 h-4 w-4' />
+              {t('Batch Operations')}
+            </DropdownMenuCheckboxItem>
+
+            <DropdownMenuSeparator className='sm:hidden' />
+
             <DropdownMenuGroup>
               <DropdownMenuLabel>{t('Check')}</DropdownMenuLabel>
               <DropdownMenuItem

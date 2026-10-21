@@ -23,13 +23,13 @@ func TestInitLoadsAllLocales(t *testing.T) {
 func TestTranslatePtBR(t *testing.T) {
 	require.NoError(t, Init())
 
-	got := Translate(LangPtBR, MsgOperationSuccess)
-	assert.Equal(t, "Operação concluída com sucesso", got)
+	got := Translate(LangPtBR, MsgTokenInvalid)
+	assert.Equal(t, "Token inválido", got)
 
 	// Placeholder substitution in pt-BR, asserted in full: a partial match
 	// would still pass on a malformed or half-interpolated message.
-	got = Translate(LangPtBR, MsgBatchTooMany, map[string]any{"Max": 100})
-	assert.Equal(t, "Excesso de itens na solicitação em lote, o máximo é 100", got)
+	got = Translate(LangPtBR, MsgQuotaUserInsufficient, map[string]any{"Remaining": "$0.10"})
+	assert.Equal(t, "Cota do usuário insuficiente, cota restante: $0.10", got)
 }
 
 // TestNormalizeLangPtBR verifies that common pt-BR variants resolve to the

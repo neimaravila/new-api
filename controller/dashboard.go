@@ -18,7 +18,7 @@ func GetDashboardSummary(c *gin.Context) {
 	summary, err := service.GetDashboardSummary(
 		userID,
 		c.GetString("username"),
-		c.GetInt("role"),
+		dashboardViewerRole(c),
 		remainQuota,
 	)
 	if err != nil {
@@ -38,7 +38,7 @@ func GetDashboardInsights(c *gin.Context) {
 	insights, err := service.GetDashboardInsights(
 		userID,
 		c.GetString("username"),
-		c.GetInt("role"),
+		dashboardViewerRole(c),
 		remainQuota,
 	)
 	if err != nil {

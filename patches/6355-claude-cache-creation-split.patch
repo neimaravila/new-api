@@ -1,35 +1,64 @@
-diff --git a/service/billing_usage.go b/service/billing_usage.go
-index a8d47917b39..48615adc414 100644
---- a/service/billing_usage.go
-+++ b/service/billing_usage.go
-@@ -133,6 +133,11 @@ func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
- 	if cacheCreation1h == 0 {
- 		cacheCreation1h = claudeUsage.ClaudeCacheCreation1hTokens
- 	}
-+	// If both split values are still 0 but there's a total, default to 5m
-+	// (Claude standard cache TTL is 5 minutes).
-+	if cacheCreation5m == 0 && cacheCreation1h == 0 && claudeUsage.CacheCreationInputTokens > 0 {
-+		cacheCreation5m = claudeUsage.CacheCreationInputTokens
-+	}
- 
- 	usage := &dto.Usage{
- 		PromptTokens:                claudeUsage.InputTokens,
 diff --git a/service/tiered_settle.go b/service/tiered_settle.go
-index 05337bd774e..81dd2a716a3 100644
+index 6a380fb..b00f05b 100644
 --- a/service/tiered_settle.go
 +++ b/service/tiered_settle.go
-@@ -26,8 +26,12 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
+@@ -31,8 +31,13 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
  	cc1h := float64(0)
  
  	if usage.UsageSemantic == "anthropic" {
--		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
--		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
-+		if usage.ClaudeCacheCreation1hTokens > 0 {
-+			cc1h = float64(usage.ClaudeCacheCreation1hTokens)
-+		}
-+		if usage.ClaudeCacheCreation5mTokens > 0 {
-+			cc5m = float64(usage.ClaudeCacheCreation5mTokens)
++		// Claude may report cache_creation_input_tokens without the 5m/1h
++		// split; the unsplit remainder is billed at the default 5m TTL.
+ 		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
+ 		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
++		if remainder := float64(usage.PromptTokensDetails.CacheCreationTokensTotal()) - cc5m - cc1h; remainder > 0 {
++			cc5m += remainder
 +		}
  	}
  
  	img := float64(usage.PromptTokensDetails.ImageTokens)
+diff --git a/service/tiered_settle_test.go b/service/tiered_settle_test.go
+index 7d97e73..49c4bea 100644
+--- a/service/tiered_settle_test.go
++++ b/service/tiered_settle_test.go
+@@ -1096,3 +1096,41 @@ func TestSamePriceCacheReadsRemainInInput(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// Claude can report cache_creation_input_tokens without the ephemeral 5m/1h
++// split. The total must still be billed (at the default 5m TTL) instead of
++// silently dropping to zero; a reported split is kept and only an unsplit
++// remainder is added to 5m.
++func TestBuildTieredTokenParams_ClaudeUnsplitCacheCreation(t *testing.T) {
++	expr := `tier("base", p * 3 + c * 15 + cr * 0.3 + cc * 3.75 + cc1h * 6)`
++	usedVars := billingexpr.UsedVars(expr)
++	for _, tc := range []struct {
++		name     string
++		total    int
++		split5m  int
++		split1h  int
++		wantCC   float64
++		wantCC1h float64
++	}{
++		{"total without split", 1200, 0, 0, 1200, 0},
++		{"full split", 1500, 1000, 500, 1000, 500},
++		{"partial split", 1500, 0, 500, 1000, 500},
++		{"no cache creation", 0, 0, 0, 0, 0},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			usage := &dto.Usage{
++				PromptTokens:     5000,
++				CompletionTokens: 2000,
++				UsageSemantic:    "anthropic",
++				PromptTokensDetails: dto.InputTokenDetails{
++					CachedCreationTokens: tc.total,
++				},
++				ClaudeCacheCreation5mTokens: tc.split5m,
++				ClaudeCacheCreation1hTokens: tc.split1h,
++			}
++			params := BuildTieredTokenParams(usage, true, usedVars)
++			assert.Equal(t, tc.wantCC, params.CC)
++			assert.Equal(t, tc.wantCC1h, params.CC1h)
++		})
++	}
++}

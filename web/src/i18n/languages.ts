@@ -76,6 +76,7 @@ export function convertDetectedLanguage(value: string): string {
   if (lower.startsWith('pt')) return 'ptBR'
   if (!lower.startsWith('zh')) return value
   if (
+    lower === 'zhtw' ||
     lower === 'zh-tw' ||
     lower === 'zh-hk' ||
     lower === 'zh-mo' ||

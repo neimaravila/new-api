@@ -52,10 +52,8 @@ describe('ElevenLabs channel', () => {
     )
   })
 
-  it('defaults the Base URL to the ElevenLabs API host', () => {
-    expect(getChannelTypeConfig(CHANNEL_TYPE_ELEVENLABS).defaultBaseUrl).toBe(
-      'https://api.elevenlabs.io'
-    )
+  it('uses the type id the backend assigns to ElevenLabs', () => {
+    expect(CHANNEL_TYPE_ELEVENLABS).toBe(64)
   })
 
   it('accepts a channel that relies on the default Base URL', () => {

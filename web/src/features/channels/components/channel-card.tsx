@@ -21,6 +21,7 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
+import { StatusBadgeTypeContext } from '@/components/status-badge'
 import {
   Tooltip,
   TooltipContent,
@@ -56,9 +57,11 @@ const SENSITIVE_MASK = '••••'
 function ChannelCardComponent({
   row,
   isSelected,
+  reorderEnabled = false,
 }: {
   row: Row<Channel>
   isSelected: boolean
+  reorderEnabled?: boolean
 }) {
   const { t } = useTranslation()
   const { sensitiveVisible } = useChannels()
@@ -81,6 +84,7 @@ function ChannelCardComponent({
 
   const groups = parseGroupsList(row.original.group ?? '')
 
+  const reorderCell = reorderEnabled ? renderCell('reorder') : null
   const selectCell = renderCell('select')
   const typeCell = renderCell('type')
   const nameCell = renderCell('name')
@@ -123,11 +127,13 @@ function ChannelCardComponent({
     <ChannelRowActionsLayoutContext.Provider value='card'>
       <div
         data-state={isSelected ? 'selected' : undefined}
-        className='flex flex-col gap-3'
+        className='flex min-w-0 flex-col gap-3'
       >
-        {/* Header row (identity): selection, status, name, type, actions */}
+        {/* Header row (identity): reorder handle, selection, status, name,
+          type, actions */}
         <div className='flex items-start justify-between gap-2'>
           <div className='flex min-w-0 flex-1 items-start gap-2'>
+            {reorderCell}
             {!isTagRow && selectCell && (
               <span className='mt-0.5 shrink-0'>{selectCell}</span>
             )}
@@ -152,46 +158,50 @@ function ChannelCardComponent({
         </div>
 
         {/* Health row: response time, last tested, balance, disable reason */}
-        <div className='flex items-start gap-2'>
-          <span className={rowLabelClass}>{t('Health')}</span>
-          <div className='min-w-0 flex-1'>
-            <div className='grid grid-cols-3 gap-x-3 gap-y-1'>
-              <div className='min-w-0'>
-                <div className={cn('mb-1', labelClass)}>
-                  {fieldLabels.response_time}
+        <StatusBadgeTypeContext.Provider value='text'>
+          <div className='flex items-start gap-2'>
+            <span className={rowLabelClass}>{t('Health')}</span>
+            <div className='min-w-0 flex-1'>
+              <div className='grid grid-cols-3 gap-x-3 gap-y-1'>
+                <div className='min-w-0'>
+                  <div className={cn('mb-1', labelClass)}>
+                    {fieldLabels.response_time}
+                  </div>
+                  <div className='min-w-0 overflow-hidden text-sm tabular-nums [&_[data-slot=status-badge]]:!ml-0'>
+                    {responseCell ?? (
+                      <span className='text-muted-foreground'>-</span>
+                    )}
+                  </div>
                 </div>
-                <div className='min-w-0 overflow-hidden text-sm'>
-                  {responseCell ?? (
-                    <span className='text-muted-foreground'>-</span>
-                  )}
+                <div className='min-w-0'>
+                  <div className={cn('mb-1', labelClass)}>
+                    {fieldLabels.test_time}
+                  </div>
+                  <div className='min-w-0 overflow-hidden text-sm [&_[data-slot=status-badge]]:!ml-0'>
+                    {testCell ?? (
+                      <span className='text-muted-foreground'>-</span>
+                    )}
+                  </div>
+                </div>
+                <div className='min-w-0'>
+                  <div className={cn('mb-1', labelClass)}>
+                    {fieldLabels.balance}
+                  </div>
+                  <div className='min-w-0 overflow-hidden text-sm tabular-nums [&_[data-slot=status-badge]]:!ml-0 [&>div]:ml-0 [&>div]:flex-wrap [&>div]:gap-x-3'>
+                    {balanceCell ?? (
+                      <span className='text-muted-foreground'>-</span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className='min-w-0'>
-                <div className={cn('mb-1', labelClass)}>
-                  {fieldLabels.test_time}
+              {disabledStatusText && (
+                <div className='text-muted-foreground mt-1.5 text-xs'>
+                  {disabledStatusText}
                 </div>
-                <div className='min-w-0 overflow-hidden text-sm'>
-                  {testCell ?? <span className='text-muted-foreground'>-</span>}
-                </div>
-              </div>
-              <div className='min-w-0'>
-                <div className={cn('mb-1', labelClass)}>
-                  {fieldLabels.balance}
-                </div>
-                <div className='min-w-0 overflow-hidden text-sm'>
-                  {balanceCell ?? (
-                    <span className='text-muted-foreground'>-</span>
-                  )}
-                </div>
-              </div>
+              )}
             </div>
-            {disabledStatusText && (
-              <div className='text-muted-foreground mt-1.5 text-xs'>
-                {disabledStatusText}
-              </div>
-            )}
           </div>
-        </div>
+        </StatusBadgeTypeContext.Provider>
 
         {/* Serves row: which models this channel routes */}
         <div className='flex items-start gap-2'>
@@ -257,7 +267,9 @@ function ChannelCardComponent({
                 </TooltipTrigger>
                 <TooltipContent>{t(FIELD_DESCRIPTIONS.WEIGHT)}</TooltipContent>
               </Tooltip>
-              <div className='flex justify-start'>{priorityCell}</div>
+              <div data-column-id='priority' className='flex justify-start'>
+                {priorityCell}
+              </div>
               <div className='flex justify-start'>{weightCell}</div>
             </div>
           </div>

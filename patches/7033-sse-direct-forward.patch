@@ -1,81 +1,27 @@
-From ab1f78de286f2faf503e6dd3f234feac9f7cc687 Mon Sep 17 00:00:00 2001
-From: lizhanju <lizhanju@infrawaves.com>
-Date: Thu, 27 Aug 2026 00:55:05 +0800
-Subject: [PATCH] fix(relay): forward SSE frames immediately instead of lagging
- one frame behind
-
-OaiStreamHandler held every frame in lastStreamData and only wrote the
-previous frame out when the next one arrived, so the client received
-frame 1 at frame 2's arrival time. Against upstreams that pause after a
-short opening frame (a role-only delta, or a block-buffered tool-call
-parser) this inflates client-visible first-token latency by the whole
-upstream frame interval, and makes FirstResponseTime diverge from what
-the client actually observes.
-
-Forward every frame carrying choices the moment it is read; hold only a
-usage-only candidate (usage present, choices empty) for one step - the
-single shape handleLastResponse may swallow before the client sees it.
-Scoped to RelayFormatOpenAI: Claude/Gemini conversions keep the
-lag-by-one path because their terminal frame feeds HandleFinalResponse
-for closing events.
-
-One behavior change worth naming: a terminal frame that combines choices
-with usage (finish_reason/tool_calls + usage) is now delivered to the
-client, where the old path swallowed it. The delivered frame is the
-upstream's own legal frame and billing still reads usage off it, so the
-divergence only ever adds data.
-
-Closes #7005
-
-Reconciled onto PR #6070, which we also carry. Both rewrite the
-StreamScannerHandler callback in relay/channel/openai/relay-openai.go: #6070
-stashes the usage-bearing chunk in usageStreamData because upstreams like
-OpenCode.ai emit non-standard frames after it and overwrite lastStreamData,
-while #7033 turns the callback's "if len(data) > 0" body into an early return.
-Downloading #7033 gives one reject on that hunk.
-
-The two fixes are orthogonal — #6070 is about billing reading real usage,
-#7033 about not delaying frame N until frame N+1 — so the reconciliation is
-mechanical: take #7033's restructured callback and put #6070's usageStreamData
-capture back where it was, immediately after "lastStreamData = data". The
-second relay-openai.go hunk and both other files are unchanged from the PR.
-
-To redo: apply #6070 first, then
-  git apply --exclude=relay/channel/openai/relay-openai.go pull/7033.diff
-and hand-merge that one callback.
-
-Acceptance is both PRs' tests green together:
-
-    go test -count=1 ./relay/channel/openai/
----
 diff --git a/relay/channel/openai/helper.go b/relay/channel/openai/helper.go
-index f28b3f0..f12a957 100644
+index 1b7d1db..95c450f 100644
 --- a/relay/channel/openai/helper.go
 +++ b/relay/channel/openai/helper.go
-@@ -107,22 +107,44 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
+@@ -137,23 +137,40 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
  	return nil
  }
  
--func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
+-func processTokenData(info *relaycommon.RelayInfo, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
 +// processTokenData accumulates text/tool tokens from one SSE frame and reports
 +// whether the direct-forward path must hold the frame for the end-of-stream
 +// usage verdict. Only a usage-only candidate is held: the frame carries a
-+// usage object (present, non-null) and its choices are empty — the one shape
-+// handleLastResponse may swallow before the client sees it. Any frame with
-+// choices (role/content/reasoning/tool_calls/finish_reason, with or without a
-+// piggybacked usage) streams through immediately; the verdict's
-+// content/reasoning check is constant-false on empty choices, so hold and
-+// swallow stay decided by the same predicate. Note this treats an absent
-+// choices key the same as an explicit empty array — the closed DTO cannot
-+// tell them apart, and both only occur on usage/keep-alive shaped frames.
-+func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) (bool, error) {
- 	switch relayMode {
++// usage object and its choices are empty — the one shape handleLastResponse
++// may swallow before the client sees it. Any frame with choices streams
++// through immediately, so hold and swallow stay decided by the same predicate.
++func processTokenData(info *relaycommon.RelayInfo, data string, responseTextBuilder *strings.Builder, toolCount *int) (bool, error) {
+ 	switch info.RelayMode {
  	case relayconstant.RelayModeChatCompletions:
  		var streamResponse dto.ChatCompletionsStreamResponse
  		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
 -			return err
 +			return false, err
  		}
+ 		info.ObserveResponseModel(streamResponse.Model)
 -		return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
 +		holdForUsageVerdict := streamResponse.Usage != nil && len(streamResponse.Choices) == 0
 +		return holdForUsageVerdict, ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
@@ -102,30 +48,40 @@ index f28b3f0..f12a957 100644
  }
  
  func processCompletionsStreamResponse(streamResponse dto.CompletionsStreamResponse, responseTextBuilder *strings.Builder) {
+@@ -225,7 +242,9 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
+ 		for _, resp := range claudeResponses {
+ 			_ = helper.ClaudeData(c, *resp)
+ 		}
+-		info.ClaudeConvertInfo.Done = true
++		for _, resp := range relayconvert.FinalizeStreamResponseOpenAI2Claude(info) {
++			_ = helper.ClaudeData(c, *resp)
++		}
+ 
+ 	case types.RelayFormatGemini:
+ 		var streamResponse dto.ChatCompletionsStreamResponse
 diff --git a/relay/channel/openai/relay-openai.go b/relay/channel/openai/relay-openai.go
-index a7af222..4db2f7a 100644
+index a37f84e..d0908ab 100644
 --- a/relay/channel/openai/relay-openai.go
 +++ b/relay/channel/openai/relay-openai.go
-@@ -126,35 +126,76 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
- 	// 检查是否为音频模型
- 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
+@@ -119,27 +119,69 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 	var usage = &dto.Usage{}
+ 	var lastStreamData string
+ 	var secondLastStreamData string // 保留倒数第二个stream data；部分兼容网关把完整usage放在倒数第二个事件
++	// usageStreamData keeps the last frame that carried valid usage: upstreams
++	// such as OpenCode.ai send non-standard frames after the usage chunk, which
++	// overwrite lastStreamData and secondLastStreamData.
++	var usageStreamData string
+ 	seenStreamToolCalls := make(map[string]struct{})
+ 	var streamFunctionCallNames []string
  
 +	// Direct forward (selective hold): forward every frame the moment it is
-+	// read instead of lagging one frame behind. Only a usage-only candidate
-+	// (usage object present, choices empty) is held for one step — the one
-+	// shape handleLastResponse may swallow before the client sees it; every
-+	// frame with choices streams through untouched, including frames with a
-+	// piggybacked usage. A consequence worth naming: a terminal frame that
-+	// combines choices with usage (finish_reason/tool_calls + usage) is
-+	// delivered to the client, where the lag-by-one path swallowed it — the
-+	// delivered frame is the upstream's own legal frame and billing still
-+	// reads usage off the terminal frame, so the divergence only ever adds
-+	// data. This removes the gateway-added first-token delay against
-+	// upstreams that stay silent between their first and second frames
-+	// (block-buffered tool-call parsers). Scoped to the OpenAI relay format:
-+	// Claude/Gemini conversions hand the terminal frame to
-+	// HandleFinalResponse for their closing events, so they keep the
-+	// lag-by-one path.
++	// read instead of lagging one frame behind, which adds a whole upstream
++	// frame interval to first-token latency against upstreams that pause after
++	// a short opening frame. Only a usage-only frame (usage present, choices
++	// empty) is held for one step, because handleLastResponse may swallow it.
++	// Scoped to the OpenAI relay format: Claude/Gemini conversions hand the
++	// terminal frame to HandleFinalResponse for their closing events, so they
++	// keep the lag-by-one path.
 +	directForward := info.RelayFormat == types.RelayFormatOpenAI
 +	var pendingUsageFrame string
 +
@@ -133,50 +89,35 @@ index a7af222..4db2f7a 100644
 -		if lastStreamData != "" {
 +		if !directForward && lastStreamData != "" {
  			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
- 				common.SysLog("error handling stream format: " + err.Error())
+ 				common.SysLog(common.LogText("error handling stream format: %s", err.Error()))
  				sr.Error(err)
  			}
  		}
 -		if len(data) > 0 {
--			// 对音频模型，保存倒数第二个stream data
--			if isAudioModel && lastStreamData != "" {
+-			if lastStreamData != "" {
 -				secondLastStreamData = lastStreamData
--			}
 +		if len(data) == 0 {
 +			return
 +		}
-+		// 对音频模型，保存倒数第二个stream data
-+		if isAudioModel && lastStreamData != "" {
++		if lastStreamData != "" {
 +			secondLastStreamData = lastStreamData
 +		}
- 
--			lastStreamData = data
--			// 检测当前 chunk 是否含有 usage，保存备用
--			// (OpenCode.ai 等上游在 usage chunk 后还会发非标准块，会覆盖 lastStreamData)
--			if strings.Contains(data, "\"usage\"") {
--				var chunkWithUsage dto.ChatCompletionsStreamResponse
--				if err := common.UnmarshalJsonStr(data, &chunkWithUsage); err == nil && chunkWithUsage.Usage != nil {
--					if service.ValidUsage(chunkWithUsage.Usage) {
--						usageStreamData = data
--					}
 +		lastStreamData = data
-+		// 检测当前 chunk 是否含有 usage，保存备用
-+		// (OpenCode.ai 等上游在 usage chunk 后还会发非标准块，会覆盖 lastStreamData)
 +		if strings.Contains(data, "\"usage\"") {
 +			var chunkWithUsage dto.ChatCompletionsStreamResponse
-+			if err := common.UnmarshalJsonStr(data, &chunkWithUsage); err == nil && chunkWithUsage.Usage != nil {
-+				if service.ValidUsage(chunkWithUsage.Usage) {
-+					usageStreamData = data
- 				}
++			if err := common.UnmarshalJsonStr(data, &chunkWithUsage); err == nil && service.ValidUsage(chunkWithUsage.Usage) {
++				usageStreamData = data
  			}
--			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
--			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
--				logger.LogError(c, "error processing stream token data: "+err.Error())
+-
+-			lastStreamData = data
+-			observeStreamChoices(info, data, seenStreamToolCalls, &streamFunctionCallNames)
+-			if err := processTokenData(info, data, &responseTextBuilder, &toolCount); err != nil {
+-				logger.LogError(c, common.LogText("error processing stream token data: %s", err.Error()))
 +		}
-+		collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
-+		holdForUsageVerdict, err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount)
++		observeStreamChoices(info, data, seenStreamToolCalls, &streamFunctionCallNames)
++		holdForUsageVerdict, err := processTokenData(info, data, &responseTextBuilder, &toolCount)
 +		if err != nil {
-+			logger.LogError(c, "error processing stream token data: "+err.Error())
++			logger.LogError(c, common.LogText("error processing stream token data: %s", err.Error()))
 +			sr.Error(err)
 +		}
 +		if !directForward {
@@ -186,7 +127,7 @@ index a7af222..4db2f7a 100644
 +		// terminal; release it in order before handling the current one.
 +		if pendingUsageFrame != "" {
 +			if err := HandleStreamFormat(c, info, pendingUsageFrame, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-+				common.SysLog("error handling stream format: " + err.Error())
++				common.SysLog(common.LogText("error handling stream format: %s", err.Error()))
  				sr.Error(err)
  			}
 +			pendingUsageFrame = ""
@@ -196,29 +137,37 @@ index a7af222..4db2f7a 100644
 +			return
 +		}
 +		if err := HandleStreamFormat(c, info, data, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-+			common.SysLog("error handling stream format: " + err.Error())
++			common.SysLog(common.LogText("error handling stream format: %s", err.Error()))
 +			sr.Error(err)
  		}
  	})
  
-@@ -184,7 +225,13 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+@@ -174,10 +216,20 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
+ 			}
+ 		}
  	}
++	if !containStreamUsage && usageStreamData != "" && usageStreamData != lastStreamData {
++		var streamResp dto.ChatCompletionsStreamResponse
++		if err := common.UnmarshalJsonStr(usageStreamData, &streamResp); err == nil && service.ValidUsage(streamResp.Usage) {
++			usage = dto.MergeUsageNonZero(usage, streamResp.Usage)
++			containStreamUsage = true
++			usageFrame = usageStreamData
++		}
++	}
  
  	if info.RelayFormat == types.RelayFormatOpenAI {
 -		if shouldSendLastResp {
-+		if directForward {
-+			// Every non-usage frame has already been forwarded the moment it
-+			// was read; only a held usage frame still awaits the verdict.
-+			if pendingUsageFrame != "" && shouldSendLastResp {
-+				_ = sendStreamData(c, info, pendingUsageFrame, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
-+			}
-+		} else if shouldSendLastResp {
- 			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+-			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
++		// Every non-usage frame has already been forwarded the moment it was
++		// read; only a held usage frame still awaits the verdict.
++		if pendingUsageFrame != "" && shouldSendLastResp {
++			_ = sendStreamData(c, info, pendingUsageFrame, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
  		}
  	}
+ 
 diff --git a/relay/channel/openai/relay-openai_stream_test.go b/relay/channel/openai/relay-openai_stream_test.go
 new file mode 100644
-index 0000000..8fd8569
+index 0000000..79f9e21
 --- /dev/null
 +++ b/relay/channel/openai/relay-openai_stream_test.go
 @@ -0,0 +1,305 @@
@@ -517,7 +466,7 @@ index 0000000..8fd8569
 +		t.Run(tt.name, func(t *testing.T) {
 +			var sb strings.Builder
 +			var toolCount int
-+			got, err := processTokenData(tt.relayMode, tt.data, &sb, &toolCount)
++			got, err := processTokenData(&relaycommon.RelayInfo{RelayMode: tt.relayMode}, tt.data, &sb, &toolCount)
 +			if tt.wantErr {
 +				require.Error(t, err)
 +				return
@@ -527,3 +476,110 @@ index 0000000..8fd8569
 +		})
 +	}
 +}
+diff --git a/relay/channel/openai/relay_openai_stream_usage_test.go b/relay/channel/openai/relay_openai_stream_usage_test.go
+new file mode 100644
+index 0000000..1164cc6
+--- /dev/null
++++ b/relay/channel/openai/relay_openai_stream_usage_test.go
+@@ -0,0 +1,80 @@
++package openai
++
++import (
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/QuantumNous/new-api/constant"
++	relaycommon "github.com/QuantumNous/new-api/relay/common"
++	relayconstant "github.com/QuantumNous/new-api/relay/constant"
++	"github.com/QuantumNous/new-api/relaykit/types"
++	"github.com/gin-gonic/gin"
++	"github.com/stretchr/testify/require"
++)
++
++func newChatStreamTestContext(t *testing.T, body string) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {
++	t.Helper()
++
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
++
++	resp := &http.Response{
++		StatusCode: http.StatusOK,
++		Body:       io.NopCloser(strings.NewReader(body)),
++		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
++	}
++	info := &relaycommon.RelayInfo{
++		ChannelMeta: &relaycommon.ChannelMeta{
++			ChannelType:       constant.ChannelTypeMoonshot,
++			UpstreamModelName: "test-model",
++		},
++		IsStream:    true,
++		RelayMode:   relayconstant.RelayModeChatCompletions,
++		RelayFormat: types.RelayFormatOpenAI,
++	}
++	return c, recorder, resp, info
++}
++
++// TestOaiStreamHandlerRecoversUsageFromEarlierChunk guards the fix for
++// upstreams (e.g. OpenCode.ai) that send a non-standard frame AFTER the
++// usage-bearing finish chunk. That trailing frame used to overwrite
++// lastStreamData, so the real usage — and the cached_tokens extracted from the
++// chunk body by applyUsagePostProcessing — was lost and replaced by an
++// estimate. The handler must recover usage from the last chunk that actually
++// carried it.
++func TestOaiStreamHandlerRecoversUsageFromEarlierChunk(t *testing.T) {
++	oldMode := gin.Mode()
++	gin.SetMode(gin.TestMode)
++	t.Cleanup(func() { gin.SetMode(oldMode) })
++
++	oldTimeout := constant.StreamingTimeout
++	constant.StreamingTimeout = 30
++	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
++
++	body := strings.Join([]string{
++		`data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"Hello"}}]}`,
++		// Moonshot 风格：cached_tokens 在 choices[].usage，不在顶层 usage。
++		`data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"cached_tokens":100}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}`,
++		// 上游在 usage chunk 之后追加的非标准尾随块（x-opencode-type）。两个尾随块超出了
++		// 倒数第二帧回退能覆盖的范围。
++		`data: {"x-opencode-type":"generation_end"}`,
++		`data: {"x-opencode-type":"session_end"}`,
++		`data: [DONE]`,
++	}, "\n")
++
++	c, recorder, resp, info := newChatStreamTestContext(t, body)
++
++	usage, err := OaiStreamHandler(c, info, resp)
++
++	require.Nil(t, err)
++	require.Equal(t, 10, usage.PromptTokens, "real usage must be recovered from the earlier usage chunk, not estimated")
++	require.Equal(t, 20, usage.CompletionTokens)
++	require.Equal(t, 30, usage.TotalTokens)
++	require.Equal(t, 100, usage.PromptTokensDetails.CachedTokens, "cached_tokens must be extracted from the usage chunk body, not the trailing non-standard frame")
++	require.Contains(t, recorder.Body.String(), "Hello")
++	require.Contains(t, recorder.Body.String(), "x-opencode-type")
++}
+commit 4b49d1d09b88c4faef959240114d4ad82b074eed
+Author: x <x@x>
+Date:   Wed Oct 21 12:26:41 2026 -0300
+
+    apply 6721
+
+diff --git a/relaykit/relayconvert/response_compat.go b/relaykit/relayconvert/response_compat.go
+index 35b0c5f..b05c805 100644
+--- a/relaykit/relayconvert/response_compat.go
++++ b/relaykit/relayconvert/response_compat.go
+@@ -43,6 +43,10 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
+ 	return oaichat.StreamResponseOpenAI2Claude(openAIResponse, info)
+ }
+ 
++func FinalizeStreamResponseOpenAI2Claude(info convmeta.Meta) []*dto.ClaudeResponse {
++	return oaichat.FinalizeStreamResponseOpenAI2Claude(info)
++}
++
+ func StopReasonClaudeToOpenAI(reason string) string {
+ 	return claudemessages.StopReasonClaudeToOpenAI(reason)
+ }

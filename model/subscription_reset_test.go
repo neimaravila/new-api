@@ -134,7 +134,7 @@ func TestAdminResetUserSubscriptionsByPlanNoActiveMatchReturnsError(t *testing.T
 
 	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.True(t, strings.Contains(err.Error(), "this user does not have a valid subscription to this plan"))
+	assert.True(t, strings.Contains(err.Error(), "This user has no active subscription to this plan"))
 }
 
 func TestAdminResetPlanSubscriptionsResetsAllActiveUsers(t *testing.T) {

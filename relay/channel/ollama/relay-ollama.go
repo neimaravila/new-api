@@ -181,7 +181,7 @@ func openAIChatToOllamaChat(c *gin.Context, r *dto.GeneralOpenAIRequest) (*Ollam
 			if len(parsed) > 0 {
 				calls := make([]OllamaToolCall, 0, len(parsed))
 				for _, tc := range parsed {
-					var args interface{}
+					var args any
 					if tc.Function.Arguments != "" {
 						_ = common.Unmarshal([]byte(tc.Function.Arguments), &args)
 					}
@@ -381,7 +381,7 @@ func PullOllamaModel(baseURL, apiKey, modelName string) error {
 
 	requestBody, err := common.Marshal(pullRequest)
 	if err != nil {
-		return fmt.Errorf("failed to serialize request: %v", err)
+		return fmt.Errorf("failed to marshal request: %v", err)
 	}
 
 	client := &http.Client{
@@ -405,7 +405,7 @@ func PullOllamaModel(baseURL, apiKey, modelName string) error {
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("failed to fetch models %d: %s", response.StatusCode, string(body))
+		return fmt.Errorf("failed to pull model, status %d: %s", response.StatusCode, string(body))
 	}
 
 	return nil
@@ -422,7 +422,7 @@ func PullOllamaModelStream(baseURL, apiKey, modelName string, progressCallback f
 
 	requestBody, err := common.Marshal(pullRequest)
 	if err != nil {
-		return fmt.Errorf("failed to serialize request: %v", err)
+		return fmt.Errorf("failed to marshal request: %v", err)
 	}
 
 	client := &http.Client{
@@ -446,7 +446,7 @@ func PullOllamaModelStream(baseURL, apiKey, modelName string, progressCallback f
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("failed to fetch models %d: %s", response.StatusCode, string(body))
+		return fmt.Errorf("failed to pull model, status %d: %s", response.StatusCode, string(body))
 	}
 
 	// 读取流式响应
@@ -469,7 +469,7 @@ func PullOllamaModelStream(baseURL, apiKey, modelName string, progressCallback f
 
 		// 检查是否出现错误或完成
 		if strings.EqualFold(pullResponse.Status, "error") {
-			return fmt.Errorf("failed to fetch models: %s", strings.TrimSpace(line))
+			return fmt.Errorf("failed to pull model: %s", strings.TrimSpace(line))
 		}
 		if strings.EqualFold(pullResponse.Status, "success") {
 			successful = true
@@ -478,11 +478,11 @@ func PullOllamaModelStream(baseURL, apiKey, modelName string, progressCallback f
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read streaming response: %v", err)
+		return fmt.Errorf("failed to read stream response: %v", err)
 	}
 
 	if !successful {
-		return fmt.Errorf("model fetch incomplete: success status not received")
+		return fmt.Errorf("model pull did not complete: no success status received")
 	}
 
 	return nil
@@ -498,7 +498,7 @@ func DeleteOllamaModel(baseURL, apiKey, modelName string) error {
 
 	requestBody, err := common.Marshal(deleteRequest)
 	if err != nil {
-		return fmt.Errorf("failed to serialize request: %v", err)
+		return fmt.Errorf("failed to marshal request: %v", err)
 	}
 
 	client := &http.Client{}
@@ -520,7 +520,7 @@ func DeleteOllamaModel(baseURL, apiKey, modelName string) error {
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("failed to delete model %d: %s", response.StatusCode, string(body))
+		return fmt.Errorf("failed to delete model, status %d: %s", response.StatusCode, string(body))
 	}
 
 	return nil
@@ -556,7 +556,7 @@ func FetchOllamaVersion(baseURL, apiKey string) (string, error) {
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to query version %d: %s", response.StatusCode, string(body))
+		return "", fmt.Errorf("failed to query version, status %d: %s", response.StatusCode, string(body))
 	}
 
 	var versionResp struct {
@@ -568,7 +568,7 @@ func FetchOllamaVersion(baseURL, apiKey string) (string, error) {
 	}
 
 	if versionResp.Version == "" {
-		return "", fmt.Errorf("no version info returned")
+		return "", fmt.Errorf("no version information returned")
 	}
 
 	return versionResp.Version, nil

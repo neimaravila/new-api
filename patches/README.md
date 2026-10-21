@@ -86,33 +86,43 @@ and `6982-sse-comment-heartbeats.patch` are — each failed as a multi-commit
 
 ## Reconciled patches
 
-`6629-deepseek-v4-stream-edges.patch` is **not** a plain download. PR #6629 and
-PR #6394 both rewrite the OpenAI→Claude stream lifecycle, so #6629 was
-re-anchored on top of #6394 and regenerated; its commit message records what
-changed and how to redo it. Re-download it and you get the two rejects back.
+Three patches are **not** plain downloads anymore. After the rc.45 upgrade
+(2026-10) the upstream rewrote the code they touch, so each was re-implemented
+on the new code and regenerated from that state:
 
-Acceptance for that pair is both PRs' tests green together:
+- `6394-claude-parallel-tool-block.patch` carries the code for both PR #6394
+  (no ghost `content_block_stop` for parallel tool calls) and PR #6629
+  (discard text-only frames after tool_use; empty text block when a stream
+  emitted none — `HasContentBlock`). Both rewrite the OpenAI→Claude stream
+  lifecycle, so they live together; `6629-deepseek-v4-stream-edges.patch`
+  holds only #6629's regression tests and applies after #6394's patch.
+- `7033-sse-direct-forward.patch` merges PR #7033 (direct frame forwarding
+  with a one-frame hold for usage-only frames) with PR #6070 (recover usage
+  from the last frame that carried it when non-standard trailing frames
+  overwrite it) and the small finalize bridge of #6721 — all three edit the
+  same handler, so they ship as one patch. #6721's standalone patch is gone.
+
+Acceptance for the OpenAI→Claude pair:
 
 ```bash
 cd relaykit && GOWORK=off go test -count=1 ./relayconvert/internal/oai_chat/
 ```
 
-`7033-sse-direct-forward.patch` is the second one. PR #7033 and PR #6070 both
-rewrite the `StreamScannerHandler` callback in
-`relay/channel/openai/relay-openai.go`, so #7033 was re-anchored on top of
-#6070; its header records the merge and how to redo it. Downloading it plain
-gives one reject.
+And for the OpenAI stream handler:
 
 ```bash
 go test -count=1 ./relay/channel/openai/
 ```
 
-## Known quirks
+`6675-rate-limit-group-write-lock.patch` and `6575-oauth-redirect-uri-callback.patch`
+were also regenerated on the rc.45 code; `6355-claude-cache-creation-split.patch`
+now patches `service/tiered_settle.go` (the old anchor moved into relaykit).
 
-- `6302-openai-claude-cached-tokens.patch` applies with fuzz, not an exact
-  match, and it deliberately breaks an upstream golden test:
-  `relaykit/relayconvert` asserts `input_tokens: 10` where the fix yields `7`.
-  The image build does not run tests, so this only shows up in a local
-  `go test ./relayconvert/...`. Upstream's PR head also lives under
-  `service/relayconvert/` paths — re-downloading it means rewriting them to
-  `relaykit/`.
+## Order matters
+
+`apply-patches.sh` applies files in shell glob (alphabetical) order. The
+patches are name-independent at build time, but two of them touch the same
+files: `7033` must apply before the finalize changes it embeds; keep the
+current set working by re-running the acceptance tests above after any
+re-download.
+

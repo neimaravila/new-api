@@ -1,6 +1,9 @@
 {
-  "Non-stream": "Non-stream",
-  "Stream": "Stream",
+  "Doubao": "Doubao",
+  "Mantle (Messages API)": "Mantle (Messages API)",
+  "Responses WebSocket": "Responses WebSocket",
+  "SGLang": "SGLang",
+  "Zhipu GLM": "Zhipu GLM",
   "Stream vs non-stream": "Stream vs non-stream",
   "completion": "completion",
   "prompt": "prompt"

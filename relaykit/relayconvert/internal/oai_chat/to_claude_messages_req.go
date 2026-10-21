@@ -1,23 +1,19 @@
 package oaichat
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"context"
+
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/convdiag"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	sharedclaude "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/claude"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
-)
-
-const (
-	webSearchMaxUsesLow    = 1
-	webSearchMaxUsesMedium = 5
-	webSearchMaxUsesHigh   = 10
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 // isWebSearchToolName indica se uma tool-call (no formato OpenAI) deve ser
@@ -32,62 +28,39 @@ func isWebSearchToolName(name string) bool {
 	}
 }
 
-// buildWebSearchTool monta a server-tool Anthropic web_search_20250305. opts nil
-// cai em defaults (context size medium). Espelha o comportimento histórico do
-// bloco web_search_options, extraído p/ reuso no caminho de tool-call.
+// buildWebSearchTool monta a server-tool Anthropic web_search_20250305 com a
+// localização opcional de web_search_options; opts nil gera a tool sem opções.
 func buildWebSearchTool(opts *dto.WebSearchOptions) *dto.ClaudeWebSearchTool {
 	webSearchTool := &dto.ClaudeWebSearchTool{
-		Type:    "web_search_20250305",
-		Name:    "web_search",
-		MaxUses: webSearchMaxUsesMedium,
+		Type: "web_search_20250305",
+		Name: "web_search",
 	}
-	if opts == nil {
+	if opts == nil || opts.UserLocation == nil {
 		return webSearchTool
 	}
 
-	if opts.UserLocation != nil {
-		anthropicUserLocation := &dto.ClaudeWebSearchUserLocation{
-			Type: "approximate",
-		}
-
-		var userLocationMap map[string]interface{}
-		if err := kitutil.Unmarshal(opts.UserLocation, &userLocationMap); err == nil {
-			if approximateData, ok := userLocationMap["approximate"].(map[string]interface{}); ok {
-				if timezone, ok := approximateData["timezone"].(string); ok && timezone != "" {
-					anthropicUserLocation.Timezone = timezone
-				}
-				if country, ok := approximateData["country"].(string); ok && country != "" {
-					anthropicUserLocation.Country = country
-				}
-				if region, ok := approximateData["region"].(string); ok && region != "" {
-					anthropicUserLocation.Region = region
-				}
-				if city, ok := approximateData["city"].(string); ok && city != "" {
-					anthropicUserLocation.City = city
-				}
+	anthropicUserLocation := &dto.ClaudeWebSearchUserLocation{
+		Type: "approximate",
+	}
+	var userLocationMap map[string]any
+	if err := kitutil.Unmarshal(opts.UserLocation, &userLocationMap); err == nil {
+		if approximateData, ok := userLocationMap["approximate"].(map[string]any); ok {
+			if timezone, ok := approximateData["timezone"].(string); ok && timezone != "" {
+				anthropicUserLocation.Timezone = timezone
+			}
+			if country, ok := approximateData["country"].(string); ok && country != "" {
+				anthropicUserLocation.Country = country
+			}
+			if region, ok := approximateData["region"].(string); ok && region != "" {
+				anthropicUserLocation.Region = region
+			}
+			if city, ok := approximateData["city"].(string); ok && city != "" {
+				anthropicUserLocation.City = city
 			}
 		}
-
-		webSearchTool.UserLocation = anthropicUserLocation
 	}
-
-	switch opts.SearchContextSize {
-	case "low":
-		webSearchTool.MaxUses = webSearchMaxUsesLow
-	case "medium":
-		webSearchTool.MaxUses = webSearchMaxUsesMedium
-	case "high":
-		webSearchTool.MaxUses = webSearchMaxUsesHigh
-	}
-
+	webSearchTool.UserLocation = anthropicUserLocation
 	return webSearchTool
-}
-
-type openRouterRequestReasoning struct {
-	Enabled   bool   `json:"enabled"`
-	Effort    string `json:"effort,omitempty"`
-	MaxTokens int    `json:"max_tokens,omitempty"`
-	Exclude   bool   `json:"exclude,omitempty"`
 }
 
 func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, textRequest dto.GeneralOpenAIRequest) (*dto.ClaudeRequest, error) {
@@ -132,8 +105,10 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 	if len(claudeTools) > 0 {
 		claudeRequest.Tools = claudeTools
 	}
-	if maxTokens := textRequest.GetMaxTokens(); maxTokens > 0 {
-		claudeRequest.MaxTokens = kitutil.GetPointer(maxTokens)
+	if textRequest.MaxCompletionTokens != nil && *textRequest.MaxCompletionTokens > 0 {
+		claudeRequest.MaxTokens = kitutil.GetPointer(*textRequest.MaxCompletionTokens)
+	} else if textRequest.MaxTokens != nil && *textRequest.MaxTokens > 0 {
+		claudeRequest.MaxTokens = kitutil.GetPointer(*textRequest.MaxTokens)
 	}
 	if textRequest.TopP != nil {
 		claudeRequest.TopP = kitutil.GetPointer(*textRequest.TopP)
@@ -152,92 +127,18 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		}
 	}
 
-	if claudeRequest.MaxTokens == nil || *claudeRequest.MaxTokens == 0 {
-		if defaultMaxTokens, configured := opts.Claude.DefaultMaxTokensFor(textRequest.Model); configured {
+	sourceReasoning, diagnostics, err := reasoning.FromOpenAIChat(&textRequest)
+	if err != nil {
+		return nil, reasoning.AsClientError(err)
+	}
+	convdiag.Add(c, diagnostics...)
+	if err := sharedclaude.ApplyReasoning(c, &claudeRequest, info, sourceReasoning, true); err != nil {
+		return nil, reasoning.AsClientError(err)
+	}
+	if claudeRequest.MaxTokens == nil {
+		if defaultMaxTokens, configured := opts.Claude.DefaultMaxTokensFor(claudeRequest.Model); configured {
 			value := uint(defaultMaxTokens)
 			claudeRequest.MaxTokens = &value
-		}
-	}
-
-	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(textRequest.Model); ok && effortLevel != "" &&
-		(strings.HasPrefix(textRequest.Model, "claude-opus-4-6") ||
-			strings.HasPrefix(textRequest.Model, "claude-opus-4-7") ||
-			strings.HasPrefix(textRequest.Model, "claude-opus-4-8")) {
-		claudeRequest.Model = baseModel
-		claudeRequest.Thinking = &dto.Thinking{
-			Type: "adaptive",
-		}
-		claudeRequest.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		if strings.HasPrefix(baseModel, "claude-opus-4-7") ||
-			strings.HasPrefix(baseModel, "claude-opus-4-8") {
-			claudeRequest.Thinking.Display = "summarized"
-			claudeRequest.Temperature = nil
-			claudeRequest.TopP = nil
-			claudeRequest.TopK = nil
-		} else {
-			claudeRequest.TopP = nil
-			claudeRequest.Temperature = kitutil.GetPointer[float64](1.0)
-		}
-	} else if opts.Claude.ThinkingAdapterEnabled &&
-		strings.HasSuffix(textRequest.Model, "-thinking") {
-
-		trimmedModel := strings.TrimSuffix(textRequest.Model, "-thinking")
-		if strings.HasPrefix(trimmedModel, "claude-opus-4-7") ||
-			strings.HasPrefix(trimmedModel, "claude-opus-4-8") {
-			claudeRequest.Thinking = &dto.Thinking{Type: "adaptive", Display: "summarized"}
-			claudeRequest.OutputConfig = json.RawMessage(`{"effort":"high"}`)
-			claudeRequest.Temperature = nil
-			claudeRequest.TopP = nil
-			claudeRequest.TopK = nil
-		} else {
-			if claudeRequest.MaxTokens == nil || *claudeRequest.MaxTokens < 1280 {
-				claudeRequest.MaxTokens = kitutil.GetPointer[uint](1280)
-			}
-
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: kitutil.GetPointer[int](int(float64(*claudeRequest.MaxTokens) * opts.Claude.ThinkingAdapterBudgetTokensPercentage)),
-			}
-			claudeRequest.TopP = nil
-			claudeRequest.Temperature = kitutil.GetPointer[float64](1.0)
-		}
-		if !opts.ShouldPreserveThinkingSuffix(textRequest.Model) {
-			claudeRequest.Model = trimmedModel
-		}
-	}
-
-	if textRequest.ReasoningEffort != "" {
-		switch textRequest.ReasoningEffort {
-		case "low":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: kitutil.GetPointer[int](1280),
-			}
-		case "medium":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: kitutil.GetPointer[int](2048),
-			}
-		case "high":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: kitutil.GetPointer[int](4096),
-			}
-		}
-	}
-
-	if textRequest.Reasoning != nil {
-		var reasoningConfig openRouterRequestReasoning
-		if err := kitutil.Unmarshal(textRequest.Reasoning, &reasoningConfig); err != nil {
-			return nil, err
-		}
-
-		budgetTokens := reasoningConfig.MaxTokens
-		if budgetTokens > 0 {
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: &budgetTokens,
-			}
 		}
 	}
 
@@ -245,7 +146,7 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		switch stop := textRequest.Stop.(type) {
 		case string:
 			claudeRequest.StopSequences = []string{stop}
-		case []interface{}:
+		case []any:
 			stopSequences := make([]string, 0)
 			for _, item := range stop {
 				stopSequences = append(stopSequences, item.(string))
@@ -258,9 +159,26 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 	lastMessage := dto.Message{
 		Role: "tool",
 	}
-	for i, message := range textRequest.Messages {
-		if message.Role == "" {
-			textRequest.Messages[i].Role = "user"
+	lastMessageHasPlaceholder := false
+	for _, message := range textRequest.Messages {
+		switch message.Role {
+		case "":
+			message.Role = "user"
+		case "developer":
+			message.Role = "system"
+		case "function":
+			if message.ToolCallId != "" {
+				message.Role = "tool"
+			} else {
+				message.Role = "user"
+			}
+		case "tool":
+			if message.ToolCallId == "" {
+				message.Role = "user"
+			}
+		case "system", "user", "assistant":
+		default:
+			message.Role = "user"
 		}
 		fmtMessage := dto.Message{
 			Role:    message.Role,
@@ -274,20 +192,49 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		}
 		if lastMessage.Role == message.Role && lastMessage.Role != "tool" {
 			if lastMessage.IsStringContent() && message.IsStringContent() {
-				fmtMessage.SetStringContent(strings.Trim(fmt.Sprintf("%s %s", lastMessage.StringContent(), message.StringContent()), "\""))
+				previousToolCalls := lastMessage.ParseToolCalls()
+				currentToolCalls := fmtMessage.ParseToolCalls()
+				if len(previousToolCalls) > 0 || len(currentToolCalls) > 0 {
+					// Keep both messages' tool calls so later tool results still
+					// match a tool_use block.
+					texts := make([]string, 0, 2)
+					// Omit only text injected for an empty tool-call message.
+					isToolPlaceholder := lastMessageHasPlaceholder && len(previousToolCalls) > 0
+					if previousText := lastMessage.StringContent(); previousText != "" && !isToolPlaceholder {
+						texts = append(texts, previousText)
+					}
+					if currentText := message.StringContent(); currentText != "" {
+						texts = append(texts, currentText)
+					}
+					fmtMessage.SetStringContent(strings.Join(texts, " "))
+					fmtMessage.SetToolCalls(append(previousToolCalls, currentToolCalls...))
+				} else {
+					fmtMessage.SetStringContent(fmt.Sprintf("%s %s", lastMessage.StringContent(), message.StringContent()))
+				}
 				formatMessages = formatMessages[:len(formatMessages)-1]
 			}
 		}
-		if fmtMessage.Content == nil || (fmtMessage.IsStringContent() && fmtMessage.StringContent() == "") {
+		hasPlaceholder := fmtMessage.Content == nil || (fmtMessage.IsStringContent() && fmtMessage.StringContent() == "")
+		if hasPlaceholder {
 			fmtMessage.SetStringContent("...")
 		}
 		formatMessages = append(formatMessages, fmtMessage)
 		lastMessage = fmtMessage
+		lastMessageHasPlaceholder = hasPlaceholder
 	}
 
 	claudeMessages := make([]dto.ClaudeMessage, 0)
 	isFirstMessage := true
 	var systemMessages []dto.ClaudeMediaMessage
+	placeholderUserMessage := dto.ClaudeMessage{
+		Role: "user",
+		Content: []dto.ClaudeMediaMessage{
+			{
+				Type: "text",
+				Text: kitutil.GetPointer[string]("..."),
+			},
+		},
+	}
 
 	for _, message := range formatMessages {
 		if message.Role == "system" {
@@ -314,16 +261,7 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		if isFirstMessage {
 			isFirstMessage = false
 			if message.Role != "user" {
-				claudeMessage := dto.ClaudeMessage{
-					Role: "user",
-					Content: []dto.ClaudeMediaMessage{
-						{
-							Type: "text",
-							Text: kitutil.GetPointer[string]("..."),
-						},
-					},
-				}
-				claudeMessages = append(claudeMessages, claudeMessage)
+				claudeMessages = append(claudeMessages, placeholderUserMessage)
 			}
 		}
 
@@ -380,24 +318,27 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 					if source == nil {
 						continue
 					}
-					base64Data, mimeType, err := relaymedia.ResolveBase64Data(c, source, "formatting image for Claude")
-					if err != nil {
-						return nil, fmt.Errorf("get file data failed: %s", err.Error())
+					// Claude content blocks carry images, PDF documents, and text
+					// documents; audio and video have no Claude block.
+					reason := fmt.Sprintf("Claude Messages cannot carry %s content", mediaMessage.Type)
+					var block dto.ClaudeMediaMessage
+					if mediaMessage.Type != dto.ContentTypeInputAudio && mediaMessage.Type != dto.ContentTypeVideoUrl {
+						base64Data, mimeType, err := relaymedia.ResolveBase64Data(c, source, "formatting image for Claude")
+						if err != nil {
+							return nil, fmt.Errorf("get file data failed: %s", err.Error())
+						}
+						block, reason = sharedclaude.MediaBlock(base64Data, mimeType, mediaMessage.Type == dto.ContentTypeImageURL)
 					}
-					claudeMediaMessage := dto.ClaudeMediaMessage{
-						Source: &dto.ClaudeMessageSource{
-							Type: "base64",
-						},
+					if reason != "" {
+						convdiag.Add(c, types.ConversionDiagnostic{
+							Code:     "unsupported_media_type",
+							Path:     "messages.content",
+							Message:  reason + "; the part was omitted",
+							Severity: types.ConversionDiagnosticError,
+						})
+						continue
 					}
-					if strings.HasPrefix(mimeType, "application/pdf") {
-						claudeMediaMessage.Type = "document"
-					} else {
-						claudeMediaMessage.Type = "image"
-					}
-
-					claudeMediaMessage.Source.MediaType = mimeType
-					claudeMediaMessage.Source.Data = base64Data
-					claudeMediaMessages = append(claudeMediaMessages, claudeMediaMessage)
+					claudeMediaMessages = append(claudeMediaMessages, block)
 					continue
 				}
 			}
@@ -418,9 +359,16 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 					})
 				}
 			}
+			if len(claudeMediaMessages) == 0 {
+				// Every part was omitted; Claude rejects an empty content array.
+				claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{Type: "text", Text: kitutil.GetPointer("...")})
+			}
 			claudeMessage.Content = claudeMediaMessages
 		}
 		claudeMessages = append(claudeMessages, claudeMessage)
+	}
+	if len(claudeMessages) == 0 && len(systemMessages) > 0 {
+		claudeMessages = append(claudeMessages, placeholderUserMessage)
 	}
 
 	if len(systemMessages) > 0 {

@@ -27,7 +27,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 
 	var req SubscriptionStripePayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "invalid parameters")
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 
@@ -37,19 +37,19 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 	if !plan.Enabled {
-		common.ApiErrorMsg(c, "plan is not enabled")
+		common.ApiErrorT(c, "Subscription plan is not enabled")
 		return
 	}
 	if plan.StripePriceId == "" {
-		common.ApiErrorMsg(c, "this plan has no StripePriceId configured")
+		common.ApiErrorT(c, "StripePriceId is not configured for this plan")
 		return
 	}
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
-		common.ApiErrorMsg(c, "Stripe is not configured or the key is invalid")
+		common.ApiErrorT(c, "Stripe is not configured or key is invalid")
 		return
 	}
 	if setting.StripeWebhookSecret == "" {
-		common.ApiErrorMsg(c, "Stripe webhook is not configured")
+		common.ApiErrorT(c, "Stripe webhook is not configured")
 		return
 	}
 
@@ -60,7 +60,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 	if user == nil {
-		common.ApiErrorMsg(c, "user does not exist")
+		common.ApiErrorT(c, "User does not exist")
 		return
 	}
 
@@ -71,7 +71,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 			return
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "purchase limit for this plan has been reached")
+			common.ApiErrorT(c, "Purchase limit for this plan has been reached")
 			return
 		}
 	}
@@ -81,8 +81,8 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 
 	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe subscription payment link creation failed trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "failed to initiate payment"})
+		logger.LogError(c.Request.Context(), common.LogText("Stripe failed to create subscription payment link trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
+		paymentError(c, common.NewMessage("Failed to start payment"))
 		return
 	}
 
@@ -97,7 +97,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "failed to create order"})
+		paymentError(c, common.NewMessage("Failed to create order"))
 		return
 	}
 

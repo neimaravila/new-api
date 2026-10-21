@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -149,30 +148,21 @@ func ClearDiskCache(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "inactive disk cache cleared",
-	})
+	common.ApiSuccessT(c, "Inactive disk cache cleared", nil)
 }
 
 // ResetPerformanceStats 重置性能统计
 func ResetPerformanceStats(c *gin.Context) {
 	common.ResetDiskCacheStats()
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "statistics have been reset",
-	})
+	common.ApiSuccessT(c, "Statistics reset", nil)
 }
 
 // ForceGC 强制执行 GC
 func ForceGC(c *gin.Context) {
 	runtime.GC()
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "GC executed",
-	})
+	common.ApiSuccessT(c, "GC executed", nil)
 }
 
 // LogFileInfo 日志文件信息
@@ -337,11 +327,11 @@ func CleanupLogFiles(c *gin.Context) {
 	}
 
 	if len(failedFiles) > 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": fmt.Sprintf("some file deletions failed (%d/%d)", len(failedFiles), len(toDelete)),
-			"data":    result,
+		msg := common.NewMessage("Some files could not be deleted ({{failed}}/{{total}})", map[string]any{
+			"failed": len(failedFiles),
+			"total":  len(toDelete),
 		})
+		common.ApiErrorStatus(c, http.StatusOK, msg, gin.H{"data": result})
 		return
 	}
 

@@ -28,7 +28,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	var req SubscriptionEpayPayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "Parameter error")
+		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
 
@@ -38,15 +38,15 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 	if !plan.Enabled {
-		common.ApiErrorMsg(c, "Subscription plan is not enabled")
+		common.ApiErrorT(c, "Subscription plan is not enabled")
 		return
 	}
 	if plan.PriceAmount < 0.01 {
-		common.ApiErrorMsg(c, "Subscription plan amount is too low")
+		common.ApiErrorT(c, "Plan amount is too low")
 		return
 	}
 	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
-		common.ApiErrorMsg(c, "Payment method does not exist")
+		common.ApiErrorT(c, "Payment method does not exist")
 		return
 	}
 
@@ -58,7 +58,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 			return
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "The purchase limit for this subscription plan has been reached")
+			common.ApiErrorT(c, "Purchase limit for this plan has been reached")
 			return
 		}
 	}
@@ -66,12 +66,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	callBackAddress := service.GetCallbackAddress()
 	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
 	if err != nil {
-		common.ApiErrorMsg(c, "Callback URL configuration error")
+		common.ApiErrorT(c, "Callback URL configuration error")
 		return
 	}
 	notifyUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/notify")
 	if err != nil {
-		common.ApiErrorMsg(c, "Callback URL configuration error")
+		common.ApiErrorT(c, "Callback URL configuration error")
 		return
 	}
 
@@ -80,7 +80,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	client := GetEpayClient()
 	if client == nil {
-		common.ApiErrorMsg(c, "The current administrator has not configured payment information")
+		common.ApiErrorT(c, "Payment information has not been configured by administrator")
 		return
 	}
 
@@ -95,7 +95,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		common.ApiErrorMsg(c, "Failed to create order")
+		common.ApiErrorT(c, "Failed to create order")
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
@@ -109,7 +109,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	})
 	if err != nil {
 		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
-		common.ApiErrorMsg(c, "Failed to initiate payment")
+		common.ApiErrorT(c, "Failed to start payment")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
