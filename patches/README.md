@@ -115,8 +115,9 @@ go test -count=1 ./relay/channel/openai/
 ```
 
 `6675-rate-limit-group-write-lock.patch` and `6575-oauth-redirect-uri-callback.patch`
-were also regenerated on the rc.45 code; `6355-claude-cache-creation-split.patch`
-now patches `service/tiered_settle.go` (the old anchor moved into relaykit).
+were also regenerated on the rc.45 code. `6355-claude-cache-creation-split.patch`
+was dropped at rc.47: upstream commit `94cc3ff09` bills the unsplit cache-write
+remainder as 5m itself, while PR #6355 stays open.
 
 ## Order matters
 
