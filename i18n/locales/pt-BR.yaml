@@ -32,6 +32,8 @@ quota.subscription_insufficient: "Cota da assinatura insuficiente ou nenhuma ass
 relay.model_price_not_configured: "O modelo {{.Model}} ainda não teve o preço definido pelo administrador. Entre em contato com o administrador do site para habilitar este modelo."
 relay.model_price_not_configured_admin: "Preço do modelo {{.Model}} não configurado. Acesse Configurações do Sistema → Configurações de Operação para ativar o modo de uso próprio, ou configure o preço do modelo em Configurações do Sistema → Preços de Grupos e Modelos."
 relay.task_channel_disabled: "O canal desta tarefa foi desativado"
+relay.task_usage_price_unsupported: "O modelo {{.Model}} usa uma expressão de uso de tarefa; configure o preço comum de relay e expressões de cobrança separadas para o plugin"
+relay.shared_task_price_needs_override: "O modelo {{.Model}} compartilha a expressão de cobrança com o plugin de tarefa {{.Plugin}}; configure uma expressão de cobrança separada para o plugin antes de usar o preço comum de relay"
 relay.group_saturated: "O grupo atual está com a capacidade esgotada. Tente novamente mais tarde ou faça upgrade da sua conta para um serviço melhor."
 relay.group_upstream_saturated: "O upstream do grupo atual está com a capacidade esgotada. Tente novamente mais tarde"
 relay.retry_get_channel_failed: "Falha ao obter canal disponível para o modelo {{.Model}} no grupo {{.Group}} (nova tentativa): {{.Error}}"
