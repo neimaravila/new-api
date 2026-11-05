@@ -52,16 +52,30 @@ function bucketLabel(timestamp: number, bucketSeconds: number): string {
     .format(bucketSeconds >= 86400 ? 'MM-DD' : 'MM-DD HH:mm')
 }
 
-/** Resolves the theme's destructive token to a color the chart canvas can paint. */
+/**
+ * Reads the theme's destructive token for the chart. The chart canvas paints
+ * the same plain colors the palette uses, so a modern CSS color such as oklch()
+ * is converted to rgb through a canvas pixel; where that is unavailable the raw
+ * token is returned.
+ */
 function readDestructiveColor(): string | undefined {
-  if (typeof document === 'undefined' || !document.body) return undefined
-  const probe = document.createElement('span')
-  probe.style.color = 'var(--destructive)'
-  probe.style.display = 'none'
-  document.body.appendChild(probe)
-  const color = getComputedStyle(probe).color
-  probe.remove()
-  return color || undefined
+  if (typeof document === 'undefined') return undefined
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue('--destructive')
+    .trim()
+  if (!raw) return undefined
+  try {
+    const context = document.createElement('canvas').getContext('2d')
+    if (!context) return raw
+    context.canvas.width = 1
+    context.canvas.height = 1
+    context.fillStyle = raw
+    context.fillRect(0, 0, 1, 1)
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data
+    return a === 0 ? raw : `rgb(${r}, ${g}, ${b})`
+  } catch {
+    return raw
+  }
 }
 
 function SummaryStat(props: {
@@ -176,7 +190,11 @@ export function CommonLogsSummary() {
           value={successRate == null ? '—' : formatPercent(successRate)}
           testId='success-rate'
         />
-        <SummaryStat label={t('Tokens')} value={formatNumber(summary.tokens)} />
+        <SummaryStat
+          label={t('Tokens')}
+          value={formatNumber(summary.tokens)}
+          testId='summary-tokens'
+        />
         <SummaryStat
           label={t('Cost')}
           value={sensitiveVisible ? formatLogQuota(summary.quota) : '••••'}
@@ -195,11 +213,26 @@ export function CommonLogsSummary() {
         </p>
       )}
       {spec && (
-        <ReportChart
-          spec={spec}
-          height={CHART_HEIGHT}
-          ariaLabel={t('Requests over time')}
-        />
+        <>
+          <ReportChart
+            spec={spec}
+            height={CHART_HEIGHT}
+            ariaLabel={t('Requests over time')}
+          />
+          <div className='text-muted-foreground flex items-center gap-3 text-xs'>
+            <span className='inline-flex items-center gap-1'>
+              <span
+                className='size-2 rounded-full'
+                style={{ backgroundColor: getDashboardChartColors(2)[0] }}
+              />
+              {t('Success')}
+            </span>
+            <span className='inline-flex items-center gap-1'>
+              <span className='bg-destructive size-2 rounded-full' />
+              {t('Failures')}
+            </span>
+          </div>
+        </>
       )}
     </section>
   )

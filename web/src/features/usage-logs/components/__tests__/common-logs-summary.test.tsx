@@ -28,6 +28,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import { formatLogQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -36,10 +37,13 @@ import * as api from '../../api'
 import { CommonLogsSummary } from '../common-logs-summary'
 import { UsageLogsProvider, useUsageLogsContext } from '../usage-logs-provider'
 
+const chartSpecs = vi.hoisted(() => [] as Record<string, unknown>[])
+
 vi.mock('@visactor/react-vchart', () => ({
-  VChart: (props: { spec: Record<string, unknown> }) => (
-    <StubVChart spec={props.spec} />
-  ),
+  VChart: (props: { spec: Record<string, unknown> }) => {
+    chartSpecs.push(props.spec)
+    return <StubVChart spec={props.spec} />
+  },
 }))
 
 vi.mock('../../api', () => ({ getLogSummary: vi.fn() }))
@@ -69,6 +73,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  chartSpecs.length = 0
+  document.documentElement.style.removeProperty('--destructive')
   vi.clearAllMocks()
   useAuthStore.getState().auth.reset()
 })
@@ -120,6 +126,10 @@ it('shows requests, success rate, tokens, cost and latency', async () => {
   expect(screen.getByText('Success rate')).toBeVisible()
   expect(screen.getByText('Tokens')).toBeVisible()
   expect(screen.getByText('Cost')).toBeVisible()
+  expect(screen.getByTestId('summary-tokens')).toHaveTextContent('4,500,000')
+  expect(screen.getByTestId('summary-cost')).toHaveTextContent(
+    formatLogQuota(500000)
+  )
   expect(screen.getByText('2.5s')).toBeVisible()
 })
 
@@ -193,7 +203,7 @@ it('fills buckets without rows so the time axis stays even', async () => {
   renderSummary('startTime=3600000&endTime=10810000')
 
   const chart = await screen.findByTestId('chart-spec')
-  // success values per bucket 0, 1h, 2h then failures: 4,0,3,1,0,0
+  // per bucket (1h, 2h, 3h) the success then failure counts: 4,1 / 0,0 / 3,0
   expect(chart).toHaveTextContent('4,1,0,0,3,0')
 })
 
@@ -202,4 +212,22 @@ it('shows a quiet notice when the summary fails', async () => {
   renderSummary()
 
   expect(await screen.findByText('Summary unavailable')).toBeVisible()
+})
+
+it('paints the failures series with the theme destructive color', async () => {
+  document.documentElement.style.setProperty('--destructive', '#ff0000')
+  vi.mocked(api.getLogSummary).mockResolvedValue({ success: true, data: summary })
+  renderSummary()
+
+  await screen.findByTestId('chart-spec')
+  const spec = chartSpecs.at(-1) as {
+    color: { domain: string[]; range: string[] }
+    data: { values: { series: string }[] }[]
+  }
+  const failuresIndex = spec.color.domain.indexOf('Failures')
+  expect(failuresIndex).toBeGreaterThanOrEqual(0)
+  expect(spec.color.range[failuresIndex]).toBe('#ff0000')
+  // The tooltip names the series by this label.
+  expect(spec.data[0].values.map((v) => v.series)).toContain('Failures')
+  expect(screen.getByText('Failures')).toBeVisible()
 })
