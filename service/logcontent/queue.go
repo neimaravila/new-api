@@ -16,7 +16,7 @@ import (
 
 const (
 	queueCapacity = 512
-	workerCount   = 2
+	workerCount   = 3
 
 	maxBatchRows  = 20
 	maxBatchBytes = 2 << 20 // under MySQL 5.7's 4 MiB max_allowed_packet
