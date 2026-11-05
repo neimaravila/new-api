@@ -535,7 +535,7 @@ func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
 		tx = tx.Where("logs.channel_id = ?", f.Channel)
 	}
 	if f.Group != "" {
-		tx = tx.Where("logs."+LogGroupCol+" = ?", f.Group)
+		tx = tx.Where("logs."+logGroupCol+" = ?", f.Group)
 	}
 	return tx, nil
 }
@@ -760,8 +760,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where(LogGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(LogGroupCol+" = ?", group)
+		tx = tx.Where(logGroupCol+" = ?", group)
+		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)
@@ -852,4 +852,14 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		return 0, result.Error
 	}
 	return result.RowsAffected, nil
+}
+
+// LogGroupColumn returns the quoted name of the logs group column for the active database.
+// It is read at call time because the name is only set once the database is initialised; when
+// it was never initialised (e.g. tests with an in-memory database) it is derived from the flags.
+func LogGroupColumn() string {
+	if logGroupCol == "" {
+		initCol()
+	}
+	return logGroupCol
 }

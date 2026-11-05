@@ -567,3 +567,64 @@ func TestReportRankingMetrics(t *testing.T) {
 	assert.Equal(t, 350, rows[0].Quota)
 	assert.Equal(t, 1333, rows[0].AvgLatencyMs)
 }
+
+func TestReportRankingByGroupUsesRealGroupNames(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	for _, g := range []string{"vip", "vip", "default"} {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - 600, Type: model.LogTypeConsume, Group: g, ModelName: "m", Quota: 1, UseTime: 2}).Error)
+	}
+	rows, err := GetReportRanking(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportDimensionGroup, dto.ReportFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "vip", rows[0].Name)
+	assert.Equal(t, 2, rows[0].Requests)
+	assert.Equal(t, "default", rows[1].Name)
+	assert.Equal(t, 2000, rows[1].P95LatencyMs)
+}
+
+func TestReportRankingUsesSinglePercentileQuery(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	for i, m := range []string{"a", "a", "b", "c"} {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - 600 + int64(i), Type: model.LogTypeConsume, ModelName: m, ChannelId: 10, Quota: 1, UseTime: (i + 1) * 10}).Error)
+	}
+	statements := recordLogSQL(t)
+
+	rows, err := GetReportRanking(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportDimensionModel, dto.ReportFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+
+	sampleQueries := 0
+	for _, sql := range *statements {
+		if strings.Contains(sql, "use_time > 0") {
+			sampleQueries++
+		}
+	}
+	assert.Equal(t, 1, sampleQueries, "percentiles must come from one query: %v", *statements)
+
+	byName := map[string]dto.ReportRankingRow{}
+	for _, row := range rows {
+		byName[row.Name] = row
+	}
+	assert.Equal(t, 20000, byName["a"].P50LatencyMs) // samples 10s,20s -> idx 1
+	assert.Equal(t, 20000, byName["a"].P95LatencyMs)
+	assert.Equal(t, 30000, byName["b"].P95LatencyMs)
+	assert.Equal(t, 40000, byName["c"].P50LatencyMs)
+}
+
+func TestReportRankingChannelPercentilesFilterNumerically(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+	statements := recordLogSQL(t)
+	_, err := GetReportRanking(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportDimensionChannel, dto.ReportFilter{})
+	require.NoError(t, err)
+	found := false
+	for _, sql := range *statements {
+		if strings.Contains(sql, "use_time > 0") {
+			found = true
+			assert.Contains(t, sql, "channel_id in (10,11)")
+		}
+	}
+	assert.True(t, found)
+}

@@ -22,7 +22,6 @@ const (
 	reportChannelLimit           = 30
 	reportLatencySampleLimit     = 5000
 	reportRankingLimit           = 50
-	reportRankingSampleLimit     = 1000
 	reportCostModelLimit         = 5
 	reportThroughputMinUseTimeMs = 1
 )
@@ -498,22 +497,34 @@ func reportPercentilesMs(samples []int) (int, int) {
 
 // ---- ranking by dimension ----
 
-// reportRankingDimensions maps each dimension to its grouping column. It is a fixed table so the
-// request parameter never reaches the SQL text; adminOnly dimensions are refused to regular users.
-var reportRankingDimensions = map[dto.ReportDimension]struct {
+type reportRankingSpec struct {
 	dim       reportPerfDimension
 	adminOnly bool
-}{
-	dto.ReportDimensionChannel: {dim: reportPerfByChannel, adminOnly: true},
-	dto.ReportDimensionModel:   {dim: reportPerfByModel},
-	dto.ReportDimensionUser:    {dim: reportPerfDimension{column: "username", presence: "username <> ''"}, adminOnly: true},
-	dto.ReportDimensionToken:   {dim: reportPerfDimension{column: "token_name", presence: "token_name <> ''"}},
-	dto.ReportDimensionGroup:   {dim: reportPerfDimension{column: model.LogGroupCol, presence: model.LogGroupCol + " <> ''"}},
+}
+
+// reportRankingSpecFor maps each dimension to its grouping column. It is a fixed table so the
+// request parameter never reaches the SQL text; adminOnly dimensions are refused to regular users.
+// It resolves at call time because the group column name is only known once the database is up.
+func reportRankingSpecFor(dim dto.ReportDimension) (reportRankingSpec, bool) {
+	switch dim {
+	case dto.ReportDimensionChannel:
+		return reportRankingSpec{dim: reportPerfByChannel, adminOnly: true}, true
+	case dto.ReportDimensionModel:
+		return reportRankingSpec{dim: reportPerfByModel}, true
+	case dto.ReportDimensionUser:
+		return reportRankingSpec{dim: reportPerfDimension{column: "username", presence: "username <> ''"}, adminOnly: true}, true
+	case dto.ReportDimensionToken:
+		return reportRankingSpec{dim: reportPerfDimension{column: "token_name", presence: "token_name <> ''"}}, true
+	case dto.ReportDimensionGroup:
+		col := model.LogGroupColumn()
+		return reportRankingSpec{dim: reportPerfDimension{column: col, presence: col + " <> ''"}}, true
+	}
+	return reportRankingSpec{}, false
 }
 
 // GetReportRanking ranks the top entries of one dimension by request count.
 func GetReportRanking(userID int, username string, role int, r dto.ReportTimeRange, dim dto.ReportDimension, filter dto.ReportFilter) ([]dto.ReportRankingRow, error) {
-	spec, ok := reportRankingDimensions[dim]
+	spec, ok := reportRankingSpecFor(dim)
 	if !ok {
 		return nil, fmt.Errorf("invalid dimension: %q", dim)
 	}
@@ -555,12 +566,18 @@ func computeReportRanking(scope reportRoleScope, start int64, end int64, dim rep
 		return nil, err
 	}
 
+	names := make([]string, 0, len(rawRows))
+	for _, r := range rawRows {
+		names = append(names, r.Name)
+	}
+	samplesByName, err := reportRankingSamples(scope, start, end, dim.column, names)
+	if err != nil {
+		return nil, err
+	}
+
 	rows := make([]dto.ReportRankingRow, 0, len(rawRows))
 	for _, r := range rawRows {
-		p50, p95, err := reportGroupPercentiles(scope, start, end, dim.column, r.Name, reportRankingSampleLimit)
-		if err != nil {
-			return nil, err
-		}
+		p50, p95 := reportPercentilesMs(samplesByName[r.Name])
 		rows = append(rows, dto.ReportRankingRow{
 			Name:         r.Name,
 			Requests:     r.Requests,
@@ -577,6 +594,48 @@ func computeReportRanking(scope reportRoleScope, start int64, end int64, dim rep
 		nameChannelRankingRows(rows)
 	}
 	return rows, nil
+}
+
+// reportRankingSamples fetches use_time samples for every ranked name in one bounded query (the
+// most recent reportLatencySampleLimit rows overall) and groups them by name. Names with no sample
+// inside the bound are absent from the map and get zero percentiles.
+func reportRankingSamples(scope reportRoleScope, start int64, end int64, col string, names []string) (map[string][]int, error) {
+	samples := make(map[string][]int, len(names))
+	if len(names) == 0 {
+		return samples, nil
+	}
+	// channel_id is an integer column: PostgreSQL rejects comparing it to strings.
+	args := make([]any, 0, len(names))
+	for _, name := range names {
+		if col == "channel_id" {
+			id, err := strconv.Atoi(name)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, id)
+		} else {
+			args = append(args, name)
+		}
+	}
+	tx := model.LOG_DB.Table("logs").
+		Select(col+" as name, use_time").
+		Where("created_at >= ? and created_at <= ? and type = ? and use_time > 0", start, end, model.LogTypeConsume).
+		Where(col+" in ?", args).
+		Order("created_at desc").
+		Limit(reportLatencySampleLimit)
+	tx = scope.apply(tx)
+
+	var raw []struct {
+		Name    string `gorm:"column:name"`
+		UseTime int    `gorm:"column:use_time"`
+	}
+	if err := tx.Scan(&raw).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range raw {
+		samples[r.Name] = append(samples[r.Name], r.UseTime)
+	}
+	return samples, nil
 }
 
 // nameChannelRankingRows replaces the raw channel_id of each row with the channel name.

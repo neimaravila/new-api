@@ -250,10 +250,10 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/data/flow/self":                   accessTokenScopeRule("usage:read"),
 
 	// router/api-router.go: /api/dashboard (role-scoped: admins see every user)
-	"GET /api/dashboard/summary":        accessTokenScopeRule("usage:read"),
-	"GET /api/dashboard/insights":       accessTokenScopeRule("usage:read"),
-	"GET /api/dashboard/report":         accessTokenScopeRule("usage:read"),
-	"GET /api/dashboard/report/export":  accessTokenScopeRule("usage:read"),
+	"GET /api/dashboard/summary":       accessTokenScopeRule("usage:read"),
+	"GET /api/dashboard/insights":      accessTokenScopeRule("usage:read"),
+	"GET /api/dashboard/report":        accessTokenScopeRule("usage:read"),
+	"GET /api/dashboard/report/export": accessTokenScopeRule("usage:read"),
 	"GET /api/dashboard/report/ranking": accessTokenScopeRule("usage:read"),
 
 	// router/api-router.go: /api/group, /api/prefill_group

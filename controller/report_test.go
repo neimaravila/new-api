@@ -164,7 +164,7 @@ func newReportRankingRequest(role int, userID int, username string, query string
 	return ctx, recorder
 }
 
-func TestGetReportRankingHandlerAdminChannels(t *testing.T) {
+func TestGetReportRankingHandlerAdminModels(t *testing.T) {
 	setupReportControllerTestDB(t)
 	ctx, recorder := newReportRankingRequest(common.RoleAdminUser, 99, "admin", "range=7d&dimension=model")
 	GetReportRanking(ctx)
