@@ -291,6 +291,12 @@ func UpdateOption(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+	case "LogContentRetentionDays":
+		days, convErr := strconv.Atoi(option.Value.(string))
+		if convErr != nil || days < common.LogContentRetentionDaysMin || days > common.LogContentRetentionDaysMax {
+			common.ApiErrorMsg(c, "Log content retention days must be an integer between 1 and 3650")
+			return
+		}
 	case "ImageRatio":
 		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
 		if err != nil {
