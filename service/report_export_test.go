@@ -14,7 +14,7 @@ func TestRenderReportCSVContainsAllSections(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	seedReportFixture(t)
 
-	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
 	require.NoError(t, err)
 
 	csv := RenderReportCSV(summary)
@@ -58,7 +58,7 @@ func TestRenderReportCSVOmitsAdminSectionsForUser(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	seedReportFixture(t)
 
-	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
 	require.NoError(t, err)
 	csv := RenderReportCSV(summary)
 

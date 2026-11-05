@@ -15,12 +15,12 @@ import (
 
 // ReportLimits caps how many breakdown rows are returned per category.
 const (
-	reportModelLimit            = 50
-	reportErrorLimit            = 20
-	reportPerformanceLimit      = 20
-	reportTokenAnatomyLimit     = 30
-	reportChannelLimit          = 30
-	reportLatencySampleLimit    = 5000
+	reportModelLimit             = 50
+	reportErrorLimit             = 20
+	reportPerformanceLimit       = 20
+	reportTokenAnatomyLimit      = 30
+	reportChannelLimit           = 30
+	reportLatencySampleLimit     = 5000
 	reportThroughputMinUseTimeMs = 1
 )
 
@@ -57,20 +57,36 @@ func DefaultReportGranularity(start int64, end int64) dto.ReportGranularity {
 }
 
 type reportRoleScope struct {
-	isAdmin  bool
-	userID   int
-	username string
+	isAdmin   bool
+	userID    int
+	username  string
+	modelName string
+	channelID int
 }
 
-func reportScope(userID int, username string, role int) reportRoleScope {
+func reportScope(userID int, username string, role int, filter dto.ReportFilter) reportRoleScope {
+	isAdmin := role >= common.RoleAdminUser
+	channelID := filter.ChannelID
+	if !isAdmin {
+		// The channel filter is admin-only.
+		channelID = 0
+	}
 	return reportRoleScope{
-		isAdmin:  role >= common.RoleAdminUser,
-		userID:   userID,
-		username: username,
+		isAdmin:   isAdmin,
+		userID:    userID,
+		username:  username,
+		modelName: filter.ModelName,
+		channelID: channelID,
 	}
 }
 
 func (s reportRoleScope) apply(tx *gorm.DB) *gorm.DB {
+	if s.modelName != "" {
+		tx = tx.Where("model_name = ?", s.modelName)
+	}
+	if s.channelID > 0 {
+		tx = tx.Where("channel_id = ?", s.channelID)
+	}
 	if s.isAdmin {
 		return tx
 	}
@@ -81,13 +97,13 @@ func (s reportRoleScope) apply(tx *gorm.DB) *gorm.DB {
 }
 
 // GetReportSummary computes the full role-scoped report payload.
-func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRange, granularity dto.ReportGranularity) (dto.ReportSummary, error) {
+func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRange, granularity dto.ReportGranularity, filter dto.ReportFilter) (dto.ReportSummary, error) {
 	now := time.Now()
 	start, end := ResolveReportWindow(r, now)
 	if granularity == "" {
 		granularity = DefaultReportGranularity(start, end)
 	}
-	scope := reportScope(userID, username, role)
+	scope := reportScope(userID, username, role, filter)
 
 	trend, err := computeReportTrend(scope, start, end, granularity)
 	if err != nil {
@@ -346,7 +362,7 @@ func computeReportErrors(scope reportRoleScope, start int64, end int64) ([]dto.R
 
 // reportPerfDimension pairs a grouping column with the predicate that drops rows carrying no
 // value for it. The predicate is column-typed on purpose: channel_id is an integer column, and
-// PostgreSQL rejects `channel_id <> ''` with SQLSTATE 22P02 instead of coercing like SQLite/MySQL.
+// PostgreSQL rejects `channel_id <> ”` with SQLSTATE 22P02 instead of coercing like SQLite/MySQL.
 type reportPerfDimension struct {
 	column   string
 	presence string
@@ -469,10 +485,10 @@ func computeReportTokenAnatomy(scope reportRoleScope, start int64, end int64) ([
 	tx = scope.apply(tx)
 
 	var rawRows []struct {
-		ModelName       string `gorm:"column:model_name"`
-		PromptTokens    int    `gorm:"column:prompt_tokens"`
-		CompletionTokens int   `gorm:"column:completion_tokens"`
-		CacheTokens     int    `gorm:"column:cache_tokens"`
+		ModelName        string `gorm:"column:model_name"`
+		PromptTokens     int    `gorm:"column:prompt_tokens"`
+		CompletionTokens int    `gorm:"column:completion_tokens"`
+		CacheTokens      int    `gorm:"column:cache_tokens"`
 	}
 	if err := tx.Scan(&rawRows).Error; err != nil {
 		return nil, err
@@ -505,10 +521,10 @@ func computeReportStreamComparison(scope reportRoleScope, start int64, end int64
 	tx = scope.apply(tx)
 
 	var rawRows []struct {
-		IsStream  bool `gorm:"column:is_stream"`
-		LatencySum int `gorm:"column:latency_sum"`
-		Consumers  int `gorm:"column:consumers"`
-		Requests   int `gorm:"column:requests"`
+		IsStream   bool `gorm:"column:is_stream"`
+		LatencySum int  `gorm:"column:latency_sum"`
+		Consumers  int  `gorm:"column:consumers"`
+		Requests   int  `gorm:"column:requests"`
 	}
 	if err := tx.Scan(&rawRows).Error; err != nil {
 		return nil, err
@@ -539,18 +555,19 @@ func computeReportChannels(scope reportRoleScope, start int64, end int64) ([]dto
 			"COALESCE(sum(case when type = ? then use_time else 0 end), 0) as latency_sum",
 			model.LogTypeConsume, model.LogTypeError, model.LogTypeConsume, model.LogTypeConsume).
 		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
-		Where("channel_id <> 0").
+		Where("channel_id <> 0")
+	tx = scope.apply(tx).
 		Group("channel_id").
 		Order("quota desc").
 		Limit(reportChannelLimit)
 
 	var rawRows []struct {
-		ChannelID  int   `gorm:"column:channel_id"`
-		Quota      int   `gorm:"column:quota"`
-		Requests   int   `gorm:"column:requests"`
-		Failures   int   `gorm:"column:failures"`
-		Consumers  int   `gorm:"column:consumers"`
-		LatencySum int   `gorm:"column:latency_sum"`
+		ChannelID  int `gorm:"column:channel_id"`
+		Quota      int `gorm:"column:quota"`
+		Requests   int `gorm:"column:requests"`
+		Failures   int `gorm:"column:failures"`
+		Consumers  int `gorm:"column:consumers"`
+		LatencySum int `gorm:"column:latency_sum"`
 	}
 	if err := tx.Scan(&rawRows).Error; err != nil {
 		return nil, err

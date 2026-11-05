@@ -21,7 +21,7 @@ func GetReportSummary(c *gin.Context) {
 	timeRange := dto.ReportTimeRange(c.DefaultQuery("range", string(dto.ReportRangeLast7Days)))
 	granularity := dto.ReportGranularity(c.DefaultQuery("granularity", ""))
 
-	summary, err := service.GetReportSummary(userID, username, role, timeRange, granularity)
+	summary, err := service.GetReportSummary(userID, username, role, timeRange, granularity, reportFilterFromQuery(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -38,7 +38,7 @@ func GetReportExport(c *gin.Context) {
 	timeRange := dto.ReportTimeRange(c.DefaultQuery("range", string(dto.ReportRangeLast7Days)))
 	granularity := dto.ReportGranularity(c.DefaultQuery("granularity", ""))
 
-	summary, err := service.GetReportSummary(userID, username, role, timeRange, granularity)
+	summary, err := service.GetReportSummary(userID, username, role, timeRange, granularity, reportFilterFromQuery(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -70,4 +70,13 @@ func dashboardViewerRole(c *gin.Context) int {
 		return role
 	}
 	return common.RoleCommonUser
+}
+
+// reportFilterFromQuery reads the optional model_name and channel filters.
+func reportFilterFromQuery(c *gin.Context) dto.ReportFilter {
+	channelID, _ := strconv.Atoi(c.Query("channel"))
+	if channelID < 0 {
+		channelID = 0
+	}
+	return dto.ReportFilter{ModelName: c.Query("model_name"), ChannelID: channelID}
 }

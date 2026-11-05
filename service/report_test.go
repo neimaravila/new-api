@@ -86,7 +86,7 @@ func TestGetReportSummaryAdminScopesGlobal(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	start, end := seedReportFixture(t)
 
-	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
 	require.NoError(t, err)
 
 	assert.Equal(t, dto.DashboardRoleAdmin, summary.Role)
@@ -124,7 +124,7 @@ func TestReportChannelPerformanceFiltersChannelIDNumerically(t *testing.T) {
 	start, end := seedReportFixture(t)
 	statements := recordLogSQL(t)
 
-	rows, err := computeReportPerformance(reportScope(99, "admin", common.RoleAdminUser), start, end, reportPerfByChannel)
+	rows, err := computeReportPerformance(reportScope(99, "admin", common.RoleAdminUser, dto.ReportFilter{}), start, end, reportPerfByChannel)
 	require.NoError(t, err)
 	require.NotEmpty(t, rows)
 
@@ -148,7 +148,7 @@ func TestGetReportSummaryNamesChannelPerformanceRows(t *testing.T) {
 	// The fixture logs reference channels 10 and 11; only 10 still exists.
 	require.NoError(t, model.DB.Create(&model.Channel{Id: 10, Name: "primary-openai"}).Error)
 
-	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
 	require.NoError(t, err)
 
 	perfNames := make([]string, 0, len(summary.ChannelPerformance))
@@ -168,7 +168,7 @@ func TestGetReportSummaryRegularUserScoped(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	seedReportFixture(t)
 
-	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
 	require.NoError(t, err)
 
 	assert.Equal(t, dto.DashboardRoleUser, summary.Role)
@@ -204,7 +204,7 @@ func TestGetReportSummaryErrorsAndPerformance(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	seedReportFixture(t)
 
-	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour)
+	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
 	require.NoError(t, err)
 
 	// alice has 1 error on gpt-4o
@@ -234,7 +234,7 @@ func TestGetReportSummaryErrorsAndPerformance(t *testing.T) {
 func TestGetReportSummaryEmptyFixtureSafe(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	// no logs at all
-	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityDay)
+	summary, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityDay, dto.ReportFilter{})
 	require.NoError(t, err)
 	assert.Empty(t, summary.Models)
 	assert.Empty(t, summary.Errors)
@@ -262,7 +262,7 @@ func seedReportTypeMixFixture(t *testing.T) (int64, int64) {
 func TestReportTotalsCountOnlyConsumeAndError(t *testing.T) {
 	setupDashboardServiceTestDB(t)
 	start, end := seedReportTypeMixFixture(t)
-	admin := reportScope(99, "admin", common.RoleAdminUser)
+	admin := reportScope(99, "admin", common.RoleAdminUser, dto.ReportFilter{})
 
 	trend, err := computeReportTrend(admin, start, end, dto.ReportGranularityHour)
 	require.NoError(t, err)
@@ -304,10 +304,53 @@ func TestReportPerformanceUsesMilliseconds(t *testing.T) {
 		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 10, PromptTokens: 10, CompletionTokens: 20, UseTime: useTime}).Error)
 	}
 
-	rows, err := computeReportPerformance(reportScope(99, "admin", common.RoleAdminUser), at-3600, at+3600, reportPerfByModel)
+	rows, err := computeReportPerformance(reportScope(99, "admin", common.RoleAdminUser, dto.ReportFilter{}), at-3600, at+3600, reportPerfByModel)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 3000, rows[0].AvgLatencyMs)
 	assert.Equal(t, 4000, rows[0].P95LatencyMs)
 	assert.Equal(t, 10, rows[0].Throughput)
+}
+
+func TestReportSummaryFiltersByModel(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{ModelName: "gpt-4o"})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, summary.Models)
+	for _, row := range summary.Models {
+		assert.Equal(t, "gpt-4o", row.ModelName)
+	}
+	// gpt-4o consume: alice 100+200+50, bob 9999; requests: 4 consume + 1 error.
+	assert.Equal(t, 10349, summary.Trend.Totals.Quota)
+	assert.Equal(t, 5, summary.Trend.Totals.Requests)
+}
+
+func TestReportSummaryChannelFilterIgnoredForRegularUser(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+
+	base, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
+	require.NoError(t, err)
+	filtered, err := GetReportSummary(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{ChannelID: 11})
+	require.NoError(t, err)
+
+	assert.Equal(t, base.Trend.Totals, filtered.Trend.Totals)
+	assert.Equal(t, base.Models, filtered.Models)
+}
+
+func TestReportSummaryChannelFilterAppliesForAdmin(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{ChannelID: 11})
+	require.NoError(t, err)
+	for _, row := range summary.Models {
+		assert.Equal(t, "claude", row.ModelName)
+	}
+	for _, row := range summary.Channels {
+		assert.Equal(t, 11, row.ChannelID)
+	}
 }

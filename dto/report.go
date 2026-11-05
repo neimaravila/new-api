@@ -121,3 +121,9 @@ type ReportStreamComparison struct {
 	NonStreamAvgLatencyMs int `json:"non_stream_avg_latency_ms"`
 	NonStreamRequests    int `json:"non_stream_requests"`
 }
+
+// ReportFilter narrows every report aggregation. Zero values mean no filter.
+type ReportFilter struct {
+	ModelName string
+	ChannelID int
+}

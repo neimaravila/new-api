@@ -139,3 +139,15 @@ func TestDashboardViewerRoleScopesAccessTokens(t *testing.T) {
 		})
 	}
 }
+
+func TestGetReportExportAppliesFilters(t *testing.T) {
+	setupReportControllerTestDB(t)
+	ctx, recorder := newReportRequest(common.RoleAdminUser, 99, "admin")
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/dashboard/report/export?range=7d&granularity=hour&model_name=gpt-4o", nil)
+	GetReportExport(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	body := recorder.Body.String()
+	assert.Contains(t, body, "gpt-4o")
+	assert.NotContains(t, body, "claude")
+}
