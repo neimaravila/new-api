@@ -199,6 +199,10 @@ type lcmCall struct {
 	progress *atomic.Int64
 	// gate, when set, is the midpoint gate of the provider's streams.
 	gate *atomic.Pointer[lcmGate]
+	// holdAfterResponse holds every call of a run once its response has
+	// reached the client, before Finish, so all copies are in flight at once.
+	holdAfterResponse bool
+	held              *lcmGate
 }
 
 type lcmResult struct {
@@ -253,6 +257,10 @@ func lcmServe(call lcmCall, capture bool) (lcmResult, error) {
 		return lcmResult{}, err
 	}
 	_, apiErr := adaptor.DoResponse(c, resp, info)
+	if call.held != nil {
+		call.held.arrived.Add(1)
+		<-call.held.release
+	}
 	logCapture.OnLogRow(&model.Log{UserId: 1, Type: model.LogTypeConsume})
 	finishStart := time.Now()
 	logCapture.Finish()
@@ -320,12 +328,16 @@ func lcmWaitBudget(limit time.Duration) int64 {
 	return logcontent.Stats().BudgetInUse
 }
 
-// lcmWaitWritten waits until the recorder has written want rows since before.
-func lcmWaitWritten(before logcontent.StatsSnapshot, want int64) logcontent.StatsSnapshot {
+// lcmWaitWritten waits until every one of calls has been enqueued or
+// dropped and every enqueued call has its two rows written. Each poll reads
+// all counters at once: a call whose fold enqueues it later is still counted.
+func lcmWaitWritten(before logcontent.StatsSnapshot, calls int64) logcontent.StatsSnapshot {
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		now := logcontent.Stats()
-		if now.Written-before.Written >= want || time.Now().After(deadline) {
+		enqueued, dropped := now.Enqueued-before.Enqueued, now.Dropped-before.Dropped
+		settled := enqueued+dropped >= calls && now.Written-before.Written >= 2*enqueued
+		if settled || time.Now().After(deadline) {
 			return now
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -338,7 +350,7 @@ func lcmWaitWritten(before logcontent.StatsSnapshot, want int64) logcontent.Stat
 // call is still either enqueued and written or dropped.
 func lcmCheckRecorder(t *testing.T, before logcontent.StatsSnapshot, calls int, mayDrop bool) {
 	t.Helper()
-	after := lcmWaitWritten(before, 2*(int64(calls)-(logcontent.Stats().Dropped-before.Dropped)))
+	after := lcmWaitWritten(before, int64(calls))
 	t.Logf("recorder: enqueued %d, written %d, dropped %d, write errors %d, budget in use %d",
 		after.Enqueued-before.Enqueued, after.Written-before.Written, after.Dropped-before.Dropped,
 		after.WriteErrors-before.WriteErrors, after.BudgetInUse)
@@ -462,6 +474,8 @@ type lcmMemory struct {
 	baseAlloc, midAlloc uint64
 	midSampled          bool
 	peakBudget          int64
+	heldBudget          int64
+	heldSampled         bool
 	budgetAfter         int64
 	elapsed             time.Duration
 }
@@ -487,6 +501,10 @@ func lcmMeasureMemory(t *testing.T, scale lcmScale, n int, call lcmCall, capture
 		call.gate.Store(gate)
 		defer call.gate.Store(nil)
 	}
+	if call.holdAfterResponse {
+		gate = &lcmGate{release: make(chan struct{})}
+		call.held = gate
+	}
 	var lastProgress int64
 	var steadySince time.Time
 	gateOpen := false
@@ -504,7 +522,15 @@ func lcmMeasureMemory(t *testing.T, scale lcmScale, n int, call lcmCall, capture
 		for {
 			run.peak = max(run.peak, lcmMemStats().HeapInuse)
 			run.peakBudget = max(run.peakBudget, logcontent.Stats().BudgetInUse)
-			if gate != nil && !run.midSampled && gate.arrived.Load() == int64(n) {
+			if call.held != nil && !gateOpen && gate.arrived.Load() == int64(n) {
+				// Every call holds its copies: this is their sum.
+				run.heldBudget = logcontent.Stats().BudgetInUse
+				run.peakBudget = max(run.peakBudget, run.heldBudget)
+				run.heldSampled = true
+				close(gate.release)
+				gateOpen = true
+			}
+			if call.gate != nil && !run.midSampled && gate.arrived.Load() == int64(n) {
 				// All held: wait until the relay has passed on what it read.
 				if progress := call.progress.Load(); progress != lastProgress {
 					lastProgress, steadySince = progress, time.Now()
@@ -538,8 +564,11 @@ func lcmMeasureMemory(t *testing.T, scale lcmScale, n int, call lcmCall, capture
 	for _, result := range results {
 		require.GreaterOrEqual(t, result.bytes, minBytes, "the whole body reached the client")
 	}
-	if gate != nil {
+	if call.gate != nil {
 		require.True(t, run.midSampled, "the heap was sampled in the middle of the streams")
+	}
+	if call.held != nil {
+		require.True(t, run.heldSampled, "the budget was read with every call held")
 	}
 
 	run.budgetAfter = lcmWaitBudget(10 * time.Second)
@@ -652,6 +681,15 @@ func TestLogContentMeasureLongStreamMemory(t *testing.T) {
 	}
 }
 
+// lcmLargeCallBudget is the designed budget of one non-stream call whose
+// response is over maxParsedBody (8 MiB): the provider copy knows the size
+// from Content-Length and keeps only the head from the start, maxStoredBody +
+// tapMarginBytes (1 MiB + 64 KiB); the client copy does not know it, and may
+// grow to maxParsedBody before it switches to the head; plus the request
+// copies. Without the switch both copies keep 8 MiB, and 20 held calls go
+// over the limit.
+const lcmLargeCallBudget = (1<<20 + 64<<10) + 8<<20 + lcmRequestReserve
+
 func TestLogContentMeasureLargeResponseMemory(t *testing.T) {
 	scale := lcmScaleFor()
 	lcmUseLogDB(t)
@@ -669,15 +707,18 @@ func TestLogContentMeasureLargeResponseMemory(t *testing.T) {
 
 	// The relay itself holds each 50 MiB body several times over, so the heap
 	// with capture off varies by more than the capture costs: the budget in
-	// use is the measure.
+	// use, read with every call held after its response, is the measure.
 	label := fmt.Sprintf("%d non-stream responses of %d MiB", scale.largeCalls, scale.largeBytes/mib)
 	cost := lcmCompareMemory(t, scale, label, scale.largeCalls, lcmCall{
-		baseURL: server.URL,
-		request: []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}`),
+		baseURL:           server.URL,
+		request:           []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}`),
+		holdAfterResponse: true,
 	}, int64(scale.largeBytes))
-	t.Logf("%s: peak budget %.2f MiB (limit 256 MiB)", label, lcmMiB(float64(cost.peakBudget)))
+	budgetLimit := int64(scale.largeCalls) * lcmLargeCallBudget
+	t.Logf("%s: peak budget %d B (limit %d x (1 MiB + 64 KiB + 8 MiB + %d B) = %d B)",
+		label, cost.peakBudget, scale.largeCalls, lcmRequestReserve, budgetLimit)
 	if scale.thresholds {
-		assert.LessOrEqual(t, cost.peakBudget, int64(256*mib), "peak budget in use, 20 responses of 50 MiB")
+		assert.LessOrEqual(t, cost.peakBudget, budgetLimit, "peak budget in use, 20 responses of 50 MiB")
 	}
 }
 
