@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Download } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { getReportExportUrl, getReportSummary } from '../../api'
 import type {
+  ReportDimension,
   ReportFilters,
   ReportGranularity,
   ReportTab,
@@ -37,6 +38,7 @@ import { ReportChannelPanel } from './report-channel-panel'
 import { ReportFiltersBar, type ReportChannelOption } from './report-filters'
 import { ReportOverviewTab } from './report-overview-tab'
 import { ReportPerformancePanel } from './report-performance-panel'
+import { ReportRankingTab } from './report-ranking-tab'
 
 const RANGE_OPTIONS: { value: ReportTimeRange; labelKey: string }[] = [
   { value: 'today', labelKey: 'Today' },
@@ -60,6 +62,26 @@ const TAB_OPTIONS: { value: ReportTab; labelKey: string; adminOnly?: boolean }[]
   { value: 'groups', labelKey: 'Groups' },
 ]
 
+const TAB_DIMENSIONS: Record<Exclude<ReportTab, 'overview'>, ReportDimension> = {
+  channels: 'channel',
+  models: 'model',
+  users: 'user',
+  tokens: 'token',
+  groups: 'group',
+}
+
+function downloadCsv(csv: string, name: string): void {
+  // The BOM keeps spreadsheet apps from misreading UTF-8 names.
+  const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 interface FilterOptions {
   range: ReportTimeRange
   models: string[]
@@ -77,6 +99,8 @@ export function ReportsSection(): React.JSX.Element {
   const [modelName, setModelName] = useState<string | undefined>()
   const [channelId, setChannelId] = useState<number | undefined>()
   const [options, setOptions] = useState<FilterOptions | null>(null)
+  const [rankingCsv, setRankingCsv] = useState<string | null>(null)
+  const handleCsvChange = useCallback((csv: string | null) => setRankingCsv(csv), [])
 
   const visibleTabs = TAB_OPTIONS.filter((option) => isAdmin || !option.adminOnly)
   const activeTab = visibleTabs.some((option) => option.value === tab) ? tab : 'overview'
@@ -175,10 +199,22 @@ export function ReportsSection(): React.JSX.Element {
             onChannelChange={setChannelId}
           />
         </div>
-        <Button size='sm' variant='outline' render={<a href={exportUrl} download />}>
-          <Download data-icon='inline-start' />
-          {t('Export CSV')}
-        </Button>
+        {activeTab === 'overview' ? (
+          <Button size='sm' variant='outline' render={<a href={exportUrl} download />}>
+            <Download data-icon='inline-start' />
+            {t('Export CSV')}
+          </Button>
+        ) : (
+          <Button
+            size='sm'
+            variant='outline'
+            disabled={!rankingCsv}
+            onClick={() => rankingCsv && downloadCsv(rankingCsv, `report-${activeTab}-${range}.csv`)}
+          >
+            <Download data-icon='inline-start' />
+            {t('Export CSV')}
+          </Button>
+        )}
       </div>
 
       {summaryQuery.isError && (
@@ -199,12 +235,23 @@ export function ReportsSection(): React.JSX.Element {
         <TabsContent value='overview'>
           <ReportOverviewTab loading={loading} isError={summaryQuery.isError} summary={summary} />
         </TabsContent>
-        {summary && (
-          <>
-            {isAdmin && (
-              <TabsContent value='channels' className='space-y-4'>
-                {summary.channels && <ReportChannelPanel loading={loading} channels={summary.channels} />}
-                {summary.channel_performance && (
+        {visibleTabs
+          .filter((option) => option.value !== 'overview')
+          .map((option) => {
+            const value = option.value as Exclude<ReportTab, 'overview'>
+            return (
+              <TabsContent key={value} value={value} className='space-y-4'>
+                <ReportRankingTab
+                  dimension={TAB_DIMENSIONS[value]}
+                  title={t(option.labelKey)}
+                  enabled={activeTab === value}
+                  filters={filters}
+                  onCsvChange={handleCsvChange}
+                />
+                {value === 'channels' && summary?.channels && (
+                  <ReportChannelPanel loading={loading} channels={summary.channels} />
+                )}
+                {value === 'channels' && summary?.channel_performance && (
                   <ReportPerformancePanel
                     loading={loading}
                     title={t('Channel latency')}
@@ -212,18 +259,8 @@ export function ReportsSection(): React.JSX.Element {
                   />
                 )}
               </TabsContent>
-            )}
-            {visibleTabs
-              .filter((option) => !['overview', 'channels'].includes(option.value))
-              .map((option) => (
-                <TabsContent key={option.value} value={option.value}>
-                  <div className='bg-card text-muted-foreground rounded-2xl border border-dashed p-4 text-sm shadow-xs'>
-                    {t('The {{tab}} ranking is not available yet.', { tab: t(option.labelKey) })}
-                  </div>
-                </TabsContent>
-              ))}
-          </>
-        )}
+            )
+          })}
       </Tabs>
     </div>
   )

@@ -23,7 +23,9 @@ import type {
   DashboardSummary,
   FlowQuotaDataItem,
   QuotaDataItem,
+  ReportDimension,
   ReportFilters,
+  ReportRankingRow,
   ReportSummary,
   UptimeGroupResult,
 } from './types'
@@ -141,4 +143,15 @@ export async function getReportSummary(params: Partial<ReportFilters> = {}) {
 export function getReportExportUrl(params: Partial<ReportFilters> = {}): string {
   const qs = buildReportQuery(params)
   return qs ? `/api/dashboard/report/export?${qs}` : '/api/dashboard/report/export'
+}
+
+export async function getReportRanking(dimension: ReportDimension, params: Partial<ReportFilters> = {}) {
+  const query = new URLSearchParams(buildReportQuery({ ...params, granularity: undefined }))
+  query.set('dimension', dimension)
+  const res = await api.get<{
+    success: boolean
+    data: ReportRankingRow[]
+    message?: string
+  }>(`/api/dashboard/report/ranking?${query.toString()}`)
+  return res.data
 }

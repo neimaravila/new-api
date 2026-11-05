@@ -22,7 +22,7 @@ beforeEach(() => {
   document.body.replaceChildren()
 })
 
-const { render } = await import('@testing-library/react')
+const { fireEvent, render } = await import('@testing-library/react')
 const { ReportTable } = await import('../report-table')
 
 describe('ReportTable', () => {
@@ -53,5 +53,38 @@ describe('ReportTable', () => {
       />
     )
     expect(getAllByRole('row')).toHaveLength(1)
+  })
+})
+
+describe('ReportTable sorting', () => {
+  const columns = [
+    { key: 'name', header: 'Model', render: (row: { id: string }) => row.id },
+    { key: 'cost', header: 'Cost', sortable: true, render: (row: { id: string }) => row.id },
+  ]
+
+  it('keeps headers as plain text and without aria-sort when not sortable', () => {
+    const { getByRole, queryByRole } = render(
+      <ReportTable caption='x' rows={[]} rowKey={(r: { id: string }) => r.id} columns={columns} />
+    )
+    expect(getByRole('columnheader', { name: 'Cost' }).getAttribute('aria-sort')).toBeNull()
+    expect(queryByRole('button', { name: 'Cost' })).toBeNull()
+  })
+
+  it('renders a sort button and aria-sort for sortable columns', () => {
+    const calls: string[] = []
+    const { getByRole } = render(
+      <ReportTable
+        caption='x'
+        rows={[]}
+        rowKey={(r: { id: string }) => r.id}
+        columns={columns}
+        sort={{ key: 'cost', direction: 'asc' }}
+        onSortChange={(key) => calls.push(key)}
+      />
+    )
+    expect(getByRole('columnheader', { name: /Cost/ }).getAttribute('aria-sort')).toBe('ascending')
+    expect(getByRole('columnheader', { name: 'Model' }).getAttribute('aria-sort')).toBeNull()
+    fireEvent.click(getByRole('button', { name: 'Cost' }))
+    expect(calls).toEqual(['cost'])
   })
 })

@@ -23,13 +23,17 @@ import { StubVChart } from './vchart-stub'
 beforeEach(() => {
   document.body.replaceChildren()
   getReportSummary.mockClear()
+  getReportRanking.mockReset()
+  getReportRanking.mockResolvedValue({ success: true, data: [] })
 })
 
 vi.mock('@visactor/react-vchart', () => ({ VChart: StubVChart }))
 
 const getReportSummary = vi.hoisted(() => vi.fn())
+const getReportRanking = vi.hoisted(() => vi.fn())
 vi.mock('../../../api', () => ({
   getReportSummary,
+  getReportRanking,
   getReportExportUrl: () => '/export',
 }))
 
@@ -332,5 +336,39 @@ describe('ReportsSection tabs and filters', () => {
       expect(getReportSummary).toHaveBeenCalledWith(expect.objectContaining({ modelName: 'gpt-4o' }))
     )
     expect((await findByLabelText('Model') as HTMLSelectElement).options.length).toBe(3)
+  })
+})
+
+describe('ReportsSection ranking tabs', () => {
+  it('maps tabs to dimensions and exports the ranking CSV of the active tab', async () => {
+    useAuthStore.setState((state) => ({
+      auth: { ...state.auth, user: { ...state.auth.user, role: 10 } as never },
+    }))
+    getReportSummary.mockResolvedValue({ success: true, data: makeSummary() })
+    getReportRanking.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          name: 'gpt-4o', requests: 3, tokens: 7, quota: 500000, failures: 0,
+          error_rate: 0, avg_latency_ms: 0, p50_latency_ms: 0, p95_latency_ms: 0,
+        },
+      ],
+    })
+    const blobs: Blob[] = []
+    URL.createObjectURL = ((blob: Blob) => (blobs.push(blob), 'blob:x')) as never
+    URL.revokeObjectURL = (() => {}) as never
+    const { findByRole, findByText, getByRole } = render(wrap(<ReportsSection />))
+    expect(getReportRanking).not.toHaveBeenCalled()
+
+    fireEvent.click(await findByRole('tab', { name: 'Models' }))
+    await findByText('gpt-4o')
+    expect(getReportRanking).toHaveBeenCalledWith('model', expect.objectContaining({ range: '7d' }))
+    await waitFor(() => expect((getByRole('button', { name: 'Export CSV' }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(getByRole('button', { name: 'Export CSV' }))
+    expect(blobs).toHaveLength(1)
+    expect(await blobs[0].text()).toContain('gpt-4o,3,7,')
+
+    fireEvent.click(getByRole('tab', { name: 'Users' }))
+    await waitFor(() => expect(getReportRanking).toHaveBeenCalledWith('user', expect.anything()))
   })
 })

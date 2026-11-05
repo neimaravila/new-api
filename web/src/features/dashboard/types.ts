@@ -499,3 +499,20 @@ export interface ReportSummary {
   cost_by_model: ReportCostSeries
   latency_series: ReportLatencyPoint[]
 }
+
+export type ReportDimension = 'channel' | 'model' | 'user' | 'token' | 'group'
+
+export interface ReportRankingRow {
+  name: string
+  requests: number
+  tokens: number
+  quota: number
+  failures: number
+  error_rate: number
+  avg_latency_ms: number
+  p50_latency_ms: number
+  p95_latency_ms: number
+}
+
+export type ReportRankingSortKey = Exclude<keyof ReportRankingRow, 'name' | 'failures'>
+export type ReportSortDirection = 'asc' | 'desc'
