@@ -98,3 +98,23 @@ it('copes with a huge and a deeply nested schema and a long description', () => 
   expect(screen.getByText('deep')).toBeVisible()
   expect(screen.getAllByRole('button', { name: 'Show more' })[0]).toBeVisible()
 })
+
+it('says so when a schema is too deep to display', () => {
+  let deep: unknown = 'leaf'
+  for (let i = 0; i < 50000; i++) deep = [deep]
+  render(<ToolsTab view={view({ tools: [{ name: 'deep', schema: deep }] })} />)
+  expect(screen.getByText('Schema too deep to display')).toBeVisible()
+  expect(screen.queryByText('Schema')).toBeNull()
+})
+
+it('formats the call count in the interface language', async () => {
+  const { default: i18n } = await import('i18next')
+  const before = i18n.language
+  await i18n.changeLanguage('pt-BR')
+  try {
+    render(<ToolsTab view={view({ tools: [{ name: 'f', called: 1234.5 }] })} />)
+    expect(screen.getByText('Called 1.234,5 times')).toBeVisible()
+  } finally {
+    await i18n.changeLanguage(before)
+  }
+})

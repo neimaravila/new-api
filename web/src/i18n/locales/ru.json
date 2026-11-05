@@ -7602,6 +7602,7 @@
     "B": "B",
     "KB": "KB",
     "MB": "MB",
-    "GB": "GB"
+    "GB": "GB",
+    "Schema too deep to display": "Схема слишком глубокая для отображения"
   }
 }

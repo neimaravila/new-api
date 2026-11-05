@@ -34,8 +34,8 @@ export function prettyJsonText(raw: string): string {
   }
 }
 
-/** Indents an already parsed value; empty when absent, compact when large. */
-export function prettyValue(value: unknown): string {
+/** Indents an already parsed value; empty when absent, compact when large, null when it cannot be serialized (too deep). */
+export function prettyValue(value: unknown): string | null {
   if (value === undefined || value === null) return ''
   try {
     const compact = JSON.stringify(value)
@@ -43,7 +43,7 @@ export function prettyValue(value: unknown): string {
     if (compact.length > PRETTY_MAX_CHARS) return compact
     return JSON.stringify(value, null, 2)
   } catch {
-    return ''
+    return null
   }
 }
 

@@ -20,6 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
 import type {
@@ -31,8 +32,9 @@ import { RawOnlyNotice } from './conversation-tab'
 import { CopyButton, LongText } from './message-block'
 
 function ToolCard(props: { tool: LogContentTool }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { tool } = props
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const schema = useMemo(() => prettyValue(tool.schema), [tool.schema])
   return (
     <section
@@ -44,11 +46,18 @@ function ToolCard(props: { tool: LogContentTool }) {
           {tool.name}
         </span>
         <Badge variant='secondary'>
-          {t('Called {{count}} times', { count: formatNumber(tool.called) })}
+          {t('Called {{count}} times', {
+            count: formatNumber(tool.called, locale),
+          })}
         </Badge>
       </header>
       {tool.description && (
         <LongText text={tool.description} className='font-sans' />
+      )}
+      {schema === null && (
+        <p className='text-muted-foreground text-sm'>
+          {t('Schema too deep to display')}
+        </p>
       )}
       {schema && (
         <div className='bg-muted/30 rounded-md border px-3 py-2'>
