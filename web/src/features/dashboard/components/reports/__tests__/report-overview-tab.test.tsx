@@ -37,6 +37,7 @@ const { fireEvent, render, waitFor } = await import('@testing-library/react')
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
+const { formatQuota } = await import('@/lib/format')
 const { useAuthStore } = await import('@/stores/auth-store')
 const { ReportOverviewTab } = await import('../report-overview-tab')
 const { ReportChartCard } = await import('../report-chart-card')
@@ -146,6 +147,65 @@ describe('ReportOverviewTab', () => {
   })
 })
 
+describe('ReportOverviewTab figures and states', () => {
+  it('shows real period figures in each chart card', async () => {
+    const summary = makeSummary({
+      trend: {
+        granularity: 'day',
+        points: [point],
+        totals: { quota: 350, requests: 8, tokens: 2000, failures: 2, consumers: 1, avg_latency_ms: 600 },
+      },
+      cost_by_model: {
+        models: ['gpt-4o', '__others__'],
+        points: [{ bucket_label: 'a', bucket_timestamp: 1, values: { 'gpt-4o': 10, __others__: 90 } }],
+      },
+      latency_series: [
+        { bucket_label: 'a', bucket_timestamp: 1, p50_ms: 1000, p95_ms: 4000 },
+        { bucket_label: 'b', bucket_timestamp: 2, p50_ms: 3000, p95_ms: 6000 },
+        { bucket_label: 'c', bucket_timestamp: 3, p50_ms: 0, p95_ms: 0 },
+      ],
+    })
+    const { findAllByTestId, getAllByText } = render(
+      wrap(<ReportOverviewTab loading={false} summary={summary as never} />)
+    )
+    await findAllByTestId('chart-spec')
+    expect(getAllByText('25%').length).toBeGreaterThan(0)
+    expect(getAllByText('8').length).toBeGreaterThan(0)
+    expect(getAllByText('2,000').length).toBeGreaterThan(0)
+    expect(getAllByText(formatQuota(350)).length).toBeGreaterThan(0)
+    expect(getAllByText('Other').length).toBeGreaterThan(0)
+    expect(getAllByText('2 s').length).toBeGreaterThan(0)
+    expect(getAllByText('6 s').length).toBeGreaterThan(0)
+  })
+
+  it('shows dashes when there is no latency sample or cost', () => {
+    const summary = makeSummary({
+      cost_by_model: { models: [], points: [] },
+      latency_series: [{ bucket_label: 'a', bucket_timestamp: 1, p50_ms: 0, p95_ms: 0 }],
+    })
+    const { queryAllByText } = render(
+      wrap(<ReportOverviewTab loading={false} summary={summary as never} />)
+    )
+    // Empty cards hide their figures and show the empty text instead.
+    expect(queryAllByText('No latency samples in this period.').length).toBeGreaterThan(0)
+    expect(queryAllByText('No cost in this period.').length).toBeGreaterThan(0)
+  })
+
+  it('renders the loading state in every card before the first load', () => {
+    const { getAllByText } = render(wrap(<ReportOverviewTab loading summary={undefined} />))
+    expect(getAllByText('Loading…')).toHaveLength(4)
+  })
+
+  it('renders an error state in every card when the fetch failed', () => {
+    const { getAllByRole } = render(
+      wrap(<ReportOverviewTab loading={false} isError summary={undefined} />)
+    )
+    const alerts = getAllByRole('alert')
+    expect(alerts).toHaveLength(4)
+    expect(alerts[0].textContent).toBe('This chart could not be loaded.')
+  })
+})
+
 describe('ReportChartCard', () => {
   it('switches the chart kind from the bar/line selector', () => {
     const { getByRole, getByTestId } = render(
@@ -194,6 +254,47 @@ describe('ReportsSection tabs and filters', () => {
     fireEvent.click(getByRole('tab', { name: 'Channels' }))
     await waitFor(() => expect(queryAllByText('Channel cost and health').length).toBeGreaterThan(0))
     expect(queryAllByText('Channel latency').length).toBeGreaterThan(0)
+  })
+
+  it('shows the error state in the cards when the report fails to load', async () => {
+    setRole(1)
+    getReportSummary.mockRejectedValue(new Error('boom'))
+    const { findAllByRole } = render(wrap(<ReportsSection />))
+    const alerts = await findAllByRole('alert')
+    expect(alerts.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('keeps the chart kind and the tab content mounted while a filter refetches', async () => {
+    setRole(1)
+    const full = makeSummary({
+      models: [
+        { model_name: 'gpt-4o', quota: 1, requests: 1, tokens: 1, failures: 0, error_rate: 0, avg_latency_ms: 1 },
+      ],
+    })
+    let release: (() => void) | undefined
+    getReportSummary.mockImplementation(async (p: { modelName?: string }) => {
+      if (p.modelName) await new Promise<void>((resolve) => (release = resolve))
+      return { success: true, data: full }
+    })
+    const { findAllByTestId, getAllByRole, findByLabelText, getAllByTestId } = render(
+      wrap(<ReportsSection />)
+    )
+    await findAllByTestId('chart-spec')
+    fireEvent.click(getAllByRole('button', { name: 'Line' })[0])
+    await waitFor(() =>
+      expect(getAllByTestId('chart-spec').filter((el) => el.getAttribute('data-chart-type') === 'line')).toHaveLength(2)
+    )
+    const select = (await findByLabelText('Model')) as HTMLSelectElement
+    await waitFor(() => expect(select.options.length).toBe(2))
+    fireEvent.change(select, { target: { value: 'gpt-4o' } })
+    await waitFor(() => expect(release).toBeDefined())
+    // Refetch is pending: the previous data and the line choice stay on screen.
+    expect(getAllByRole('button', { name: 'Line' })[0].getAttribute('aria-pressed')).toBe('true')
+    release?.()
+    await waitFor(() =>
+      expect(getAllByRole('button', { name: 'Line' })[0].getAttribute('aria-pressed')).toBe('true')
+    )
+    expect(getAllByTestId('chart-spec').filter((el) => el.getAttribute('data-chart-type') === 'line')).toHaveLength(2)
   })
 
   it('regular users see neither the Channels and Users tabs nor the channel filter', async () => {

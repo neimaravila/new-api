@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Download } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -98,6 +98,9 @@ export function ReportsSection(): React.JSX.Element {
       return result.data
     },
     staleTime: 60 * 1000,
+    // Keep the previous data on screen while a filter refetches, so the tab
+    // content (and its bar/line choice) is not unmounted.
+    placeholderData: keepPreviousData,
   })
 
   const summary = summaryQuery.data
@@ -193,11 +196,11 @@ export function ReportsSection(): React.JSX.Element {
           ))}
         </TabsList>
 
+        <TabsContent value='overview'>
+          <ReportOverviewTab loading={loading} isError={summaryQuery.isError} summary={summary} />
+        </TabsContent>
         {summary && (
           <>
-            <TabsContent value='overview'>
-              <ReportOverviewTab loading={loading} summary={summary} />
-            </TabsContent>
             {isAdmin && (
               <TabsContent value='channels' className='space-y-4'>
                 {summary.channels && <ReportChannelPanel loading={loading} channels={summary.channels} />}

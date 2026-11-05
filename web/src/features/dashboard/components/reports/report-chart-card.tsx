@@ -29,6 +29,9 @@ interface ReportChartCardProps {
   summary: string
   loading: boolean
   isEmpty: boolean
+  isError?: boolean
+  /** Key figures for the period, shown above the chart. */
+  figures?: { label: string; value: string }[]
   emptyText?: string
   /** Shows the bar/line selector. */
   toggleable?: boolean
@@ -45,6 +48,38 @@ const KIND_OPTIONS: { value: ReportChartKind; labelKey: string }[] = [
 export function ReportChartCard(props: ReportChartCardProps): React.JSX.Element {
   const { t } = useTranslation()
   const [chartKind, setChartKind] = useState<ReportChartKind>(props.defaultKind ?? 'bar')
+
+  let body: React.ReactNode
+  if (props.isError) {
+    body = (
+      <div role='alert' className='text-muted-foreground rounded-xl border border-dashed p-4 text-sm'>
+        {t('This chart could not be loaded.')}
+      </div>
+    )
+  } else if (props.loading || props.isEmpty) {
+    body = (
+      <EmptyOrLoading
+        loading={props.loading}
+        emptyText={props.emptyText ?? t('No data in this period.')}
+      />
+    )
+  } else {
+    body = (
+      <>
+        {props.figures && props.figures.length > 0 && (
+          <dl className='mb-3 flex flex-wrap gap-x-6 gap-y-2'>
+            {props.figures.map((figure) => (
+              <div key={figure.label}>
+                <dt className='text-muted-foreground text-xs font-medium'>{figure.label}</dt>
+                <dd className='font-mono text-base font-semibold tabular-nums'>{figure.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {props.children(chartKind)}
+      </>
+    )
+  }
 
   return (
     <PanelShell
@@ -68,14 +103,7 @@ export function ReportChartCard(props: ReportChartCardProps): React.JSX.Element 
         ) : undefined
       }
     >
-      {props.loading || props.isEmpty ? (
-        <EmptyOrLoading
-          loading={props.loading}
-          emptyText={props.emptyText ?? t('No data in this period.')}
-        />
-      ) : (
-        props.children(chartKind)
-      )}
+      {body}
     </PanelShell>
   )
 }

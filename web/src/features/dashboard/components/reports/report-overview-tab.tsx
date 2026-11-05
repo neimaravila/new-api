@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
+
 import {
   buildCostByModelSpec,
   buildLatencySeriesSpec,
@@ -27,7 +29,8 @@ import {
   type ReportChartKind,
   type ReportChartSpec,
 } from '../../lib/report-charts'
-import type { ReportCostSeries, ReportLatencyPoint, ReportSummary } from '../../types'
+import { getPeriodLatency, getTopCostModel, isOthersModel } from '../../lib/report-figures'
+import type { ReportCostSeries, ReportLatencyPoint, ReportSummary, ReportTrendPoint } from '../../types'
 import { ReportChart } from './report-chart'
 import { ReportChartCard } from './report-chart-card'
 import { ReportErrorsPanel } from './report-errors-panel'
@@ -40,10 +43,13 @@ import { ReportTrendPanel } from './report-trend-panel'
 
 const EMPTY_COST: ReportCostSeries = { models: [], points: [] }
 const EMPTY_LATENCY: ReportLatencyPoint[] = []
+const EMPTY_POINTS: ReportTrendPoint[] = []
 
 interface ReportOverviewTabProps {
   loading: boolean
-  summary: ReportSummary
+  isError?: boolean
+  /** Undefined until the first load (or after a failed one). */
+  summary: ReportSummary | undefined
 }
 
 export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Element {
@@ -56,9 +62,9 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
   const p50Label = t('p50 latency')
   const p95Label = t('p95 latency')
 
-  const points = summary.trend.points
-  const costByModel = summary.cost_by_model ?? EMPTY_COST
-  const latencySeries = summary.latency_series ?? EMPTY_LATENCY
+  const points = summary?.trend.points ?? EMPTY_POINTS
+  const costByModel = summary?.cost_by_model ?? EMPTY_COST
+  const latencySeries = summary?.latency_series ?? EMPTY_LATENCY
 
   // Each builder returns null when there is nothing to draw, which is also what
   // the card reads as its empty state.
@@ -73,6 +79,40 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
     }),
     [points, costByModel, latencySeries, successLabel, failuresLabel, tokensLabel, othersLabel, p50Label, p95Label]
   )
+
+  const totals = summary?.trend.totals
+  const topCost = getTopCostModel(costByModel)
+  let topModelLabel = '-'
+  if (topCost) topModelLabel = isOthersModel(topCost.model) ? othersLabel : topCost.model
+  const periodLatency = getPeriodLatency(latencySeries)
+  const figures: Record<keyof typeof builders, { label: string; value: string }[]> = {
+    volume: totals
+      ? [
+          { label: t('Requests'), value: formatNumber(totals.requests) },
+          {
+            label: t('Failure rate'),
+            value:
+              totals.requests > 0
+                ? `${Math.round((totals.failures / totals.requests) * 1000) / 10}%`
+                : '-',
+          },
+        ]
+      : [],
+    tokens: totals ? [{ label: t('Tokens'), value: formatNumber(totals.tokens) }] : [],
+    cost: totals
+      ? [
+          { label: t('Total cost'), value: formatQuota(totals.quota) },
+          {
+            label: t('Top model'),
+            value: topModelLabel,
+          },
+        ]
+      : [],
+    latency: [
+      { label: t('Typical p50'), value: formatLatencyMs(periodLatency.p50) },
+      { label: t('Peak p95'), value: formatLatencyMs(periodLatency.p95) },
+    ],
+  }
 
   const cards: {
     key: keyof typeof builders
@@ -118,7 +158,7 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
 
   return (
     <div className='space-y-4'>
-      <ReportTotalsPanel loading={loading} summary={summary} />
+      {summary && <ReportTotalsPanel loading={loading} summary={summary} />}
       <div className='grid gap-4 lg:grid-cols-2'>
         {cards.map((card) => {
           const isEmpty = builders[card.key]('bar') === null
@@ -129,6 +169,8 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
               summary={card.summary}
               emptyText={card.emptyText}
               loading={loading}
+              isError={props.isError}
+              figures={figures[card.key]}
               isEmpty={isEmpty}
               toggleable={card.toggleable}
               defaultKind={card.defaultKind}
@@ -143,21 +185,25 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
           )
         })}
       </div>
-      <ReportTrendPanel loading={loading} points={points} />
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <ReportModelPanel loading={loading} models={summary.models} />
-        <ReportErrorsPanel loading={loading} errors={summary.errors} />
-      </div>
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <ReportPerformancePanel
-          loading={loading}
-          title={t('Model latency')}
-          rows={summary.model_performance}
-        />
-        <ReportTokenAnatomyPanel loading={loading} rows={summary.token_anatomy} />
-      </div>
-      {summary.stream_performance && (
-        <ReportStreamPanel loading={loading} stream={summary.stream_performance} />
+      {summary && (
+        <>
+          <ReportTrendPanel loading={loading} points={points} />
+          <div className='grid gap-4 lg:grid-cols-2'>
+            <ReportModelPanel loading={loading} models={summary.models} />
+            <ReportErrorsPanel loading={loading} errors={summary.errors} />
+          </div>
+          <div className='grid gap-4 lg:grid-cols-2'>
+            <ReportPerformancePanel
+              loading={loading}
+              title={t('Model latency')}
+              rows={summary.model_performance}
+            />
+            <ReportTokenAnatomyPanel loading={loading} rows={summary.token_anatomy} />
+          </div>
+          {summary.stream_performance && (
+            <ReportStreamPanel loading={loading} stream={summary.stream_performance} />
+          )}
+        </>
       )}
     </div>
   )
