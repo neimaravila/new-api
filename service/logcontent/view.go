@@ -265,9 +265,16 @@ func parseRoot(body string) (gjson.Result, bool) {
 // ParseRequestView reads the messages and tools of a request body. It never
 // fails: what cannot be read is left out.
 func ParseRequestView(format string, body string) (msgs []ViewMessage, tools []ViewTool) {
+	msgs, tools, _ = parseRequest(format, body)
+	return msgs, tools
+}
+
+// parseRequest is ParseRequestView that also reports whether the body was a
+// JSON object it could read at all.
+func parseRequest(format string, body string) (msgs []ViewMessage, tools []ViewTool, ok bool) {
 	root, ok := parseRoot(body)
 	if !ok {
-		return nil, nil
+		return nil, nil, false
 	}
 	builder := &viewBuilder{source: sourceRequest}
 	switch format {
@@ -282,7 +289,7 @@ func ParseRequestView(format string, body string) (msgs []ViewMessage, tools []V
 	case FormatEmbedding, FormatRerank:
 		embeddingRequest(builder, format, root)
 	}
-	return builder.msgs, tools
+	return builder.msgs, tools, true
 }
 
 // ParseResponseView reads the messages of a response body, or its error.
@@ -411,13 +418,14 @@ func BuildContentView(rows []*model.LogContent, includeAttempts bool, channelNam
 
 func buildConversation(view *ContentView, client *model.LogContent, meta model.LogContentMeta) {
 	request := view.Client.Request
-	if request.Text != "" && !request.HeadOnly && !request.Undecodable && !meta.RequestUnavailable {
-		var msgs []ViewMessage
-		msgs, view.Tools = ParseRequestView(view.Format, request.Text)
-		view.Conversation.Available = true
-		view.Conversation.Messages = append(view.Conversation.Messages, msgs...)
-		available := len(view.Tools)
-		view.ToolsAvailable = &available
+	if !request.HeadOnly && !request.Undecodable && !meta.RequestUnavailable {
+		if msgs, tools, ok := parseRequest(view.Format, request.Text); ok {
+			view.Tools = tools
+			view.Conversation.Available = true
+			view.Conversation.Messages = append(view.Conversation.Messages, msgs...)
+			available := len(view.Tools)
+			view.ToolsAvailable = &available
+		}
 	}
 	if view.Tools == nil {
 		view.Tools = []ViewTool{}
@@ -426,9 +434,14 @@ func buildConversation(view *ContentView, client *model.LogContent, meta model.L
 	var response []ViewMessage
 	if assembled, ok := decodeAssembled(client.AssembledBody); ok {
 		response = assembled
-	} else if body := view.Client.Response; !body.HeadOnly && !body.Undecodable &&
-		view.Format != FormatEmbedding && view.Format != FormatRerank {
+	} else if body := view.Client.Response; !body.HeadOnly && !body.Undecodable {
+		// Embeddings and rerank have no conversation to read in a response, so
+		// only a failed one yields messages: an error block.
 		response = ParseResponseView(view.Format, body.Text)
+		if len(response) == 0 && meta.HttpStatus >= 400 && body.Text != "" &&
+			(view.Format == FormatEmbedding || view.Format == FormatRerank) {
+			response = []ViewMessage{{Role: roleAssistant, Source: sourceResponse, Blocks: []ViewBlock{{Type: blockError, Text: body.Text}}}}
+		}
 	}
 	if len(response) == 0 {
 		return

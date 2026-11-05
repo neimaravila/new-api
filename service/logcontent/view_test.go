@@ -260,6 +260,55 @@ func TestViewEmbeddingsAndRerank(t *testing.T) {
 	}
 }
 
+func TestViewEmbeddingAndRerankErrors(t *testing.T) {
+	cases := map[string]struct {
+		status int
+		body   string
+		want   string
+	}{
+		"error body":        {400, `{"error":{"message":"bad input"}}`, "bad input"},
+		"error body at 200": {200, `{"error":{"message":"odd"}}`, "odd"},
+		"plain text at 502": {502, `upstream down`, "upstream down"},
+	}
+	for _, format := range []string{FormatEmbedding, FormatRerank} {
+		for name, tc := range cases {
+			t.Run(format+" "+name, func(t *testing.T) {
+				view := BuildContentView([]*model.LogContent{clientRow(t, rowSpec{
+					format: format, request: `{"input":"x","query":"x"}`, response: tc.body,
+					meta: func(m *model.LogContentMeta) { m.HttpStatus = tc.status },
+				})}, false, nil)
+				assert.True(t, view.Conversation.ResponseAvailable)
+				require.Len(t, view.Conversation.Messages, 2)
+				assert.Equal(t, ViewBlock{Type: "error", Text: tc.want}, view.Conversation.Messages[1].Blocks[0])
+				require.NotNil(t, view.ToolCalls)
+				assert.Equal(t, 0, *view.ToolCalls)
+			})
+		}
+	}
+}
+
+func TestViewUnparsableRequestIsUnavailable(t *testing.T) {
+	for _, request := range []string{"not json", "[]", "", `"x"`} {
+		view := BuildContentView([]*model.LogContent{clientRow(t, rowSpec{
+			format: FormatOpenAI, request: request, response: `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`,
+		})}, false, nil)
+		assert.False(t, view.Conversation.Available, request)
+		assert.Nil(t, view.ToolsAvailable, request)
+		assert.Contains(t, marshalView(t, view), `"tools_available":null`)
+		assert.Equal(t, request, view.Client.Request.Text)
+		// The response is still readable, so its counts are real.
+		assert.True(t, view.Conversation.ResponseAvailable, request)
+		require.NotNil(t, view.ToolCalls, request)
+	}
+
+	view := BuildContentView([]*model.LogContent{clientRow(t, rowSpec{
+		format: FormatOpenAI, request: `{"messages":[]}`, response: "[]",
+	})}, false, nil)
+	assert.True(t, view.Conversation.Available)
+	assert.Nil(t, view.ToolCalls)
+	assert.False(t, view.Conversation.ResponseAvailable)
+}
+
 func TestViewMediaMarkers(t *testing.T) {
 	msgs, _ := ParseRequestView(FormatOpenAI, `{"messages":[{"role":"user","content":[
 		{"type":"image_url","image_url":{"url":"[base64 image/png 2048 bytes omitted]"}},
