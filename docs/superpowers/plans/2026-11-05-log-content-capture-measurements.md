@@ -116,3 +116,26 @@ Com o limite de 175 MiB, o pico do orçamento passava 0,12% (183717888 B): a res
 ## Defeitos em aberto
 
 Nenhum. Todas as medidas passam nas duas árvores.
+
+## Task 12: PostgreSQL, MySQL e ClickHouse reais
+
+- **Data:** 2026-11-05, base `9a95468c2` mais as mudanças da Task 12. Docker Desktop em macOS (Apple M5 Pro), contêineres temporários `newapi-lc-pg` (postgres:16), `newapi-lc-my` (mysql:8.0, 8.0.46) e `newapi-lc-ch` (clickhouse-server:24.8), só em 127.0.0.1, portas livres, removidos no fim. PostgreSQL com a configuração padrão da imagem.
+- **Armazenamento, rotas e retenção:** `go test -count=1 -v ./model/ ./controller/ ./service/ -run 'LogContent|SelfRoute|AdminRoute|AdminRead|LogRowReasons|Capture'` com os três DSNs: PASS, nenhum SKIP. `TestLogContentStorageOnDatabases` passou em sqlite, mysql, postgres e clickhouse (corpo binário de 2 MiB com NUL, `GetLogContents` por usuário e usuário 0). A DDL do ClickHouse foi executada no servidor por `MigrateLogContents` (duas vezes, idempotente); `TestLogContentCreateTableClickHouseSQL` em si só compara o texto da DDL.
+- **Defeito de fixture achado no ClickHouse (corrigido no teste):** a suíte gravava `CreatedAt: 1000` (1970). Com o TTL de 30 dias da tabela, o ClickHouse apaga a linha na fusão logo após a inserção (`system.part_log`: `NewPart` seguido de `MergeParts` com 0 linhas no mesmo segundo), e a leitura com usuário 0 voltava vazia, de forma determinística (3 de 3). A fixture agora usa `time.Now().Unix()`. Código de produção e limites não mudaram.
+- **Carga no PostgreSQL compartilhado** (`service/logcontent/load_test.go`, tag `logcontentload`): um só banco para `users`, `logs` e `log_contents` (1000 usuários, 100 mil linhas em `logs`, 200 mil linhas expiradas e 100 linhas-alvo em `created_at = corte + 0..99` em `log_contents`). Sondas a cada 5 ms (INSERT em `logs`, SELECT em `users` por id), 60 s sem carga e 60 s com 200 chamadas/s (2 linhas cada, requisição 4 KiB e resposta 16 KiB) na fila real e a retenção (`DeleteOldLogContentBatch`, lote de 200 como em produção, sem a pausa de 1 s: pior caso) apagando as 200 mil linhas. Comando: `AUDIT_POSTGRES_DSN=... go test -tags logcontentload -count=1 -timeout 20m ./service/logcontent/ -run 'LogContentPostgres' -v`.
+
+| Medida | Limite | Base | Com carga | Resultado |
+|-|-|-|-|-|
+| INSERT em `logs`, p99 (60 s) | 2 x base + 5 ms | 1,82 ms | 5,50 ms (limite 8,65 ms) | PASS |
+| SELECT em `users`, p99 (60 s) | 2 x base + 5 ms | 0,70 ms | 4,69 ms (limite 6,41 ms) | PASS |
+| INSERT em `logs`, p99 só durante a retenção (2,5 s, n=499) | 2 x base + 5 ms | 1,82 ms | 5,59 ms | PASS |
+| SELECT em `users`, p99 só durante a retenção (n=499) | 2 x base + 5 ms | 0,70 ms | 4,67 ms | PASS |
+| p50 INSERT / SELECT | sem limite | 1,17 / 0,39 ms | 1,26 / 0,42 ms | |
+| máximo INSERT / SELECT | sem limite | 46,4 / 8,4 ms | 47,5 / 6,7 ms | |
+| `wait_event_type = 'Lock'` (amostra a cada 100 ms) | nenhum em `logs`/`users` | | 0 esperas | PASS |
+| Retenção | 200 mil apagadas em 2,5 s; 100 linhas-alvo intactas; 0 expiradas restantes | | | PASS |
+| Gravador (200/s, 60 s) | | | enqueued 12000, dropped 0, written 24000, write errors 0 | PASS |
+
+O p99 sob carga sobe de 1,8 ms para 5,5 ms (INSERT) e de 0,7 ms para 4,7 ms (SELECT) e fica a 3 ms e 1,7 ms do limite. As amostras da retenção são 4% do total, o bastante para formar o p99 dos 60 s, e o p99 só da retenção (5,59 e 4,67 ms) é igual ao dos 60 s; não medi a parte da janela sem retenção separadamente. A retenção sem pausa levou 2,5 s (80 mil linhas/s), 400 vezes mais rápida que a produção (200 linhas por segundo, cerca de 17 min para 200 mil), então a janela medida da retenção é pior que a real.
+
+- **Rajada da Task 11 no PostgreSQL** (1000 chamadas sem pausa, 2 linhas cada, requisição 4 KiB e resposta 64 KiB; `TestLogContentPostgresBurst`): chegando em 250 ms, 838 enfileiradas e 162 descartadas (16,2%; 798/202 numa execução anterior), 1676 linhas gravadas, 0 erros de gravação, esvaziou em 1,7 s. Todas de uma vez (92 us): 515 enfileiradas, 485 descartadas (48,5%), 1030 linhas, 0 erros, 1,5 s. A fila tem 512 vagas; a taxa de chegada acima da vazão dos trabalhadores descarta, por projeto, sem bloquear a chamada. As respostas de 64 KiB são mais pesadas que a medição da Task 11 em SQLite, então os percentuais não são comparáveis. O gargalo (gzip nos trabalhadores ou INSERT) não foi isolado.

@@ -115,7 +115,7 @@ func runLogContentStorageSuite(t *testing.T, dbType common.DatabaseType) {
 	})
 	require.NoError(t, err)
 	row := &LogContent{
-		RequestId: "req-binary", Attempt: 0, UserId: 7, CreatedAt: 1000,
+		RequestId: "req-binary", Attempt: 0, UserId: 7, CreatedAt: time.Now().Unix(),
 		CaptureStatus: "captured", Meta: metaJSON,
 		RequestBody: body, ResponseBody: []byte{0x00, 0xFF}, AssembledBody: nil,
 	}
