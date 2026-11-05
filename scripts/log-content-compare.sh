@@ -39,8 +39,9 @@ trap 'exit 130' INT TERM
 echo "[log-content-compare] HEAD $(git -C "$root" rev-parse --short HEAD) -> $tree"
 git -C "$root" archive HEAD -- . ':!web' | tar -x -C "$tree"
 
-# Runs inside the patched tree. Every go test runs verbose into a log and must
-# report at least one passing test, so a filter that matches nothing fails.
+# Runs inside the patched tree. Every go test runs verbose into a log; the
+# named tests must each report PASS, and any other run at least one PASS, so
+# a filter that matches nothing fails.
 steps='
 set -eu
 sh scripts/apply-patches.sh
@@ -49,7 +50,10 @@ if ! grep -q directForward relay/channel/openai/relay-openai.go; then
   exit 1
 fi
 echo "[log-content-compare] patch 7033 applied: directForward found"
+# counted_test "<tests that must pass>" <go test arguments>
 counted_test() {
+  required="$1"
+  shift
   log="$(mktemp)"
   echo "[log-content-compare] go test -count=1 $*"
   if ! go test -count=1 -v "$@" >"$log" 2>&1; then
@@ -60,6 +64,13 @@ counted_test() {
     echo "[log-content-compare] no tests to run: $*" >&2
     exit 1
   fi
+  for name in $required; do
+    if ! grep -q "^--- PASS: $name " "$log"; then
+      echo "[log-content-compare] $name did not pass: $*" >&2
+      exit 1
+    fi
+    echo "[log-content-compare] --- PASS: $name"
+  done
   passed="$(grep -c "^--- PASS" "$log" || true)"
   if [ "$passed" -eq 0 ]; then
     echo "[log-content-compare] no test ran: $*" >&2
@@ -69,13 +80,14 @@ counted_test() {
   echo "[log-content-compare] $passed top-level tests passed"
   rm -f "$log"
 }
-counted_test ./relay/channel/openai/ -run "LogContent|KeepAliveOverCapture"
-counted_test ./relay/helper/ -run "LogContent|KeepAliveOverCapture"
+counted_test "TestLogContentCaptureDoesNotChangeClientBytes TestLogContentCaptureKeepsPingDelivery" \
+  ./relay/channel/openai/ -run "LogContent|KeepAliveOverCapture"
+counted_test "TestKeepAliveOverCaptureWriter" ./relay/helper/ -run "LogContent|KeepAliveOverCapture"
 # Acceptance tests of patches/README.md.
-counted_test ./relay/channel/openai/
+counted_test "" ./relay/channel/openai/
 cd relaykit
 export GOWORK=off
-counted_test ./relayconvert/internal/oai_chat/
+counted_test "" ./relayconvert/internal/oai_chat/
 echo "[log-content-compare] all passed on the patched tree"
 '
 
@@ -84,17 +96,25 @@ if [ "$local_mode" = 1 ]; then
   exit 0
 fi
 
-# The image is read from the Dockerfile so the run follows the build. -race is
-# left out: the Alpine image has no cgo for it.
+# The image is read from the Dockerfile so the run follows the build, with GNU
+# patch added as the build adds it. The tests run as the host user so the tree
+# can be removed afterwards; Go's module and build caches persist on the host.
+# -race is left out: the Alpine image has no cgo for it.
 image="$(sed -n 's/^FROM \(golang:[^ ]*\) AS builder2$/\1/p' "$root/Dockerfile")"
 if [ -z "$image" ]; then
   echo "[log-content-compare] golang build image not found in Dockerfile" >&2
   exit 1
 fi
+runner="new-api-log-content-compare:patch"
+printf 'FROM %s\nRUN for i in 1 2 3; do apk add --no-cache patch && break || sleep 3; done && command -v patch\n' "$image" |
+  docker build -q -t "$runner" - >/dev/null
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/new-api-log-content-compare"
+mkdir -p "$cache/gomod" "$cache/gobuild"
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -v "$tree:/build" -w /build \
+  -v "$cache/gomod:/gomod" -v "$cache/gobuild:/gobuild" \
+  -e HOME=/tmp -e GOMODCACHE=/gomod -e GOCACHE=/gobuild \
   -e CGO_ENABLED=0 -e GOWORK=off -e GOEXPERIMENT=greenteagc \
-  "$image" \
-  sh -c 'for i in 1 2 3; do apk add --no-cache patch >/dev/null && break || sleep 3; done
-command -v patch >/dev/null
-'"$steps"
+  "$runner" \
+  sh -c "$steps"
