@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { formatNumber } from '@/lib/format'
+import { formatLatencyMs, formatNumber } from '@/lib/format'
 
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportChart } from './report-chart'
@@ -36,6 +36,7 @@ interface ReportPerformancePanelProps {
 export function ReportPerformancePanel(props: ReportPerformancePanelProps): React.JSX.Element {
   const { t } = useTranslation()
   const avgLabel = t('Avg latency')
+  const p50Label = t('p50 latency')
   const p95Label = t('p95 latency')
   const spec = useMemo(
     () => buildPerformanceSpec(props.rows, avgLabel, p95Label),
@@ -43,8 +44,9 @@ export function ReportPerformancePanel(props: ReportPerformancePanelProps): Reac
   )
   const columns: ReportTableColumn<ReportPerformanceRow>[] = [
     { key: 'name', header: t('Name'), render: (row) => row.name },
-    { key: 'avg', header: avgLabel, align: 'end', render: (row) => `${formatNumber(row.avg_latency_ms)} ms` },
-    { key: 'p95', header: p95Label, align: 'end', render: (row) => `${formatNumber(row.p95_latency_ms)} ms` },
+    { key: 'avg', header: avgLabel, align: 'end', render: (row) => formatLatencyMs(row.avg_latency_ms) },
+    { key: 'p50', header: p50Label, align: 'end', render: (row) => formatLatencyMs(row.p50_latency_ms) },
+    { key: 'p95', header: p95Label, align: 'end', render: (row) => formatLatencyMs(row.p95_latency_ms) },
     { key: 'requests', header: t('Requests'), align: 'end', render: (row) => formatNumber(row.requests) },
     {
       key: 'throughput',

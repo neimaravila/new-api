@@ -16,16 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatNumber, formatQuota } from '@/lib/format'
+import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
 
-import type {
-  ReportChannelRow,
-  ReportErrorRow,
-  ReportModelRow,
-  ReportPerformanceRow,
-  ReportStreamComparison,
-  ReportTokenAnatomyRow,
-  ReportTrendPoint,
+import {
+  REPORT_COST_OTHERS_KEY,
+  type ReportChannelRow,
+  type ReportCostSeries,
+  type ReportLatencyPoint,
+  type ReportErrorRow,
+  type ReportModelRow,
+  type ReportPerformanceRow,
+  type ReportStreamComparison,
+  type ReportTokenAnatomyRow,
+  type ReportTrendPoint,
 } from '../types'
 import { getDashboardChartColors } from './charts'
 
@@ -50,7 +53,7 @@ const TREND_METRIC_FIELD: Record<ReportTrendMetric, keyof ReportTrendPoint> = {
 type ChartValueFormat = (value: number) => string
 
 const formatCount: ChartValueFormat = (value) => formatNumber(value)
-const formatLatency: ChartValueFormat = (value) => `${formatNumber(value)} ms`
+const formatLatency: ChartValueFormat = (value) => formatLatencyMs(value)
 
 const TREND_METRIC_FORMAT: Record<ReportTrendMetric, ChartValueFormat> = {
   quota: formatQuota,
@@ -190,10 +193,13 @@ export function buildPerformanceSpec(
 ): ReportChartSpec | null {
   if (rows.length === 0) return null
 
-  const values = rows.flatMap((item) => [
-    { name: item.name, series: avgLabel, value: item.avg_latency_ms },
-    { name: item.name, series: p95Label, value: item.p95_latency_ms },
-  ])
+  // A latency of 0 means no sample, not an instant response: leave it out.
+  const values = rows
+    .flatMap((item) => [
+      { name: item.name, series: avgLabel, value: item.avg_latency_ms },
+      { name: item.name, series: p95Label, value: item.p95_latency_ms },
+    ])
+    .filter((item) => item.value > 0)
 
   return {
     type: 'bar',
@@ -323,4 +329,149 @@ export function buildStreamSpec(
     background: { fill: 'transparent' },
     animation: true,
   }
+}
+
+export type ReportChartKind = 'bar' | 'line'
+
+interface TimeSeriesDatum {
+  time: string
+  series: string
+  value: number
+}
+
+function buildTimeSeriesSpec(options: {
+  id: string
+  values: TimeSeriesDatum[]
+  seriesOrder: string[]
+  chartKind: ReportChartKind
+  stack: boolean
+  format: ChartValueFormat
+  showLegend: boolean
+}): ReportChartSpec {
+  const { chartKind } = options
+  return {
+    type: chartKind,
+    data: [{ id: options.id, values: options.values }],
+    xField: 'time',
+    yField: 'value',
+    seriesField: 'series',
+    ...(chartKind === 'bar' ? { stack: options.stack } : {}),
+    legends: { visible: options.showLegend, orient: 'bottom' },
+    // Pin the ordinal domain so a series keeps its hue when another one has no
+    // data in the selected range.
+    color: {
+      type: 'ordinal',
+      domain: options.seriesOrder,
+      range: getDashboardChartColors(options.seriesOrder.length),
+    },
+    ...(chartKind === 'line'
+      ? { line: { style: { lineWidth: 2 } }, point: { visible: options.values.length <= 48 } }
+      : {}),
+    crosshair: { xField: { visible: true, line: { visible: true } } },
+    axes: [
+      { orient: 'bottom', type: 'band' },
+      { orient: 'left', type: 'linear', label: valueAxisLabel(options.format) },
+    ],
+    tooltip: valueTooltip('series', 'value', options.format),
+    background: { fill: 'transparent' },
+    animation: true,
+  }
+}
+
+export function buildVolumeSpec(
+  points: ReportTrendPoint[],
+  labels: { success: string; failures: string },
+  chartKind: ReportChartKind
+): ReportChartSpec | null {
+  if (points.length === 0) return null
+  // Requests include the failed ones, so the split never double counts.
+  const values = points.flatMap((item) => [
+    { time: item.bucket_label, series: labels.success, value: Math.max(item.requests - item.failures, 0) },
+    { time: item.bucket_label, series: labels.failures, value: item.failures },
+  ])
+  return buildTimeSeriesSpec({
+    id: 'reportVolume',
+    values,
+    seriesOrder: [labels.success, labels.failures],
+    chartKind,
+    stack: true,
+    format: formatCount,
+    showLegend: true,
+  })
+}
+
+export function buildTokensSpec(
+  points: ReportTrendPoint[],
+  labels: { tokens: string },
+  chartKind: ReportChartKind
+): ReportChartSpec | null {
+  if (points.length === 0) return null
+  const values = points.map((item) => ({
+    time: item.bucket_label,
+    series: labels.tokens,
+    value: item.tokens,
+  }))
+  return buildTimeSeriesSpec({
+    id: 'reportTokens',
+    values,
+    seriesOrder: [labels.tokens],
+    chartKind,
+    stack: false,
+    format: formatCount,
+    showLegend: false,
+  })
+}
+
+export function buildCostByModelSpec(
+  data: ReportCostSeries,
+  othersLabel: string,
+  chartKind: ReportChartKind
+): ReportChartSpec | null {
+  if (data.points.length === 0) return null
+  // Series without any cost in the period would only add an empty legend entry.
+  const active = data.models.filter((model) =>
+    data.points.some((p) => (p.values[model] ?? 0) > 0)
+  )
+  if (active.length === 0) return null
+
+  const labelOf = (model: string) => (model === REPORT_COST_OTHERS_KEY ? othersLabel : model)
+  const values = data.points.flatMap((p) =>
+    active.map((model) => ({
+      time: p.bucket_label,
+      series: labelOf(model),
+      value: p.values[model] ?? 0,
+    }))
+  )
+  return buildTimeSeriesSpec({
+    id: 'reportCostByModel',
+    values,
+    seriesOrder: active.map(labelOf),
+    chartKind,
+    stack: true,
+    format: formatQuota,
+    showLegend: true,
+  })
+}
+
+export function buildLatencySeriesSpec(
+  points: ReportLatencyPoint[],
+  labels: { p50: string; p95: string },
+  chartKind: ReportChartKind
+): ReportChartSpec | null {
+  // A percentile of 0 means the bucket had no sample; plotting it would draw a
+  // false drop to zero.
+  const values = points.flatMap((item) => [
+    { time: item.bucket_label, series: labels.p50, value: item.p50_ms },
+    { time: item.bucket_label, series: labels.p95, value: item.p95_ms },
+  ]).filter((item) => item.value > 0)
+  if (values.length === 0) return null
+  return buildTimeSeriesSpec({
+    id: 'reportLatencySeries',
+    values,
+    seriesOrder: [labels.p50, labels.p95],
+    chartKind,
+    stack: false,
+    format: formatLatency,
+    showLegend: true,
+  })
 }

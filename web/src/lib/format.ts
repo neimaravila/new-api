@@ -253,6 +253,17 @@ export function formatTokens(tokens: number): string {
 }
 
 /**
+ * Format a latency given in milliseconds. Whole seconds stay readable
+ * ("2 s", "1.5 s") from 1000 ms up; below that it stays in ms. A value of 0 or
+ * less means no sample was recorded and renders as a dash.
+ */
+export function formatLatencyMs(ms: number | null | undefined): string {
+  if (!ms || ms <= 0) return '-'
+  if (ms < 1000) return `${formatNumber(Math.round(ms))} ms`
+  return `${formatNumber(Math.round(ms / 100) / 10)} s`
+}
+
+/**
  * Format use time in seconds with appropriate unit
  */
 export function formatUseTime(seconds: number): string {

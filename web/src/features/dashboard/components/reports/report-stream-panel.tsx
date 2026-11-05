@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { formatNumber } from '@/lib/format'
+import { formatLatencyMs, formatNumber } from '@/lib/format'
 
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportChart } from './report-chart'
@@ -65,7 +65,7 @@ export function ReportStreamPanel(props: ReportStreamPanelProps): React.JSX.Elem
       key: 'latency',
       header: t('Avg latency'),
       align: 'end',
-      render: (row) => `${formatNumber(row.avgLatencyMs)} ms`,
+      render: (row) => formatLatencyMs(row.avgLatencyMs),
     },
   ]
 

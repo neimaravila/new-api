@@ -420,6 +420,7 @@ export interface ReportErrorRow {
 export interface ReportPerformanceRow {
   name: string
   avg_latency_ms: number
+  p50_latency_ms: number
   p95_latency_ms: number
   requests: number
   tokens: number
@@ -451,6 +452,36 @@ export interface ReportStreamComparison {
   non_stream_requests: number
 }
 
+export const REPORT_COST_OTHERS_KEY = '__others__'
+
+export interface ReportCostPoint {
+  bucket_label: string
+  bucket_timestamp: number
+  values: Record<string, number>
+}
+
+export interface ReportCostSeries {
+  models: string[]
+  points: ReportCostPoint[]
+}
+
+/** Latency percentiles of one bucket, in milliseconds. 0 means no sample. */
+export interface ReportLatencyPoint {
+  bucket_label: string
+  bucket_timestamp: number
+  p50_ms: number
+  p95_ms: number
+}
+
+export type ReportTab = 'overview' | 'channels' | 'models' | 'users' | 'tokens' | 'groups'
+
+export interface ReportFilters {
+  range: ReportTimeRange
+  granularity: ReportGranularity
+  modelName?: string
+  channelId?: number
+}
+
 export interface ReportSummary {
   role: DashboardRole
   range: ReportTimeRange
@@ -465,4 +496,6 @@ export interface ReportSummary {
   token_anatomy: ReportTokenAnatomyRow[]
   channels?: ReportChannelRow[]
   stream_performance?: ReportStreamComparison
+  cost_by_model: ReportCostSeries
+  latency_series: ReportLatencyPoint[]
 }

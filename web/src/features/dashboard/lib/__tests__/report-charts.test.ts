@@ -26,13 +26,18 @@ import {
   buildErrorShareSpec,
   buildModelCostSpec,
   buildPerformanceSpec,
+  buildCostByModelSpec,
+  buildLatencySeriesSpec,
   buildStreamSpec,
+  buildTokensSpec,
+  buildVolumeSpec,
   buildTokenAnatomySpec,
   buildTrendSpec,
   type ReportChartSpec,
 } from '../report-charts'
 import type {
   ReportChannelRow,
+  ReportCostSeries,
   ReportErrorRow,
   ReportModelRow,
   ReportPerformanceRow,
@@ -134,6 +139,7 @@ describe('buildErrorShareSpec', () => {
 const perfRow = (name: string, avg: number, p95: number): ReportPerformanceRow => ({
   name,
   avg_latency_ms: avg,
+  p50_latency_ms: avg,
   p95_latency_ms: p95,
   requests: 5,
   tokens: 100,
@@ -295,5 +301,110 @@ describe('chart value formatting', () => {
     const spec = buildPerformanceSpec([perfRow('gpt-4o', 500, 900)], 'Avg', 'p95')
     const format = valueAxisFormat(spec, 'bottom')
     expect(format?.(900)).toBe(`${formatNumber(900)} ms`)
+  })
+})
+
+type SpecValues = { time: string; series: string; value: number }
+const specValues = (spec: ReportChartSpec | null): SpecValues[] =>
+  ((spec?.data ?? [{ values: [] }]) as [{ values: SpecValues[] }])[0].values
+
+describe('buildVolumeSpec and buildTokensSpec', () => {
+  it('return null without points', () => {
+    expect(buildVolumeSpec([], { success: 'OK', failures: 'Failed' }, 'bar')).toBeNull()
+    expect(buildTokensSpec([], { tokens: 'Tokens' }, 'bar')).toBeNull()
+  })
+
+  it('splits requests into successes and failures and honours the chart kind', () => {
+    const points = [point({ bucket_label: 'a', requests: 10, failures: 3 })]
+    const bar = buildVolumeSpec(points, { success: 'OK', failures: 'Failed' }, 'bar')
+    const line = buildVolumeSpec(points, { success: 'OK', failures: 'Failed' }, 'line')
+    expect(bar?.type).toBe('bar')
+    expect(line?.type).toBe('line')
+    expect(specValues(bar)).toEqual([
+      { time: 'a', series: 'OK', value: 7 },
+      { time: 'a', series: 'Failed', value: 3 },
+    ])
+  })
+
+  it('plots tokens as one series', () => {
+    const spec = buildTokensSpec([point({ bucket_label: 'a', tokens: 42 })], { tokens: 'Tokens' }, 'line')
+    expect(spec?.type).toBe('line')
+    expect(specValues(spec)).toEqual([{ time: 'a', series: 'Tokens', value: 42 }])
+  })
+})
+
+describe('buildCostByModelSpec', () => {
+  const cost: ReportCostSeries = {
+    models: ['gpt-4o', 'claude', '__others__', 'idle'],
+    points: [
+      { bucket_label: 'a', bucket_timestamp: 1, values: { 'gpt-4o': 5, claude: 2, __others__: 1 } },
+      { bucket_label: 'b', bucket_timestamp: 2, values: { 'gpt-4o': 3, __others__: 4 } },
+    ],
+  }
+
+  it('returns null without points or without any cost', () => {
+    expect(buildCostByModelSpec({ models: [], points: [] }, 'Others', 'bar')).toBeNull()
+    expect(
+      buildCostByModelSpec(
+        { models: ['m'], points: [{ bucket_label: 'a', bucket_timestamp: 1, values: { m: 0 } }] },
+        'Others',
+        'bar'
+      )
+    ).toBeNull()
+  })
+
+  it('translates __others__ to the given label and drops series with no cost', () => {
+    const values = specValues(buildCostByModelSpec(cost, 'Others', 'bar'))
+    const series = [...new Set(values.map((v) => v.series))]
+    expect(series).toEqual(['gpt-4o', 'claude', 'Others'])
+    expect(values.some((v) => v.series === '__others__')).toBe(false)
+    expect(values.filter((v) => v.series === 'Others').map((v) => v.value)).toEqual([1, 4])
+  })
+
+  it('stacks bars, formats the value as money and honours the chart kind', () => {
+    const bar = buildCostByModelSpec(cost, 'Others', 'bar')
+    expect(bar?.stack).toBe(true)
+    expect(buildCostByModelSpec(cost, 'Others', 'line')?.type).toBe('line')
+    const axes = bar?.axes as { orient: string; label?: { formatMethod: (v: number) => string } }[]
+    expect(axes.find((a) => a.orient === 'left')?.label?.formatMethod(100)).toBe(formatQuota(100))
+  })
+})
+
+describe('buildLatencySeriesSpec', () => {
+  it('returns null without points', () => {
+    expect(buildLatencySeriesSpec([], { p50: 'p50', p95: 'p95' }, 'line')).toBeNull()
+  })
+
+  it('does not plot a zero percentile as zero latency', () => {
+    const spec = buildLatencySeriesSpec(
+      [
+        { bucket_label: 'a', bucket_timestamp: 1, p50_ms: 2000, p95_ms: 0 },
+        { bucket_label: 'b', bucket_timestamp: 2, p50_ms: 0, p95_ms: 0 },
+      ],
+      { p50: 'p50', p95: 'p95' },
+      'line'
+    )
+    expect(specValues(spec)).toEqual([{ time: 'a', series: 'p50', value: 2000 }])
+  })
+
+  it('returns null when no bucket has a sample', () => {
+    expect(
+      buildLatencySeriesSpec(
+        [{ bucket_label: 'a', bucket_timestamp: 1, p50_ms: 0, p95_ms: 0 }],
+        { p50: 'p50', p95: 'p95' },
+        'line'
+      )
+    ).toBeNull()
+  })
+})
+
+describe('buildPerformanceSpec latency', () => {
+  it('omits a p95 of 0 instead of plotting it', () => {
+    const spec = buildPerformanceSpec(
+      [{ name: 'm', avg_latency_ms: 500, p50_latency_ms: 0, p95_latency_ms: 0, requests: 1, tokens: 1, throughput: 1 }],
+      'Avg',
+      'p95'
+    )
+    expect(specValues(spec as ReportChartSpec).map((v) => (v as unknown as { series: string }).series)).toEqual(['Avg'])
   })
 })

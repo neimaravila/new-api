@@ -23,9 +23,8 @@ import type {
   DashboardSummary,
   FlowQuotaDataItem,
   QuotaDataItem,
-  ReportGranularity,
+  ReportFilters,
   ReportSummary,
-  ReportTimeRange,
   UptimeGroupResult,
 } from './types'
 
@@ -119,14 +118,17 @@ export async function getDashboardInsights() {
 // Reports
 // ----------------------------------------------------------------------------
 
-export async function getReportSummary(params: {
-  range?: ReportTimeRange
-  granularity?: ReportGranularity
-} = {}) {
+function buildReportQuery(params: Partial<ReportFilters>): string {
   const query = new URLSearchParams()
   if (params.range) query.set('range', params.range)
   if (params.granularity) query.set('granularity', params.granularity)
-  const qs = query.toString()
+  if (params.modelName) query.set('model_name', params.modelName)
+  if (params.channelId) query.set('channel', String(params.channelId))
+  return query.toString()
+}
+
+export async function getReportSummary(params: Partial<ReportFilters> = {}) {
+  const qs = buildReportQuery(params)
   const path = qs ? `/api/dashboard/report?${qs}` : '/api/dashboard/report'
   const res = await api.get<{
     success: boolean
@@ -136,13 +138,7 @@ export async function getReportSummary(params: {
   return res.data
 }
 
-export function getReportExportUrl(params: {
-  range?: ReportTimeRange
-  granularity?: ReportGranularity
-} = {}): string {
-  const query = new URLSearchParams()
-  if (params.range) query.set('range', params.range)
-  if (params.granularity) query.set('granularity', params.granularity)
-  const qs = query.toString()
+export function getReportExportUrl(params: Partial<ReportFilters> = {}): string {
+  const qs = buildReportQuery(params)
   return qs ? `/api/dashboard/report/export?${qs}` : '/api/dashboard/report/export'
 }
