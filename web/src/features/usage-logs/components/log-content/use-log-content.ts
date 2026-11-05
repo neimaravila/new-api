@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useDebounce } from '@/hooks/use-debounce'
 
@@ -25,7 +25,8 @@ import type { UsageLog } from '../../data/schema'
 
 /** Wait between lookups while a call's content is still being saved. */
 export const LOG_CONTENT_PENDING_REFETCH_MS = 2000
-const PENDING_REFETCH_LIMIT = 6
+/** Lookups made while pending before the panel offers a manual Retry. */
+export const LOG_CONTENT_PENDING_REFETCH_LIMIT = 6
 /** Pause on a log before fetching, so holding an arrow key sends few lookups. */
 const SWITCH_DEBOUNCE_MS = 150
 
@@ -42,16 +43,26 @@ export function logHasContent(log: UsageLog): boolean {
 export function useLogContent(log: UsageLog, isAdmin: boolean) {
   const requestId = log.request_id
   const settled = useDebounce(requestId, SWITCH_DEBOUNCE_MS) === requestId
-  return useQuery({
-    queryKey: ['log-content', isAdmin, requestId],
+  const queryKey = ['log-content', isAdmin, requestId]
+  const queryClient = useQueryClient()
+  const result = useQuery({
+    queryKey,
     queryFn: () => getLogContent(requestId, isAdmin),
     enabled: logHasContent(log) && settled,
     retry: false,
     staleTime: 30_000,
     refetchInterval: (query) =>
       query.state.data?.reason === 'pending' &&
-      query.state.dataUpdateCount < PENDING_REFETCH_LIMIT
+      query.state.dataUpdateCount < LOG_CONTENT_PENDING_REFETCH_LIMIT
         ? LOG_CONTENT_PENDING_REFETCH_MS
         : false,
   })
+  // Pending lookups are used up: the panel then offers a manual Retry.
+  const updates = queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0
+  return {
+    ...result,
+    pendingExhausted:
+      result.data?.reason === 'pending' &&
+      updates >= LOG_CONTENT_PENDING_REFETCH_LIMIT,
+  }
 }

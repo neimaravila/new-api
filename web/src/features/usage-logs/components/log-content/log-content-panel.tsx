@@ -48,8 +48,15 @@ function isNavigationBlocked(event: KeyboardEvent): boolean {
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
     return true
   }
+  if (event.defaultPrevented) return true
   const target = event.target as Element | null
-  return !!target?.closest?.(
+  if (!target?.closest) return false
+  // Another open dialog owns its keys; so do fields and menus.
+  const dialog = target.closest('[role="dialog"],[aria-modal="true"]')
+  if (dialog && !dialog.matches('[data-slot="sheet-content"]')) return true
+  // Inside a tab body the arrows scroll long content.
+  if (target.closest('[data-log-content-scroll]')) return true
+  return !!target.closest(
     'input,textarea,select,[contenteditable="true"],[role="menu"],[role="listbox"],[role="combobox"]'
   )
 }
@@ -104,10 +111,8 @@ export function LogContentPanel(props: {
 
   // The attempt shown defaults to the last one, which answered the call.
   const attempts = view?.attempts ?? []
-  const [chosenAttempt, setChosenAttempt] = useState<number | null>(null)
-  useEffect(() => {
-    setChosenAttempt(null)
-  }, [log.id])
+  const [choice, setChoice] = useState<{ logId: number; attempt: number }>()
+  const chosenAttempt = choice?.logId === log.id ? choice.attempt : undefined
   const selectedAttempt = chosenAttempt ?? attempts.at(-1)?.attempt ?? 0
 
   const [tab, setTab] = useState<TabId>('conversation')
@@ -166,7 +171,14 @@ export function LogContentPanel(props: {
     } else if (!view) {
       body = <LoadingState className='min-h-[160px]' />
     } else if (!view.available) {
-      body = <LogContentNotice reason={view.reason} />
+      body = (
+        <LogContentNotice
+          reason={view.reason}
+          onRetry={
+            query.pendingExhausted ? () => void query.refetch() : undefined
+          }
+        />
+      )
     } else {
       body = (
         <>
@@ -180,7 +192,11 @@ export function LogContentPanel(props: {
               ))}
             </TabsList>
             {tabs.map((item) => (
-              <TabsContent key={item.id} value={item.id}>
+              <TabsContent
+                key={item.id}
+                value={item.id}
+                data-log-content-scroll=''
+              >
                 {tabBody(item.id)}
               </TabsContent>
             ))}
@@ -210,7 +226,7 @@ export function LogContentPanel(props: {
             onPrevious={() => goTo(previous)}
             onNext={() => goTo(next)}
             selectedAttempt={selectedAttempt}
-            onSelectAttempt={setChosenAttempt}
+            onSelectAttempt={(attempt) => setChoice({ logId: log.id, attempt })}
           />
         </div>
         <div className='min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4'>

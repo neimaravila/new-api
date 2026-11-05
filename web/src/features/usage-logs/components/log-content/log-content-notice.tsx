@@ -20,11 +20,16 @@ import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 
 import type { LogContentView } from '../../data/log-content-schema'
 
 /** The state of a call with no content to show, from the view's reason. */
-export function LogContentNotice(props: { reason: string }) {
+export function LogContentNotice(props: {
+  reason: string
+  /** Offered when looking up again may still help. */
+  onRetry?: () => void
+}) {
   const { t } = useTranslation()
   let message: string
   switch (props.reason) {
@@ -45,7 +50,19 @@ export function LogContentNotice(props: { reason: string }) {
   return (
     <Alert role='status'>
       <Info />
-      <AlertDescription>{message}</AlertDescription>
+      <AlertDescription>
+        {message}
+        {props.onRetry && (
+          <Button
+            variant='outline'
+            size='sm'
+            className='mt-2 block'
+            onClick={props.onRetry}
+          >
+            {t('Retry')}
+          </Button>
+        )}
+      </AlertDescription>
     </Alert>
   )
 }

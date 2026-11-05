@@ -466,3 +466,86 @@ it('is 60vw wide on large screens', async () => {
   expect(el).toHaveClass('lg:w-[60vw]')
   expect(el?.className ?? '').not.toMatch(/lg:pr-/)
 })
+
+it('leaves the arrows to another open dialog', async () => {
+  const logs = [
+    makeLog({ id: 1, request_id: 'a' }),
+    makeLog({ id: 2, request_id: 'b' }),
+  ]
+  const { panel } = await openRow(1, { logs })
+  const other = document.createElement('div')
+  other.setAttribute('role', 'dialog')
+  const field = document.createElement('button')
+  other.appendChild(field)
+  document.body.appendChild(other)
+  fireEvent.keyDown(field, { key: 'ArrowDown' })
+  expect(within(panel).getByText('a')).toBeVisible()
+  const modal = document.createElement('div')
+  modal.setAttribute('aria-modal', 'true')
+  const inner = document.createElement('button')
+  modal.appendChild(inner)
+  document.body.appendChild(modal)
+  fireEvent.keyDown(inner, { key: 'ArrowDown' })
+  expect(within(panel).getByText('a')).toBeVisible()
+  const prevented = new KeyboardEvent('keydown', {
+    key: 'ArrowDown',
+    bubbles: true,
+    cancelable: true,
+  })
+  prevented.preventDefault()
+  document.body.dispatchEvent(prevented)
+  expect(within(panel).getByText('a')).toBeVisible()
+  other.remove()
+  modal.remove()
+})
+
+it('keeps the arrows for scrolling inside a tab body but navigates from the header and the page', async () => {
+  const logs = [
+    makeLog({ id: 1, request_id: 'a' }),
+    makeLog({ id: 2, request_id: 'b' }),
+  ]
+  const { panel, within: q } = await openRow(1, { logs })
+  const body = await q.findByTestId('log-content-tab-conversation')
+  fireEvent.keyDown(body, { key: 'ArrowDown' })
+  expect(q.getByText('a')).toBeVisible()
+  fireEvent.keyDown(within(panel).getByTestId('log-content-header'), {
+    key: 'ArrowDown',
+  })
+  await waitFor(() => expect(q.getByText('b')).toBeVisible())
+  fireEvent.keyDown(screen.getByTestId('row-2'), { key: 'ArrowUp' })
+  await waitFor(() => expect(q.getByText('a')).toBeVisible())
+})
+
+it('offers Retry once the pending lookups run out', async () => {
+  getContent.mockResolvedValue(
+    makeView({ available: false, reason: 'pending' })
+  )
+  const { within: q, user } = await openRow(1, { logs: [makeLog()] })
+  const retry = await q.findByRole(
+    'button',
+    { name: 'Retry' },
+    { timeout: LOG_CONTENT_PENDING_REFETCH_MS * 7 }
+  )
+  getContent.mockResolvedValue(makeView())
+  await user.click(retry)
+  expect(await q.findByRole('tab', { name: 'Conversation' })).toBeVisible()
+}, 20_000)
+
+it('shows the last attempt of a newly selected log at once', async () => {
+  getContent.mockResolvedValue(makeView({ attempts: twoAttempts }))
+  const logs = [
+    makeLog({ id: 1, request_id: 'a' }),
+    makeLog({ id: 2, request_id: 'a' }),
+  ]
+  const { user, within: q } = await openRow(1, { logs })
+  await user.click(await q.findByRole('button', { name: /#1/ }))
+  expect(q.getByRole('button', { name: /#1/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  await user.click(q.getByRole('button', { name: 'Next log' }))
+  expect(await q.findByRole('button', { name: /#2/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+})
