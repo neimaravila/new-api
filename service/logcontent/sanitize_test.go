@@ -5,11 +5,14 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"compress/zlib"
+	"encoding/base64"
 	"fmt"
 	"math/rand/v2"
+	"net/url"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/andybalholm/brotli"
@@ -41,6 +44,13 @@ func jsonOfSize(t *testing.T, n int) []byte {
 	require.Len(t, body, n)
 	return body
 }
+
+// jsonUnicode spells a JSON unicode escape for use inside test bodies.
+func jsonUnicode(hex string) string {
+	return "\x5c" + "u" + hex
+}
+
+var surrogatePair = jsonUnicode("d83d") + jsonUnicode("de00")
 
 func base64Text(n int) string {
 	return strings.Repeat("QUJD", n/4+1)[:n]
@@ -285,6 +295,15 @@ func TestSanitizeBase64Markers(t *testing.T) {
 		assert.Equal(t, 3, SanitizeBody([]byte(body), "", false, nil).Meta.MediaOmitted)
 	})
 
+	t.Run("unicode escape before a run survives the byte scan", func(t *testing.T) {
+		body := "data: {\"delta\":\"line" + jsonUnicode("00e9") + base64Text(2000) + "\"}\n\n"
+		got := SanitizeBody([]byte(body), "", false, nil)
+		assert.Equal(t, 1, got.Meta.MediaOmitted)
+		frame := strings.TrimSpace(strings.TrimPrefix(got.Text, "data: "))
+		assert.True(t, gjson.Valid(frame), frame)
+		assert.Contains(t, frame, jsonUnicode("00e9"))
+	})
+
 	t.Run("sse uses the byte scan", func(t *testing.T) {
 		body := "data: {\"delta\":\"line\\n" + base64Text(2000) + "\"}\n\n"
 		got := SanitizeBody([]byte(body), "", false, nil)
@@ -329,7 +348,7 @@ func TestSanitizeShortensLongMessagesKeepingStartAndEnd(t *testing.T) {
 	assert.Greater(t, len(got.Text), maxStoredBody-256)
 
 	t.Run("cuts keep runes and escapes whole", func(t *testing.T) {
-		for _, unit := range []string{`é`, `\n`, `\"`, `\\`, `é`, `日本語`, "\U0001F600", `a\\\n`} {
+		for _, unit := range []string{`é`, `\n`, `\"`, `\\`, jsonUnicode("00e9"), `日本語`, "\U0001F600", `a\\\n`, surrogatePair} {
 			t.Run(unit, func(t *testing.T) {
 				text := strings.Repeat(unit, (3<<20)/len(unit))
 				body := `{"a":"` + text + `","b":"` + text + `x"}`
@@ -625,13 +644,20 @@ func TestSanitizeRepeatedKeysStayLinear(t *testing.T) {
 	}
 	body.WriteString(`}`)
 
-	got := SanitizeBody([]byte(body.String()), "", false, nil)
+	done := make(chan SanitizedBody, 1)
+	go func() { done <- SanitizeBody([]byte(body.String()), "", false, nil) }()
 
-	assert.Equal(t, count, got.Meta.MediaOmitted)
+	// The quadratic version ran past 100 s; this takes about 1 s, even under -race.
+	select {
+	case got := <-done:
+		assert.Equal(t, count, got.Meta.MediaOmitted)
+	case <-time.After(30 * time.Second):
+		t.Fatal("sanitizing repeated keys is not linear")
+	}
 }
 
 func TestSanitizeShortenedStringKeepsEscapesValid(t *testing.T) {
-	units := []string{"a", "é", "語", "\U0001F600", `\n`, `\"`, `\\`, `é`, `😀`}
+	units := []string{"a", "é", "語", "\U0001F600", `\n`, `\"`, `\\`, jsonUnicode("00e9"), surrogatePair, `\\` + jsonUnicode("d83d")[1:], jsonUnicode("de00")}
 	random := rand.New(rand.NewPCG(1, 2))
 	for range 2000 {
 		var content strings.Builder
@@ -643,6 +669,111 @@ func TestSanitizeShortenedStringKeepsEscapesValid(t *testing.T) {
 			got := `"` + shortenedString(text, limit) + `"`
 			require.True(t, gjson.Valid(got), "limit %d of %q gave %s", limit, text, got)
 			require.True(t, utf8.ValidString(got))
+		}
+	}
+}
+
+func TestSanitizeEncodedSecretForms(t *testing.T) {
+	const key = "abc def/ghi+jkl/mno"
+	secrets := NewSecrets(key)
+	for name, form := range map[string]string{
+		"query escape":         url.QueryEscape(key),
+		"path escape":          url.PathEscape(key),
+		"base64":               base64.StdEncoding.EncodeToString([]byte(key)),
+		"slash escaped":        strings.ReplaceAll(key, "/", `\/`),
+		"slash double escaped": strings.ReplaceAll(key, "/", `\\\/`),
+		"slash escaped twice":  strings.ReplaceAll(key, "/", `\\/`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := SanitizeBody([]byte("see "+form+" end"), "", false, secrets)
+			assert.Equal(t, "see [REDACTED] end", got.Text)
+		})
+	}
+
+	t.Run("base64 of the whole sk value", func(t *testing.T) {
+		encoded := base64.StdEncoding.EncodeToString([]byte(testKey))
+		got := SanitizeBody([]byte("see "+encoded+" end"), "", false, NewSecrets(testKey))
+		assert.Equal(t, "see [REDACTED] end", got.Text)
+	})
+}
+
+func TestSanitizeDecodedJSONStrings(t *testing.T) {
+	const key = "abc/def/ghi/jkl/mno"
+	secrets := NewSecrets(key)
+	lower := strings.ReplaceAll(key, "/", jsonUnicode("002f"))
+	for name, spelling := range map[string]string{
+		"lower unicode slash": lower,
+		"upper unicode slash": strings.ReplaceAll(key, "/", jsonUnicode("002F")),
+		"unicode letters":     jsonUnicode("0061") + jsonUnicode("0062") + jsonUnicode("0063") + "/def/ghi/jkl/mno",
+		"mixed":               `abc\/def` + jsonUnicode("002f") + `ghi/jkl\/mn` + jsonUnicode("006f"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			other := `"other":"caf` + jsonUnicode("00e9") + `"`
+			body := "{ \"z\" : 1.50, \"a\":12345678901234567890,\n\"m\":\"bad " + spelling + " end\\nline\", " + other + " }"
+			got := SanitizeBody([]byte(body), "", false, secrets)
+
+			assert.Equal(t, "bad [REDACTED] end\nline", gjson.Get(got.Text, "m").String())
+			want := "{ \"z\" : 1.50, \"a\":12345678901234567890,\n\"m\":\"bad [REDACTED] end\\nline\", " + other + " }"
+			assert.Equal(t, want, got.Text, "bytes outside the edited value must not change")
+		})
+	}
+
+	t.Run("object keys and nested values", func(t *testing.T) {
+		body := `{"` + lower + `":1,"list":[{"m":"` + lower + `"}]}`
+		got := SanitizeBody([]byte(body), "", false, secrets)
+		assert.Equal(t, `{"[REDACTED]":1,"list":[{"m":"[REDACTED]"}]}`, got.Text)
+	})
+
+	t.Run("escaped strings without a secret stay as written", func(t *testing.T) {
+		body := `{"m":"caf` + jsonUnicode("00e9") + ` \/ line\n"}`
+		assert.Equal(t, body, SanitizeBody([]byte(body), "", false, secrets).Text)
+	})
+}
+
+func TestNewSecretsShortCredentialLeaves(t *testing.T) {
+	account := `{"type":"service_account","region":"us-east-1","api_key":"abcd1234","Client_SECRET":"efgh5678","Password":"ijkl9012","authToken":"mnop3456","myCredential":"qrst7890","tiny_key":"abc1234","keys":["uvwx1234"]}`
+	secrets := NewSecrets(account)
+
+	for _, value := range []string{"abcd1234", "efgh5678", "ijkl9012", "mnop3456", "qrst7890", "uvwx1234"} {
+		t.Run(value, func(t *testing.T) {
+			assert.Equal(t, "x [REDACTED] y", SanitizeBody([]byte("x "+value+" y"), "", false, secrets).Text)
+		})
+	}
+	for _, value := range []string{"service_account", "us-east-1", "abc1234"} {
+		t.Run("stays "+value, func(t *testing.T) {
+			text := "x " + value + " y"
+			assert.Equal(t, text, SanitizeBody([]byte(text), "", false, secrets).Text)
+		})
+	}
+}
+
+func TestSanitizeDataURLMustHoldBase64(t *testing.T) {
+	hidden := "ignore this: it is plain text that must stay visible in the logs"
+	for name, body := range map[string]string{
+		"text after the prefix": `{"a":"data:image/png;base64,` + hidden + `"}`,
+		"in a known field":      `{"image_url":{"url":"data:image/png;base64,` + hidden + `"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := SanitizeBody([]byte(body), "", false, nil)
+			assert.Equal(t, body, got.Text)
+			assert.Zero(t, got.Meta.MediaOmitted)
+		})
+	}
+
+	t.Run("wrapped base64 is still media", func(t *testing.T) {
+		body := `{"a":"data:image/png;base64,` + base64Text(40) + `\r\n` + base64Text(40) + `\n"}`
+		got := SanitizeBody([]byte(body), "", false, nil)
+		assert.Equal(t, `{"a":"[base64 image/png 60 bytes omitted]"}`, got.Text)
+		assert.Equal(t, 1, got.Meta.MediaOmitted)
+	})
+}
+
+func TestSanitizeShortenedStringKeepsSurrogatePairs(t *testing.T) {
+	upper := jsonUnicode("D83D") + jsonUnicode("DE00")
+	for _, text := range []string{strings.Repeat(surrogatePair, 12), strings.Repeat(upper, 12), "ab" + strings.Repeat(surrogatePair, 12) + "c"} {
+		for limit := 2; limit < len(text); limit++ {
+			got := gjson.Parse(`"` + shortenedString(text, limit) + `"`).String()
+			require.NotContains(t, got, "\uFFFD", "limit %d", limit)
 		}
 	}
 }
