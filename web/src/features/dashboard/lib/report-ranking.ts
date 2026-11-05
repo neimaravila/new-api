@@ -18,13 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ReportRankingRow, ReportRankingSortKey, ReportSortDirection } from '../types'
 
+const LATENCY_KEYS = new Set<ReportRankingSortKey>(['avg_latency_ms', 'p50_latency_ms', 'p95_latency_ms'])
+
 export function sortRankingRows(
   rows: ReportRankingRow[],
   key: ReportRankingSortKey,
   direction: ReportSortDirection
 ): ReportRankingRow[] {
   const sign = direction === 'asc' ? 1 : -1
-  return [...rows].sort((a, b) => sign * (a[key] - b[key]))
+  // Zero latency means "no sample" and must not rank as the fastest value.
+  const noSample = LATENCY_KEYS.has(key)
+  return [...rows].sort((a, b) => {
+    if (noSample && (a[key] <= 0 || b[key] <= 0)) {
+      return Number(a[key] <= 0) - Number(b[key] <= 0)
+    }
+    return sign * (a[key] - b[key])
+  })
 }
 
 function escapeCell(value: string | number): string {

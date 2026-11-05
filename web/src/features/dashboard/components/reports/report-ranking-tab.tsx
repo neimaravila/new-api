@@ -48,6 +48,11 @@ function formatErrorRate(rate: number): string {
   return `${Math.round(rate * 1000) / 10}%`
 }
 
+// No sample is an empty cell, not the "-" placeholder (which would be escaped as text).
+function csvLatency(ms: number): string {
+  return ms > 0 ? formatLatencyMs(ms) : ''
+}
+
 export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Element {
   const { t } = useTranslation()
   const { dimension, filters, enabled, onCsvChange } = props
@@ -145,14 +150,21 @@ export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Elemen
         row.tokens,
         formatQuota(row.quota),
         formatErrorRate(row.error_rate),
-        formatLatencyMs(row.avg_latency_ms),
-        formatLatencyMs(row.p50_latency_ms),
-        formatLatencyMs(row.p95_latency_ms),
+        csvLatency(row.avg_latency_ms),
+        csvLatency(row.p50_latency_ms),
+        csvLatency(row.p95_latency_ms),
       ]),
-      columns.map((column) => column.header)
+      [
+        t('Name'),
+        t('Requests'),
+        t('Tokens'),
+        t('Cost'),
+        t('Error rate'),
+        t('Avg latency'),
+        t('P50 latency'),
+        t('P95 latency'),
+      ]
     )
-    // The column headers only change with the language.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, t])
 
   useEffect(() => {
@@ -185,7 +197,7 @@ export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Elemen
         caption={props.title}
         columns={columns}
         rows={rows}
-        rowKey={(row) => row.name}
+        rowKey={(row, index) => `${row.name}:${index}`}
         sort={sort}
         onSortChange={toggleSort}
       />

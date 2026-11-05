@@ -35,7 +35,7 @@ export interface ReportTableSort {
 interface ReportTableProps<T> {
   columns: ReportTableColumn<T>[]
   rows: T[]
-  rowKey: (row: T) => string
+  rowKey: (row: T, index: number) => string
   caption: string
   sort?: ReportTableSort
   onSortChange?: (key: string) => void
@@ -87,8 +87,8 @@ export function ReportTable<T>(props: ReportTableProps<T>): React.JSX.Element {
           </tr>
         </thead>
         <tbody>
-          {props.rows.map((row) => (
-            <tr key={props.rowKey(row)} className='border-b last:border-0'>
+          {props.rows.map((row, index) => (
+            <tr key={props.rowKey(row, index)} className='border-b last:border-0'>
               {props.columns.map((column) => (
                 <td
                   key={column.key}

@@ -144,5 +144,8 @@ describe('ReportRankingTab', () => {
     expect(lines[1].startsWith('ok,5,10,')).toBe(true)
     expect(lines[1]).toContain(formatQuota(500000).includes(',') ? `"${formatQuota(500000)}"` : formatQuota(500000))
     expect(lines[2].startsWith("'=evil,")).toBe(true)
+    // Zero latency means no sample: an empty cell, not "'-".
+    expect(lines[1].endsWith(',1.5 s,,800 ms')).toBe(true)
+    expect(csv).not.toContain("'-")
   })
 })

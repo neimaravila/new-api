@@ -43,6 +43,27 @@ describe('sortRankingRows', () => {
   })
 })
 
+describe('sortRankingRows latency without samples', () => {
+  const rows = [
+    row('none', { avg_latency_ms: 0, p50_latency_ms: 0, p95_latency_ms: 0 }),
+    row('fast', { avg_latency_ms: 10, p50_latency_ms: 10, p95_latency_ms: 10 }),
+    row('slow', { avg_latency_ms: 90, p50_latency_ms: 90, p95_latency_ms: 90 }),
+  ]
+
+  it.each(['avg_latency_ms', 'p50_latency_ms', 'p95_latency_ms'] as const)(
+    'puts rows with no sample last in both directions for %s',
+    (key) => {
+      expect(sortRankingRows(rows, key, 'asc').map((r) => r.name)).toEqual(['fast', 'slow', 'none'])
+      expect(sortRankingRows(rows, key, 'desc').map((r) => r.name)).toEqual(['slow', 'fast', 'none'])
+    }
+  )
+
+  it('still sorts zero as a real value for other metrics', () => {
+    const list = [row('z', { tokens: 0 }), row('y', { tokens: 3 })]
+    expect(sortRankingRows(list, 'tokens', 'asc').map((r) => r.name)).toEqual(['z', 'y'])
+  })
+})
+
 describe('rankingRowsToCsv', () => {
   it('escapes quotes, commas and line breaks', () => {
     const csv = rankingRowsToCsv([['a "q", b\nc', 1]], ['Name', 'N'])
