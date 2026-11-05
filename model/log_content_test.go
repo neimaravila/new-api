@@ -285,6 +285,33 @@ func TestLogContentCreateTableClickHouseSQL(t *testing.T) {
 	assert.Contains(t, LogContentCreateTableClickHouseSQL(0), "INTERVAL 30 DAY", "invalid retention falls back to 30 days")
 }
 
+// recordRawSQL replaces raw execution on db with a recorder of the SQL.
+func recordRawSQL(t *testing.T, db *gorm.DB) *[]string {
+	t.Helper()
+	var statements []string
+	require.NoError(t, db.Callback().Raw().Replace("gorm:raw", func(tx *gorm.DB) {
+		statements = append(statements, tx.Statement.SQL.String())
+	}))
+	return &statements
+}
+
+func TestMigrateLogContentsClickHouseUsesConfiguredRetention(t *testing.T) {
+	db := newLogContentSQLite(t)
+	useLogContentDB(t, db, common.DatabaseTypeClickHouse)
+	previous := common.LogContentRetentionDays
+	t.Cleanup(func() { common.LogContentRetentionDays = previous })
+	common.LogContentRetentionDays = 12
+	statements := recordRawSQL(t, db)
+
+	require.NoError(t, MigrateLogContents())
+	require.Len(t, *statements, 1)
+	assert.Contains(t, (*statements)[0], "CREATE TABLE IF NOT EXISTS log_contents")
+	assert.Contains(t, (*statements)[0], "TTL toDateTime(created_at) + INTERVAL 12 DAY DELETE")
+
+	require.NoError(t, SyncLogContentClickHouseTTL(45))
+	assert.Equal(t, "ALTER TABLE log_contents MODIFY TTL toDateTime(created_at) + INTERVAL 45 DAY DELETE", (*statements)[1])
+}
+
 func TestNewLogContentMetaSanitizesText(t *testing.T) {
 	meta, err := NewLogContentMeta(LogContentMeta{ErrorMessage: "a\x00b\xff", Path: "/v1/\xfe"})
 	require.NoError(t, err)

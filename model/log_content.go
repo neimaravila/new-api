@@ -82,12 +82,13 @@ func NewLogContentMeta(meta LogContentMeta) (string, error) {
 	return string(data), nil
 }
 
-// MigrateLogContents creates the log_contents table in LOG_DB.
+// MigrateLogContents creates the log_contents table in LOG_DB. A new
+// ClickHouse table expires rows after the configured retention.
 func MigrateLogContents() error {
 	if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return LOG_DB.AutoMigrate(&LogContent{})
 	}
-	return LOG_DB.Exec(LogContentCreateTableClickHouseSQL(defaultLogContentRetentionDays)).Error
+	return LOG_DB.Exec(LogContentCreateTableClickHouseSQL(common.LogContentRetentionDays)).Error
 }
 
 func logContentClickHouseTTLExpression(days int) string {
