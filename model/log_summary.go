@@ -93,7 +93,7 @@ func GetLogSummary(userID int, filter LogFilter) (LogSummary, error) {
 			"%s AS bucket, "+
 				"SUM(CASE WHEN %s THEN 1 ELSE 0 END) AS successes, "+
 				"SUM(CASE WHEN %s THEN 0 ELSE 1 END) AS failures, "+
-				"SUM(CASE WHEN %s THEN logs.prompt_tokens + logs.completion_tokens ELSE 0 END) AS tokens, "+
+				"SUM(CASE WHEN %s THEN logs.prompt_tokens + logs.completion_tokens + logs.cache_tokens ELSE 0 END) AS tokens, "+
 				"SUM(CASE WHEN %s THEN logs.quota ELSE 0 END) AS quota, "+
 				"SUM(CASE WHEN %s THEN logs.use_time ELSE 0 END) AS use_time",
 			bucketExpr, consume, consume, consume, consume, consume)).
@@ -121,4 +121,14 @@ func GetLogSummary(userID int, filter LogFilter) (LogSummary, error) {
 		summary.AvgUseTimeSeconds = float64(useTime) / float64(summary.Successes)
 	}
 	return summary, nil
+}
+
+// LogGroupColumn returns the quoted name of the logs group column for the active database.
+// It is read at call time because the name is only set once the database is initialised; when
+// it was never initialised (e.g. tests with an in-memory database) it is derived from the flags.
+func LogGroupColumn() string {
+	if logGroupCol == "" {
+		initCol()
+	}
+	return logGroupCol
 }

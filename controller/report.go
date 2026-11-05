@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -62,7 +63,7 @@ func GetReportExport(c *gin.Context) {
 	}
 
 	csv := service.RenderReportCSV(summary)
-	filename := "report-" + time.Now().UTC().Format("2006-01-02") + ".csv"
+	filename := reportExportFilename(time.Now(), reportFilterFromQuery(c), role)
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	c.Header("Content-Length", strconv.Itoa(len(csv)))
@@ -96,4 +97,29 @@ func reportFilterFromQuery(c *gin.Context) dto.ReportFilter {
 		channelID = 0
 	}
 	return dto.ReportFilter{ModelName: c.Query("model_name"), ChannelID: channelID}
+}
+
+// reportExportFilename names the download after the date and, when filtered,
+// the model and channel, restricted to characters safe in a header.
+func reportExportFilename(now time.Time, filter dto.ReportFilter, role int) string {
+	name := "report-" + now.UTC().Format("2006-01-02")
+	if filter.ModelName != "" {
+		var b strings.Builder
+		for _, r := range filter.ModelName {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-':
+				b.WriteRune(r)
+			default:
+				b.WriteByte('_')
+			}
+			if b.Len() >= 60 {
+				break
+			}
+		}
+		name += "-model-" + b.String()
+	}
+	if filter.ChannelID > 0 && role >= common.RoleAdminUser {
+		name += "-channel-" + strconv.Itoa(filter.ChannelID)
+	}
+	return name + ".csv"
 }

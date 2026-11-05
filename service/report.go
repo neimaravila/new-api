@@ -190,7 +190,7 @@ func computeReportTrend(scope reportRoleScope, start int64, end int64, granulari
 	// Align start to the bucket boundary so labels line up across DBs.
 	bucketStart := start - (start % intervalSeconds)
 
-	rows, err := queryReportTrendBuckets(scope, bucketStart, end, intervalSeconds)
+	rows, err := queryReportTrendBuckets(scope, bucketStart, start, end, intervalSeconds)
 	if err != nil {
 		return dto.ReportTrend{}, err
 	}
@@ -225,11 +225,12 @@ func computeReportTrend(scope reportRoleScope, start int64, end int64, granulari
 	}, nil
 }
 
-func queryReportTrendBuckets(scope reportRoleScope, start int64, end int64, intervalSeconds int64) ([]reportBucketRow, error) {
+// bucketStart numbers the buckets; start is the real lower bound of the window.
+func queryReportTrendBuckets(scope reportRoleScope, bucketStart int64, start int64, end int64, intervalSeconds int64) ([]reportBucketRow, error) {
 	// Compute the bucket number portably in Go from created_at, then aggregate in the DB.
 	// GORM Scan into a struct works across SQLite/MySQL/PostgreSQL; for ClickHouse the
 	// bucket expression uses intDiv because / is float division there.
-	bucketExpr := reportBucketExpr(start, intervalSeconds)
+	bucketExpr := reportBucketExpr(bucketStart, intervalSeconds)
 	tx := model.LOG_DB.Table("logs").
 		Select(bucketExpr+" as bucket, "+
 			"COALESCE(sum(case when type = ? then quota else 0 end), 0) as quota, "+
@@ -260,7 +261,7 @@ func queryReportTrendBuckets(scope reportRoleScope, start int64, end int64, inte
 	rows := make([]reportBucketRow, 0, len(rawRows))
 	for _, r := range rawRows {
 		rows = append(rows, reportBucketRow{
-			Bucket:     start + r.Bucket*intervalSeconds,
+			Bucket:     bucketStart + r.Bucket*intervalSeconds,
 			Quota:      r.Quota,
 			Requests:   r.Requests,
 			Tokens:     r.Tokens,
@@ -295,7 +296,7 @@ func computeReportModels(scope reportRoleScope, start int64, end int64) ([]dto.R
 		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
 		Where("model_name <> ''").
 		Group("model_name").
-		Order("quota desc").
+		Order("quota desc, model_name asc").
 		Limit(reportModelLimit)
 	tx = scope.apply(tx)
 
@@ -335,7 +336,7 @@ func computeReportErrors(scope reportRoleScope, start int64, end int64) ([]dto.R
 		Where("created_at >= ? and created_at <= ? and type = ?", start, end, model.LogTypeError).
 		Where("model_name <> ''").
 		Group("model_name").
-		Order("failures desc").
+		Order("failures desc, model_name asc").
 		Limit(reportErrorLimit)
 	tx = scope.apply(tx)
 
@@ -391,7 +392,7 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim
 		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
 		Where(dim.presence).
 		Group(dim.column).
-		Order("latency_sum desc").
+		Order("latency_sum desc, name asc").
 		Limit(reportPerformanceLimit)
 	tx = scope.apply(tx)
 
@@ -666,7 +667,7 @@ func computeReportCostByModel(scope reportRoleScope, start int64, end int64, gra
 
 	tx := model.LOG_DB.Table("logs").
 		Select(bucketExpr+" as bucket, model_name, COALESCE(sum(quota), 0) as quota").
-		Where("created_at >= ? and created_at <= ? and type = ?", bucketStart, end, model.LogTypeConsume).
+		Where("created_at >= ? and created_at <= ? and type = ?", start, end, model.LogTypeConsume).
 		Where("model_name <> ''").
 		Group("bucket, model_name").
 		Order("bucket asc")
@@ -744,9 +745,9 @@ func computeReportLatencySeriesWithLimit(scope reportRoleScope, start int64, end
 	// One bounded sample, most recent first; percentiles are computed in Go for cross-DB safety.
 	tx := model.LOG_DB.Table("logs").
 		Select("created_at, use_time").
-		Where("created_at >= ? and created_at <= ? and type = ? and use_time > 0", bucketStart, end, model.LogTypeConsume).
+		Where("created_at >= ? and created_at <= ? and type = ? and use_time > 0", start, end, model.LogTypeConsume).
 		Order("created_at desc").
-		Limit(sampleLimit)
+		Limit(sampleLimit + 1)
 	tx = scope.apply(tx)
 
 	var rawRows []struct {
@@ -757,6 +758,11 @@ func computeReportLatencySeriesWithLimit(scope reportRoleScope, start int64, end
 		return nil, err
 	}
 
+	// One extra row tells a sample that is exactly full from one that was cut.
+	truncated := len(rawRows) > sampleLimit
+	if truncated {
+		rawRows = rawRows[:sampleLimit]
+	}
 	samplesByBucket := make(map[int64][]int)
 	for _, r := range rawRows {
 		ts := bucketStart + (r.CreatedAt-bucketStart)/intervalSeconds*intervalSeconds
@@ -767,8 +773,9 @@ func computeReportLatencySeriesWithLimit(scope reportRoleScope, start int64, end
 		timestamps = append(timestamps, ts)
 	}
 	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
-	// The sample is newest first, so a full sample means the oldest bucket may be cut short.
-	if len(rawRows) >= sampleLimit && len(timestamps) > 0 {
+	// The sample is newest first, so a cut sample means the oldest bucket may be
+	// partial. Keep it when it is the only bucket.
+	if truncated && len(timestamps) > 1 {
 		timestamps = timestamps[1:]
 	}
 
@@ -816,7 +823,7 @@ func computeReportTokenAnatomy(scope reportRoleScope, start int64, end int64) ([
 		Where("created_at >= ? and created_at <= ? and type = ?", start, end, model.LogTypeConsume).
 		Where("model_name <> ''").
 		Group("model_name").
-		Order("prompt_tokens desc").
+		Order("prompt_tokens desc, model_name asc").
 		Limit(reportTokenAnatomyLimit)
 	tx = scope.apply(tx)
 
@@ -894,7 +901,7 @@ func computeReportChannels(scope reportRoleScope, start int64, end int64) ([]dto
 		Where("channel_id <> 0")
 	tx = scope.apply(tx).
 		Group("channel_id").
-		Order("quota desc").
+		Order("quota desc, channel_id asc").
 		Limit(reportChannelLimit)
 
 	var rawRows []struct {

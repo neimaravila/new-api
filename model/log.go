@@ -853,13 +853,3 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 	}
 	return result.RowsAffected, nil
 }
-
-// LogGroupColumn returns the quoted name of the logs group column for the active database.
-// It is read at call time because the name is only set once the database is initialised; when
-// it was never initialised (e.g. tests with an in-memory database) it is derived from the flags.
-func LogGroupColumn() string {
-	if logGroupCol == "" {
-		initCol()
-	}
-	return logGroupCol
-}

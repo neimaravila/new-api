@@ -253,9 +253,9 @@ func seedReportTypeMixFixture(t *testing.T) (int64, int64) {
 	logs := []model.Log{
 		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 100, PromptTokens: 50, CompletionTokens: 30, UseTime: 2},
 		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeError, ModelName: "gpt-4o", ChannelId: 10},
-		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeTopup, ModelName: "gpt-4o", ChannelId: 10, Quota: 5000},
-		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeRefund, ModelName: "gpt-4o", ChannelId: 10, Quota: 700},
-		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeManage, ModelName: "gpt-4o", ChannelId: 10},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeTopup, ModelName: "gpt-4o", ChannelId: 10, Quota: 5000, PromptTokens: 900, CompletionTokens: 900, UseTime: 9},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeRefund, ModelName: "gpt-4o", ChannelId: 10, Quota: 700, PromptTokens: 900, CompletionTokens: 900, UseTime: 9},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeManage, ModelName: "gpt-4o", ChannelId: 10, PromptTokens: 900, CompletionTokens: 900, UseTime: 9},
 	}
 	for i := range logs {
 		require.NoError(t, model.LOG_DB.Create(&logs[i]).Error)
@@ -282,6 +282,7 @@ func TestReportTotalsCountOnlyConsumeAndError(t *testing.T) {
 	require.Len(t, models, 1)
 	assert.Equal(t, 2, models[0].Requests)
 	assert.Equal(t, 100, models[0].Quota)
+	assert.Equal(t, 80, models[0].Tokens)
 	assert.Equal(t, 2000, models[0].AvgLatencyMs)
 
 	channels, err := computeReportChannels(admin, start, end)
@@ -295,6 +296,9 @@ func TestReportTotalsCountOnlyConsumeAndError(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, perf, 1)
 	assert.Equal(t, 2, perf[0].Requests)
+	assert.Equal(t, 80, perf[0].Tokens)
+	assert.Equal(t, 2000, perf[0].AvgLatencyMs)
+	assert.Equal(t, 2000, perf[0].P50LatencyMs)
 
 	stream, err := computeReportStreamComparison(admin, start, end)
 	require.NoError(t, err)
@@ -642,4 +646,102 @@ func TestReportBucketExprByDatabase(t *testing.T) {
 			t.Errorf("%s: got %q want %q", typ, got, want)
 		}
 	}
+}
+
+// Rows just before start but inside the UTC-aligned bucket must not leak into any report series.
+func TestReportSeriesFilterByRealStartNotBucketStart(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	start := now - 3600
+	if start%86400 < 7200 {
+		start += 7200 // keep the day bucket start well below start
+	}
+	end := start + 1800
+	bucket := start - start%86400
+	outside := start - 60
+	require.Greater(t, outside, bucket)
+	rows := []model.Log{
+		{UserId: 1, Username: "alice", CreatedAt: outside, Type: model.LogTypeConsume, ModelName: "old", Quota: 1000, PromptTokens: 500, CompletionTokens: 500, UseTime: 50},
+		{UserId: 1, Username: "alice", CreatedAt: outside, Type: model.LogTypeError, ModelName: "old"},
+		{UserId: 1, Username: "alice", CreatedAt: start + 10, Type: model.LogTypeConsume, ModelName: "new", Quota: 10, PromptTokens: 5, CompletionTokens: 5, CacheTokens: 2, UseTime: 2},
+		{UserId: 1, Username: "alice", CreatedAt: start + 20, Type: model.LogTypeError, ModelName: "new"},
+	}
+	for i := range rows {
+		require.NoError(t, model.LOG_DB.Create(&rows[i]).Error)
+	}
+	admin := reportAdminScope()
+
+	var totals []dto.ReportTotals
+	for _, g := range []dto.ReportGranularity{dto.ReportGranularityHour, dto.ReportGranularityDay} {
+		trend, err := computeReportTrend(admin, start, end, g)
+		require.NoError(t, err)
+		totals = append(totals, trend.Totals)
+		assert.Equal(t, 2, trend.Totals.Requests, g)
+		assert.Equal(t, 10, trend.Totals.Quota, g)
+		assert.Equal(t, 12, trend.Totals.Tokens, g)
+		assert.Equal(t, 2000, trend.Totals.AvgLatencyMs, g)
+
+		cost, err := computeReportCostByModel(admin, start, end, g)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"new"}, cost.Models, g)
+		sum := 0
+		for _, p := range cost.Points {
+			for _, v := range p.Values {
+				sum += v
+			}
+		}
+		assert.Equal(t, 10, sum, g)
+
+		lat, err := computeReportLatencySeries(admin, start, end, g)
+		require.NoError(t, err)
+		require.Len(t, lat, 1, g)
+		assert.Equal(t, 2000, lat[0].P95Ms, g)
+
+		models, err := computeReportModels(admin, start, end)
+		require.NoError(t, err)
+		modelRequests := 0
+		for _, m := range models {
+			modelRequests += m.Requests
+		}
+		assert.Equal(t, trend.Totals.Requests, modelRequests, g)
+	}
+	assert.Equal(t, totals[0], totals[1])
+}
+
+func TestReportLatencySeriesKeepsSingleBucketWhenSampleIsFull(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	base := time.Now().Unix()
+	base -= base % 3600
+	for k := int64(0); k < 6; k++ {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: base - 3600 + 10 + k, Type: model.LogTypeConsume, ModelName: "m", UseTime: 3}).Error)
+	}
+	pts, err := computeReportLatencySeriesWithLimit(reportAdminScope(), base-2*3600, base, dto.ReportGranularityHour, 4)
+	require.NoError(t, err)
+	require.Len(t, pts, 1)
+	assert.Equal(t, 3000, pts[0].P50Ms)
+
+	// Exactly as many rows as the limit is not a cut sample: two buckets stay.
+	setupDashboardServiceTestDB(t)
+	for h := int64(1); h <= 2; h++ {
+		for k := int64(0); k < 2; k++ {
+			require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: base - h*3600 + 10 + k, Type: model.LogTypeConsume, ModelName: "m", UseTime: 3}).Error)
+		}
+	}
+	pts, err = computeReportLatencySeriesWithLimit(reportAdminScope(), base-3*3600, base, dto.ReportGranularityHour, 4)
+	require.NoError(t, err)
+	assert.Len(t, pts, 2)
+}
+
+func TestLogSummaryTokensMatchReportTrendTotals(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	for i, cache := range []int{0, 7, 11} {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - int64(i+1)*600, Type: model.LogTypeConsume, ModelName: "m", Quota: 5, PromptTokens: 10, CompletionTokens: 20, CacheTokens: cache, UseTime: 1}).Error)
+	}
+	trend, err := computeReportTrend(reportAdminScope(), now-3600, now, dto.ReportGranularityHour)
+	require.NoError(t, err)
+	logs, err := model.GetLogSummary(0, model.LogFilter{StartTimestamp: now - 3600, EndTimestamp: now})
+	require.NoError(t, err)
+	assert.Equal(t, 108, trend.Totals.Tokens)
+	assert.Equal(t, trend.Totals.Tokens, logs.Tokens)
 }

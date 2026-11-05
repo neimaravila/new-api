@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -108,6 +109,14 @@ func TestGetReportExportHandlerReturnsCSV(t *testing.T) {
 	body := recorder.Body.String()
 	assert.Contains(t, body, "new-api report")
 	assert.Contains(t, body, "models,gpt-4o,")
+}
+
+func TestReportExportFilenameMarksFilters(t *testing.T) {
+	now := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	assert.Equal(t, "report-2026-11-05.csv", reportExportFilename(now, dto.ReportFilter{}, common.RoleAdminUser))
+	assert.Equal(t, "report-2026-11-05-model-gpt-4o.csv", reportExportFilename(now, dto.ReportFilter{ModelName: "gpt-4o"}, common.RoleCommonUser))
+	assert.Equal(t, "report-2026-11-05-model-a_b___c_-channel-7.csv", reportExportFilename(now, dto.ReportFilter{ModelName: "a/b\"\r\nc;", ChannelID: 7}, common.RoleAdminUser))
+	assert.Equal(t, "report-2026-11-05.csv", reportExportFilename(now, dto.ReportFilter{ChannelID: 7}, common.RoleCommonUser))
 }
 
 // Admin aggregations cover every user, so a scoped access token that reached

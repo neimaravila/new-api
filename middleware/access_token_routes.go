@@ -256,6 +256,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/dashboard/insights":      accessTokenScopeRule("usage:read"),
 	"GET /api/dashboard/report":        accessTokenScopeRule("usage:read"),
 	"GET /api/dashboard/report/export": accessTokenScopeRule("usage:read"),
+
 	"GET /api/dashboard/report/ranking": accessTokenScopeRule("usage:read"),
 
 	// router/api-router.go: /api/group, /api/prefill_group

@@ -115,3 +115,14 @@ func TestGetLogSummaryRejectsNegativeTimestamps(t *testing.T) {
 	_, err = GetLogSummary(0, LogFilter{EndTimestamp: -1})
 	require.Error(t, err)
 }
+
+func TestGetLogSummaryTokensIncludeCacheTokens(t *testing.T) {
+	now := common.GetTimestamp()
+	seedLogSummary(t, []Log{
+		{UserId: 1, CreatedAt: now - 100, Type: LogTypeConsume, PromptTokens: 3, CompletionTokens: 2, CacheTokens: 5},
+		{UserId: 1, CreatedAt: now - 90, Type: LogTypeError, PromptTokens: 100, CacheTokens: 100},
+	})
+	got, err := GetLogSummary(0, LogFilter{})
+	require.NoError(t, err)
+	require.Equal(t, 10, got.Tokens)
+}
