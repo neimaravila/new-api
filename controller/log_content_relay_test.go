@@ -522,6 +522,77 @@ func TestCaptureClientDisconnectMarksIncomplete(t *testing.T) {
 	assert.Contains(t, logged.Other, `"end_reason":"client_gone"`)
 }
 
+// holdLogRows makes the handler wait after it writes a log row, which happens
+// once the answer is sent, until the client has read it and closed.
+func holdLogRows(t *testing.T, closed <-chan struct{}) {
+	t.Helper()
+	const name = "test:hold_log_rows"
+	require.NoError(t, model.LOG_DB.Callback().Create().After("gorm:create").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table != "logs" {
+			return
+		}
+		select {
+		case <-closed:
+			// Leave the server time to see the closed connection.
+			time.Sleep(200 * time.Millisecond)
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	t.Cleanup(func() { _ = model.LOG_DB.Callback().Create().Remove(name) })
+}
+
+func TestCaptureClientClosingAfterReadingIsComplete(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream %t", stream), func(t *testing.T) {
+			env := newCaptureEnv(t)
+			if stream {
+				env.setUpstream(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "text/event-stream")
+					for _, frame := range streamFrames() {
+						_, _ = io.WriteString(w, frame)
+						w.(http.Flusher).Flush()
+					}
+				})
+			} else {
+				env.setUpstream(echoCompletion(t, nil))
+			}
+			closed := make(chan struct{})
+			holdLogRows(t, closed)
+
+			req, err := http.NewRequest(http.MethodPost, env.gateway.URL+"/v1/chat/completions", strings.NewReader(chatBody(stream)))
+			require.NoError(t, err)
+			req.Close = true
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer sk-"+captureTokenKey)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			requestID := resp.Header.Get(common.RequestIdKey)
+			if stream {
+				reader := bufio.NewReader(resp.Body)
+				for {
+					line, err := reader.ReadString('\n')
+					require.NoError(t, err)
+					if strings.HasPrefix(line, "data: [DONE]") {
+						break
+					}
+				}
+			} else {
+				_, err = io.ReadAll(resp.Body)
+				require.NoError(t, err)
+			}
+			_ = resp.Body.Close()
+			close(closed)
+
+			rows := waitLogContents(t, requestID)
+			require.Equal(t, 0, rows[0].Attempt)
+			assert.False(t, rowMeta(t, rows[0]).Incomplete, "the whole answer was delivered")
+			for _, row := range rows[1:] {
+				assert.False(t, rowMeta(t, row).Incomplete, "attempt %d", row.Attempt)
+			}
+		})
+	}
+}
+
 func TestCaptureUpstreamCutMarksIncomplete(t *testing.T) {
 	env := newCaptureEnv(t)
 	env.setUpstream(blockingStream(nil, true))

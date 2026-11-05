@@ -612,7 +612,7 @@ func (cp *Capture) clientAttempt(now time.Time, body capturedBody) captureAttemp
 		Method:        cp.c.Request.Method,
 		StartedAtMs:   cp.startedAt.UnixMilli(),
 		DurationMs:    now.Sub(cp.startedAt).Milliseconds(),
-		Incomplete:    cp.writeFailed || cp.c.Request.Context().Err() != nil,
+		Incomplete:    cp.writeFailed,
 	}
 	if cp.c.Request.URL != nil {
 		meta.Path = cp.c.Request.URL.Path
