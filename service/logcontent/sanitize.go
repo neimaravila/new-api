@@ -375,13 +375,35 @@ func marshalledSize(msgs []ViewMessage) int {
 	return len(raw)
 }
 
+// dropToFit keeps the longest prefix of messages and blocks whose marshalled
+// size fits in maxAssembled. Each piece is marshalled once and summed with its
+// brackets and commas, so the cost is linear in the number of blocks.
 func dropToFit(msgs []ViewMessage) []ViewMessage {
-	for marshalledSize(msgs) > maxAssembled && len(msgs) > 0 {
-		last := len(msgs) - 1
-		if n := len(msgs[last].Blocks); n > 0 {
-			msgs[last].Blocks = msgs[last].Blocks[:n-1]
-		} else {
-			msgs = msgs[:last]
+	total := 2 // []
+	for i, msg := range msgs {
+		// The message with no blocks: the blocks array then adds only its items.
+		header := marshalledSize([]ViewMessage{{Role: msg.Role, Source: msg.Source, Blocks: msg.Blocks[:0]}}) - 2
+		if i > 0 {
+			header++
+		}
+		total += header
+		if total > maxAssembled {
+			return msgs[:i]
+		}
+		for j, block := range msg.Blocks {
+			raw, err := common.Marshal(block)
+			size := len(raw)
+			if err != nil {
+				size = maxAssembled + 1
+			}
+			if j > 0 {
+				size++
+			}
+			total += size
+			if total > maxAssembled {
+				msgs[i].Blocks = msg.Blocks[:j]
+				return msgs[:i+1]
+			}
 		}
 	}
 	return msgs

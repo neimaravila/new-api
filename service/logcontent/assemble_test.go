@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
@@ -448,4 +449,39 @@ func TestSanitizeAssembledMessagesMarshalledSizeFits(t *testing.T) {
 		assert.True(t, trimmed)
 		assert.LessOrEqual(t, marshalledSize(got), maxAssembled)
 	})
+}
+
+func TestDropToFitIsLinear(t *testing.T) {
+	var msgs []ViewMessage
+	for m := range 4 {
+		blocks := make([]ViewBlock, 30000)
+		for i := range blocks {
+			blocks[i] = ViewBlock{Type: blockToolCall, Id: fmt.Sprintf("c%d", i), Name: "f"}
+		}
+		msgs = append(msgs, ViewMessage{Role: roleAssistant, Source: fmt.Sprintf("s%d", m), Blocks: blocks})
+	}
+	start := time.Now()
+	got := dropToFit(msgs)
+	assert.Less(t, time.Since(start), 2*time.Second)
+	raw, err := common.Marshal(got)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(raw), maxAssembled)
+	assert.Greater(t, len(raw), maxAssembled-64, "only the blocks past the limit go")
+	var back []ViewMessage
+	require.NoError(t, common.Unmarshal(raw, &back))
+}
+
+func TestDropToFitKeepsWholeMessagesThatFit(t *testing.T) {
+	msgs := []ViewMessage{
+		{Role: roleUser, Source: sourceRequest, Blocks: []ViewBlock{{Type: blockText, Text: "hi"}}},
+		{Role: roleAssistant, Source: sourceResponse, Blocks: []ViewBlock{}},
+	}
+	got := dropToFit(msgs)
+	assert.Equal(t, msgs, got)
+
+	over := []ViewMessage{{Role: roleAssistant, Blocks: []ViewBlock{{Type: blockText, Text: strings.Repeat("a", maxAssembled)}}}}
+	got = dropToFit(over)
+	require.Len(t, got, 1)
+	assert.Empty(t, got[0].Blocks)
+	assert.LessOrEqual(t, marshalledSize(got), maxAssembled)
 }
