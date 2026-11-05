@@ -1,0 +1,8 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"The tool ","thought":true}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"said 21.","thought":true}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"A cat on a sofa. "}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"It is 21 degrees in Lisbon."}]},"finishReason":"STOP","index":0}],"usageMetadata":{"totalTokenCount":15}}
+

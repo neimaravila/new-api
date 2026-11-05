@@ -267,6 +267,45 @@ func SanitizeAssembled(text string, secrets Secrets) string {
 	return string(cutAtRune(stripped, maxAssembled))
 }
 
+// SanitizeAssembledMessages cleans the messages rebuilt from a stream before they
+// are marshalled. Each text field is redacted and stripped of base64 runs, then
+// the total is capped at maxAssembled by trimming field text, never by cutting
+// serialized JSON, so what is stored always parses. The input is not modified.
+// The result reports whether the cap trimmed anything.
+func SanitizeAssembledMessages(msgs []ViewMessage, secrets Secrets) ([]ViewMessage, bool) {
+	budget := maxAssembled
+	trimmed := false
+	clean := func(text string) string {
+		if text == "" {
+			return ""
+		}
+		body := secrets.redact([]byte(strings.ToValidUTF8(text, "")))
+		body, _ = stripBase64Runs(body)
+		if len(body) > budget {
+			trimmed = true
+		}
+		body = cutAtRune(body, budget)
+		budget -= len(body)
+		return string(body)
+	}
+	out := make([]ViewMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		blocks := make([]ViewBlock, 0, len(msg.Blocks))
+		for _, block := range msg.Blocks {
+			block.Text = clean(block.Text)
+			block.Arguments = clean(block.Arguments)
+			block.Id = clean(block.Id)
+			block.Name = clean(block.Name)
+			if (block.Type == blockText || block.Type == blockThinking) && block.Text == "" {
+				continue
+			}
+			blocks = append(blocks, block)
+		}
+		out = append(out, ViewMessage{Role: msg.Role, Source: msg.Source, Blocks: blocks})
+	}
+	return out, trimmed
+}
+
 func sanitizeHead(body []byte, meta model.BodyMeta) SanitizedBody {
 	stripped, media := stripBase64Runs(body)
 	meta.MediaOmitted += media
