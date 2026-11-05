@@ -71,18 +71,18 @@ func finishedRetentionTask(t *testing.T, task *model.SystemTask) *model.SystemTa
 
 func TestLogContentRetentionDeletesOnlyExpired(t *testing.T) {
 	setupLogContentRetention(t)
-	cutoff := logContentRetentionCutoff(common.GetTimestamp(), 30)
+	now := common.GetTimestamp()
+	cutoff := logContentRetentionCutoff(now, 30)
 	seedRetentionContents(t, cutoff-1, 1, "before")
 	seedRetentionContents(t, cutoff, 1, "at")
 	seedRetentionContents(t, cutoff+1000, 1, "after")
 
 	task := claimRetentionTask(t)
-	logContentRetentionHandler{}.Run(context.Background(), task, retentionTestRunner)
+	logContentRetentionHandler{now: func() int64 { return now }}.Run(context.Background(), task, retentionTestRunner)
 
 	var remaining []string
 	require.NoError(t, model.LOG_DB.Model(&model.LogContent{}).Order("created_at").Pluck("request_id", &remaining).Error)
-	require.Len(t, remaining, 2)
-	assert.NotContains(t, remaining, "before-0s")
+	assert.Equal(t, []string{"at-0s", "after-0s"}, remaining, "the row exactly at the cutoff survives")
 	assert.Equal(t, model.SystemTaskStatusSucceeded, finishedRetentionTask(t, task).Status)
 }
 

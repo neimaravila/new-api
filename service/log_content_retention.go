@@ -32,8 +32,9 @@ type LogContentRetentionResult struct {
 
 // logContentRetentionHandler deletes captured content older than the
 // configured retention. The zero value uses production behaviour; the fields
-// exist so tests can inject a pause and the ClickHouse TTL call.
+// exist so tests can inject the clock, a pause and the ClickHouse TTL call.
 type logContentRetentionHandler struct {
+	now     func() int64
 	pause   func(ctx context.Context) error
 	syncTTL func(days int) error
 }
@@ -87,7 +88,11 @@ func (h logContentRetentionHandler) Run(ctx context.Context, task *model.SystemT
 	if days < 1 {
 		days = logContentDefaultDays
 	}
-	cutoff := logContentRetentionCutoff(common.GetTimestamp(), days)
+	now := common.GetTimestamp()
+	if h.now != nil {
+		now = h.now()
+	}
+	cutoff := logContentRetentionCutoff(now, days)
 	result := LogContentRetentionResult{Cutoff: cutoff, Days: days}
 	report := NewSystemTaskProgressReporter(task, runnerID)
 
