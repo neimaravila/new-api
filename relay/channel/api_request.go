@@ -341,7 +341,9 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err = ApplyHeaderOverride(info, c, req); err != nil {
 		return nil, err
 	}
+	logContent := beginLogContentAttempt(c, info, req)
 	resp, err := doRequest(c, req, info)
+	resp = logContent.ObserveResponse(resp, err)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
 	}

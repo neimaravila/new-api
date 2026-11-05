@@ -318,6 +318,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		Other:             otherStr,
 	}
 	err := createLog(log)
+	notifyLogRowWritten(c, log, err)
 	if err != nil {
 		logger.LogError(c, common.LogText("failed to record log: %s", err.Error()))
 	}
@@ -399,6 +400,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		Other:             otherStr,
 	}
 	err := createLog(log)
+	notifyLogRowWritten(c, log, err)
 	if err != nil {
 		logger.LogError(c, common.LogText("failed to record log: %s", err.Error()))
 	}

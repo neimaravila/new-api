@@ -42,6 +42,8 @@ type capturedBody struct {
 	Truncated bool
 	// OriginalBytes, when set, is the size of the whole body; Data may be less.
 	OriginalBytes int64
+	// EndKept: Data holds the last bytes of the body.
+	EndKept bool
 }
 
 // captureAttempt is one attempt of a call: 0 is the client level.
@@ -54,6 +56,8 @@ type captureAttempt struct {
 	Response    capturedBody
 	// Assembled is the message rebuilt from a stream; nil when there is none.
 	Assembled []ViewMessage
+	// AssembledTruncated: the rebuilt message misses part of the stream.
+	AssembledTruncated bool
 }
 
 // captureRecord holds the raw data of one call and its budget reservation.
@@ -244,10 +248,11 @@ func buildRows(rec *captureRecord) []*model.LogContent {
 			row.RequestBody, meta.Request = storeBody(attempt.Request, secrets)
 			row.ResponseBody, meta.Response = storeBody(attempt.Response, secrets)
 			if attempt.Assembled != nil {
-				msgs, _ := SanitizeAssembledMessages(attempt.Assembled, secrets)
+				msgs, trimmed := SanitizeAssembledMessages(attempt.Assembled, secrets)
 				if raw, err := common.Marshal(msgs); err == nil {
 					row.AssembledBody = gzipBytes(raw)
 				}
+				meta.Response.Truncated = meta.Response.Truncated || trimmed || attempt.AssembledTruncated
 			}
 		}
 		meta.ErrorMessage = capText(meta.ErrorMessage, maxErrorMessageBytes, secrets)
