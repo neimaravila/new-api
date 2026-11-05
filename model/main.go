@@ -25,7 +25,7 @@ var commonTrueVal string
 var commonFalseVal string
 
 var logKeyCol string
-var logGroupCol string
+var LogGroupCol string
 
 // jsonScanBytes 归一化 json 列的驱动返回值:不同驱动/协议模式下同一列可能
 // 以 []byte 或 string 返回,静默丢弃 string 会导致字段被清零而不报错。
@@ -55,10 +55,10 @@ func initCol() {
 	}
 	switch common.LogDatabaseType() {
 	case common.DatabaseTypePostgreSQL:
-		logGroupCol = `"group"`
+		LogGroupCol = `"group"`
 		logKeyCol = `"key"`
 	default:
-		logGroupCol = "`group`"
+		LogGroupCol = "`group`"
 		logKeyCol = "`key`"
 	}
 }

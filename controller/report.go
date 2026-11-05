@@ -29,6 +29,23 @@ func GetReportSummary(c *gin.Context) {
 	common.ApiSuccess(c, summary)
 }
 
+// GetReportRanking returns the top entries of one dimension (channel, model, user, token, group).
+func GetReportRanking(c *gin.Context) {
+	userID := c.GetInt("id")
+	username := c.GetString("username")
+	role := dashboardViewerRole(c)
+
+	timeRange := dto.ReportTimeRange(c.DefaultQuery("range", string(dto.ReportRangeLast7Days)))
+	dimension := dto.ReportDimension(c.Query("dimension"))
+
+	rows, err := service.GetReportRanking(userID, username, role, timeRange, dimension, reportFilterFromQuery(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, rows)
+}
+
 // GetReportExport streams the report as a CSV download.
 func GetReportExport(c *gin.Context) {
 	userID := c.GetInt("id")

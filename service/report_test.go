@@ -488,3 +488,82 @@ func TestReportCostByModelMultiBucketSumsToTotal(t *testing.T) {
 	}
 	assert.Equal(t, summary.Trend.Totals.Quota, sum)
 }
+
+func TestReportRankingOrdersByRequestsAndLimits(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	for i := 1; i <= 60; i++ {
+		for j := 0; j < i; j++ {
+			require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - 600, Type: model.LogTypeConsume, TokenName: "tok-" + strconv.Itoa(i), ModelName: "gpt-4o", Quota: 1, UseTime: 1}).Error)
+		}
+	}
+
+	rows, err := GetReportRanking(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportDimensionToken, dto.ReportFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, reportRankingLimit)
+	assert.Equal(t, "tok-60", rows[0].Name)
+	assert.Equal(t, 60, rows[0].Requests)
+	for i := 1; i < len(rows); i++ {
+		assert.GreaterOrEqual(t, rows[i-1].Requests, rows[i].Requests)
+	}
+}
+
+func TestReportRankingRejectsAdminDimensionsForUser(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+	for _, dim := range []dto.ReportDimension{dto.ReportDimensionUser, dto.ReportDimensionChannel} {
+		rows, err := GetReportRanking(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dim, dto.ReportFilter{})
+		require.Error(t, err, string(dim))
+		assert.Empty(t, rows)
+	}
+}
+
+func TestReportRankingScopesTokensToUser(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - 600, Type: model.LogTypeConsume, TokenName: "alice-key", ModelName: "m", Quota: 1, UseTime: 1}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 2, Username: "bob", CreatedAt: now - 600, Type: model.LogTypeConsume, TokenName: "bob-key", ModelName: "m", Quota: 1, UseTime: 1}).Error)
+
+	rows, err := GetReportRanking(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportDimensionToken, dto.ReportFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "alice-key", rows[0].Name)
+}
+
+func TestReportRankingRejectsUnknownDimension(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	statements := recordLogSQL(t)
+	_, err := GetReportRanking(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportDimension("foo"), dto.ReportFilter{})
+	require.Error(t, err)
+	assert.Empty(t, *statements)
+}
+
+func TestReportRankingNamesChannels(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 10, Name: "primary-openai"}).Error)
+
+	rows, err := GetReportRanking(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportDimensionChannel, dto.ReportFilter{})
+	require.NoError(t, err)
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Name)
+	}
+	assert.ElementsMatch(t, []string{"primary-openai", "#11"}, names)
+	// Percentiles of a channel are computed with a numeric channel_id filter.
+	assert.Greater(t, rows[0].P95LatencyMs, 0)
+}
+
+func TestReportRankingMetrics(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	seedReportFixture(t)
+	rows, err := GetReportRanking(1, "alice", common.RoleCommonUser, dto.ReportRangeLast7Days, dto.ReportDimensionModel, dto.ReportFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "gpt-4o", rows[0].Name)
+	assert.Equal(t, 4, rows[0].Requests)
+	assert.Equal(t, 1, rows[0].Failures)
+	assert.InDelta(t, 0.25, rows[0].ErrorRate, 1e-9)
+	assert.Equal(t, 350, rows[0].Quota)
+	assert.Equal(t, 1333, rows[0].AvgLatencyMs)
+}

@@ -154,3 +154,27 @@ type ReportFilter struct {
 	ModelName string
 	ChannelID int
 }
+
+// ReportDimension is the grouping a ranking is computed over.
+type ReportDimension string
+
+const (
+	ReportDimensionChannel ReportDimension = "channel"
+	ReportDimensionModel   ReportDimension = "model"
+	ReportDimensionUser    ReportDimension = "user"
+	ReportDimensionToken   ReportDimension = "token"
+	ReportDimensionGroup   ReportDimension = "group"
+)
+
+// ReportRankingRow is one entry of a ranking by dimension. Latencies are in milliseconds.
+type ReportRankingRow struct {
+	Name         string  `json:"name"`
+	Requests     int     `json:"requests"`
+	Tokens       int     `json:"tokens"`
+	Quota        int     `json:"quota"`
+	Failures     int     `json:"failures"`
+	ErrorRate    float64 `json:"error_rate"`
+	AvgLatencyMs int     `json:"avg_latency_ms"`
+	P50LatencyMs int     `json:"p50_latency_ms"`
+	P95LatencyMs int     `json:"p95_latency_ms"`
+}

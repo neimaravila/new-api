@@ -151,3 +151,40 @@ func TestGetReportExportAppliesFilters(t *testing.T) {
 	assert.Contains(t, body, "gpt-4o")
 	assert.NotContains(t, body, "claude")
 }
+
+type reportRankingResponse struct {
+	Success bool             `json:"success"`
+	Message string           `json:"message"`
+	Data    []map[string]any `json:"data"`
+}
+
+func newReportRankingRequest(role int, userID int, username string, query string) (*gin.Context, *httptest.ResponseRecorder) {
+	ctx, recorder := newReportRequest(role, userID, username)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/dashboard/report/ranking?"+query, nil)
+	return ctx, recorder
+}
+
+func TestGetReportRankingHandlerAdminChannels(t *testing.T) {
+	setupReportControllerTestDB(t)
+	ctx, recorder := newReportRankingRequest(common.RoleAdminUser, 99, "admin", "range=7d&dimension=model")
+	GetReportRanking(ctx)
+
+	var payload reportRankingResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success, payload.Message)
+	require.Len(t, payload.Data, 2)
+	assert.Contains(t, payload.Data[0], "requests")
+	assert.Contains(t, payload.Data[0], "p95_latency_ms")
+	assert.Contains(t, payload.Data[0], "error_rate")
+}
+
+func TestGetReportRankingHandlerRejectsAdminDimensionForUser(t *testing.T) {
+	setupReportControllerTestDB(t)
+	ctx, recorder := newReportRankingRequest(common.RoleCommonUser, 1, "alice", "range=7d&dimension=user")
+	GetReportRanking(ctx)
+
+	var payload reportRankingResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	assert.False(t, payload.Success)
+	assert.Empty(t, payload.Data)
+}

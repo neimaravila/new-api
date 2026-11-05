@@ -535,7 +535,7 @@ func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
 		tx = tx.Where("logs.channel_id = ?", f.Channel)
 	}
 	if f.Group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", f.Group)
+		tx = tx.Where("logs."+LogGroupCol+" = ?", f.Group)
 	}
 	return tx, nil
 }
@@ -760,8 +760,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
-		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+		tx = tx.Where(LogGroupCol+" = ?", group)
+		rpmTpmQuery = rpmTpmQuery.Where(LogGroupCol+" = ?", group)
 	}
 
 	tx = tx.Where("type = ?", LogTypeConsume)
