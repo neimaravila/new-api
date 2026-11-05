@@ -42,7 +42,10 @@ import {
   UsageLogsProvider,
   useUsageLogsContext,
 } from '../../usage-logs-provider'
-import { LOG_CONTENT_PENDING_REFETCH_MS } from '../use-log-content'
+import {
+  LOG_CONTENT_PENDING_REFETCH_LIMIT,
+  LOG_CONTENT_PENDING_REFETCH_MS,
+} from '../use-log-content'
 import openaiFixture from './fixtures/view-openai.json'
 
 vi.mock('../../../api', () => ({ getLogContent: vi.fn() }))
@@ -138,8 +141,12 @@ function tree(props: Parameters<typeof Harness>[0]) {
   )
 }
 
-async function openRow(id: number, props: Parameters<typeof Harness>[0]) {
-  const user = userEvent.setup()
+async function openRow(
+  id: number,
+  props: Parameters<typeof Harness>[0],
+  userOptions?: Parameters<typeof userEvent.setup>[0]
+) {
+  const user = userEvent.setup(userOptions)
   const view = render(tree(props))
   await user.click(screen.getByTestId(`row-${id}`))
   const panel = await screen.findByRole('dialog')
@@ -542,19 +549,37 @@ it('keeps the arrows for scrolling inside a tab body but navigates from the head
 })
 
 it('offers Retry once the pending lookups run out', async () => {
-  getContent.mockResolvedValue(
-    makeView({ available: false, reason: 'pending' })
-  )
-  const { within: q, user } = await openRow(1, { logs: [makeLog()] })
-  const retry = await q.findByRole(
-    'button',
-    { name: 'Retry' },
-    { timeout: LOG_CONTENT_PENDING_REFETCH_MS * 7 }
-  )
-  getContent.mockResolvedValue(makeView())
-  await user.click(retry)
-  expect(await q.findByRole('tab', { name: 'Conversation' })).toBeVisible()
-}, 20_000)
+  // Fake clock: the pending lookups would otherwise take about 14 s.
+  // shouldAdvanceTime keeps Testing Library's own polling moving.
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    getContent.mockResolvedValue(
+      makeView({ available: false, reason: 'pending' })
+    )
+    const { within: q, user } = await openRow(
+      1,
+      { logs: [makeLog()] },
+      { advanceTimers: vi.advanceTimersByTime }
+    )
+    expect(
+      await q.findByText('The content of this call is still being saved.')
+    ).toBeVisible()
+    expect(q.queryByRole('button', { name: 'Retry' })).toBeNull()
+    // The first lookup plus one per interval until the limit.
+    for (let i = 1; i < LOG_CONTENT_PENDING_REFETCH_LIMIT; i++) {
+      await vi.advanceTimersByTimeAsync(LOG_CONTENT_PENDING_REFETCH_MS)
+    }
+    expect(getContent).toHaveBeenCalledTimes(LOG_CONTENT_PENDING_REFETCH_LIMIT)
+    const retry = await q.findByRole('button', { name: 'Retry' })
+    await vi.advanceTimersByTimeAsync(LOG_CONTENT_PENDING_REFETCH_MS * 3)
+    expect(getContent).toHaveBeenCalledTimes(LOG_CONTENT_PENDING_REFETCH_LIMIT)
+    getContent.mockResolvedValue(makeView())
+    await user.click(retry)
+    expect(await q.findByRole('tab', { name: 'Conversation' })).toBeVisible()
+  } finally {
+    vi.useRealTimers()
+  }
+})
 
 it('shows the last attempt of a newly selected log at once', async () => {
   getContent.mockResolvedValue(makeView({ attempts: twoAttempts }))
