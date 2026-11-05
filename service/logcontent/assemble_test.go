@@ -334,3 +334,118 @@ func TestSanitizeAssembledMessagesStaysValidAndWithinLimit(t *testing.T) {
 	require.NoError(t, common.Unmarshal(raw, &back))
 	assert.Equal(t, got, back)
 }
+
+func TestAssembleErrorFramesAreBounded(t *testing.T) {
+	frames := map[string]string{
+		FormatOpenAI:    `data: {"error":{"message":"` + strings.Repeat("e", 200) + `"}}` + "\n\n",
+		FormatClaude:    `data: {"type":"error","error":{"message":"` + strings.Repeat("e", 200) + `"}}` + "\n\n",
+		FormatGemini:    `data: {"error":{"message":"` + strings.Repeat("e", 200) + `"}}` + "\n\n",
+		FormatResponses: `data: {"type":"error","message":"` + strings.Repeat("e", 200) + `"}` + "\n\n",
+	}
+	for format, frame := range frames {
+		t.Run(format, func(t *testing.T) {
+			a := NewStreamAssembler(format)
+			for i := 0; i < 100000; i++ {
+				a.Write([]byte(frame))
+			}
+			assert.LessOrEqual(t, len(a.message(0).blocks), maxAssembled/assembleBlockCost)
+			got := a.Result()
+			assert.True(t, got.Truncated)
+			assert.True(t, got.Terminal)
+			assert.LessOrEqual(t, marshalledSize(got.Messages), 2*maxAssembled)
+		})
+	}
+}
+
+func TestAssembleEmptyErrorMakesNoBlock(t *testing.T) {
+	for format, frame := range map[string]string{
+		FormatOpenAI: `data: {"error":{}}`, FormatClaude: `data: {"type":"error","error":{}}`,
+		FormatGemini: `data: {"error":{}}`, FormatResponses: `data: {"type":"error","message":""}`,
+	} {
+		got := assembleChunks(format, []byte(frame+"\n\n"), 1<<20)
+		assert.Empty(t, got.Messages, format)
+	}
+}
+
+func TestAssembleSummaryIndexMapIsBounded(t *testing.T) {
+	a := NewStreamAssembler(FormatResponses)
+	for i := 0; i < 50000; i++ {
+		a.Write([]byte(fmt.Sprintf(`data: {"type":"response.reasoning_summary_text.delta","output_index":%d,"summary_index":1,"delta":"x"}`+"\n\n", i)))
+	}
+	assert.LessOrEqual(t, len(a.message(0).lastSummary), maxAssembled/assembleBlockCost)
+	assert.LessOrEqual(t, len(a.message(0).byKey), maxAssembled/assembleBlockCost)
+}
+
+func TestAssembleMediaTypeIsNormalized(t *testing.T) {
+	junk := strings.Repeat("a", 1<<20) + "\n<script>"
+	frame := `data: {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"` + junk + `","data":"AAAA"}}]}}]}` + "\n\n"
+	got := assembleChunks(FormatGemini, []byte(frame), 1<<22)
+	// The frame is over the limit and ignored; a frame under it with a long type is normalized.
+	assert.Empty(t, got.Messages)
+	frame = `data: {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"` + strings.Repeat("a", 5000) + `","data":"AAAA"}},{"inlineData":{"mimeType":"image/png","data":"AAAA"}}]}}]}` + "\n\n"
+	got = assembleChunks(FormatGemini, []byte(frame), 1<<22)
+	require.Len(t, got.Messages, 1)
+	assert.Equal(t, "unknown", got.Messages[0].Blocks[0].MediaType)
+	assert.Equal(t, "image/png", got.Messages[0].Blocks[1].MediaType)
+}
+
+func TestSanitizeAssembledMessagesNormalizesMediaType(t *testing.T) {
+	msgs := []ViewMessage{{Role: roleAssistant, Source: sourceResponse, Blocks: []ViewBlock{
+		{Type: blockMedia, MediaType: strings.Repeat("a", 1<<20)},
+		{Type: blockMedia, MediaType: "x y\n"},
+		{Type: blockMedia, MediaType: "audio/wav"},
+	}}}
+	got, _ := SanitizeAssembledMessages(msgs, nil)
+	assert.Equal(t, "unknown", got[0].Blocks[0].MediaType)
+	assert.Equal(t, "unknown", got[0].Blocks[1].MediaType)
+	assert.Equal(t, "audio/wav", got[0].Blocks[2].MediaType)
+}
+
+func TestSanitizeAssembledMessagesRedactsEscapedKeyInArguments(t *testing.T) {
+	secrets := NewSecrets(testBareKey)
+	escaped := jsonUnicode("006c") + testBareKey[1:]
+	require.NotContains(t, escaped, testBareKey)
+	msgs := []ViewMessage{{Role: roleAssistant, Source: sourceResponse, Blocks: []ViewBlock{
+		{Type: blockToolCall, Name: "f", Arguments: `{"token":"` + escaped + `"}`},
+		{Type: blockToolResult, Text: `{"k":"` + escaped + `"}`},
+	}}}
+	got, _ := SanitizeAssembledMessages(msgs, secrets)
+	for _, block := range got[0].Blocks {
+		assert.NotContains(t, block.Arguments+block.Text, testBareKey[1:])
+		assert.Contains(t, block.Arguments+block.Text, "[REDACTED]")
+	}
+}
+
+func TestSanitizeAssembledMessagesMarshalledSizeFits(t *testing.T) {
+	for name, unit := range map[string]string{
+		"quotes":   `"`,
+		"slashes":  `\`,
+		"controls": "\x01",
+		"mixed":    "\"\\\x02\n語",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var blocks []ViewBlock
+			for i := 0; i < 50; i++ {
+				blocks = append(blocks, ViewBlock{Type: blockText, Text: strings.Repeat(unit, 80000)})
+			}
+			blocks = append(blocks, ViewBlock{Type: blockToolCall, Id: "c", Name: "f", Arguments: strings.Repeat(unit, 1000)})
+			got, trimmed := SanitizeAssembledMessages([]ViewMessage{{Role: roleAssistant, Source: sourceResponse, Blocks: blocks}}, nil)
+			assert.True(t, trimmed)
+			raw, err := common.Marshal(got)
+			require.NoError(t, err)
+			assert.LessOrEqual(t, len(raw), maxAssembled)
+			assert.Greater(t, len(raw), maxAssembled/2, "the budget should not collapse")
+			var back []ViewMessage
+			require.NoError(t, common.Unmarshal(raw, &back))
+		})
+	}
+	t.Run("many tiny blocks", func(t *testing.T) {
+		blocks := make([]ViewBlock, 40000)
+		for i := range blocks {
+			blocks[i] = ViewBlock{Type: blockToolCall, Id: "id", Name: "name"}
+		}
+		got, trimmed := SanitizeAssembledMessages([]ViewMessage{{Role: roleAssistant, Blocks: blocks}}, nil)
+		assert.True(t, trimmed)
+		assert.LessOrEqual(t, marshalledSize(got), maxAssembled)
+	})
+}

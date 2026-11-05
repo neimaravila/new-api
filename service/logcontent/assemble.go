@@ -3,6 +3,7 @@ package logcontent
 import (
 	"bytes"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
@@ -28,6 +29,10 @@ type AssembledStream struct {
 // asmMessage is one message under construction: a choice, or the whole answer.
 type asmMessage struct {
 	blocks []ViewBlock
+	// texts and args hold the growing Text and Arguments of each block, so
+	// many small deltas do not copy the whole string every time.
+	texts []*strings.Builder
+	args  []*strings.Builder
 	// byKey maps a format-specific key (block index, output index) to a block.
 	byKey map[string]int
 	// lastSummary is the last reasoning summary index seen per reasoning item.
@@ -36,6 +41,18 @@ type asmMessage struct {
 
 func newAsmMessage() *asmMessage {
 	return &asmMessage{byKey: map[string]int{}, lastSummary: map[string]int64{}}
+}
+
+// add appends a block and returns its index.
+func (m *asmMessage) add(block ViewBlock) int {
+	text, args := &strings.Builder{}, &strings.Builder{}
+	text.WriteString(block.Text)
+	args.WriteString(block.Arguments)
+	block.Text, block.Arguments = "", ""
+	m.blocks = append(m.blocks, block)
+	m.texts = append(m.texts, text)
+	m.args = append(m.args, args)
+	return len(m.blocks) - 1
 }
 
 // StreamAssembler rebuilds the message of a stream from its raw bytes, in any
@@ -294,7 +311,8 @@ func (s *StreamAssembler) message(index int) *asmMessage {
 	return m
 }
 
-// take returns the part of text that still fits the message budget.
+// take returns the part of text that still fits the message budget, copied so
+// that it does not keep the whole frame it was read from alive.
 func (s *StreamAssembler) take(text string) string {
 	room := maxAssembled - s.used
 	if room <= 0 {
@@ -311,10 +329,10 @@ func (s *StreamAssembler) take(text string) string {
 		text = text[:end]
 		s.truncated = true
 		s.used = maxAssembled
-		return text
+		return strings.Clone(text)
 	}
 	s.used += len(text)
-	return text
+	return strings.Clone(text)
 }
 
 // open starts a block, or returns -1 when the budget is spent.
@@ -325,12 +343,13 @@ func (s *StreamAssembler) open(m *asmMessage, block ViewBlock) int {
 		return -1
 	}
 	s.used += assembleBlockCost
+	block.MediaType = strings.Clone(cleanMediaType(block.MediaType))
+	s.used += len(block.MediaType)
 	block.Text = s.take(block.Text)
 	block.Arguments = s.take(block.Arguments)
 	block.Id = s.take(block.Id)
 	block.Name = s.take(block.Name)
-	m.blocks = append(m.blocks, block)
-	return len(m.blocks) - 1
+	return m.add(block)
 }
 
 // appendTo adds text to the text or thinking block stored under key, creating
@@ -347,7 +366,7 @@ func (s *StreamAssembler) appendTo(m *asmMessage, key, kind, text string) {
 		}
 		m.byKey[key] = i
 	}
-	m.blocks[i].Text += s.take(text)
+	m.texts[i].WriteString(s.take(text))
 }
 
 // appendRun adds text to the last block when it has the same type, otherwise it
@@ -357,7 +376,7 @@ func (s *StreamAssembler) appendRun(m *asmMessage, kind, text string) {
 		return
 	}
 	if last := len(m.blocks) - 1; last >= 0 && m.blocks[last].Type == kind {
-		m.blocks[last].Text += s.take(text)
+		m.texts[last].WriteString(s.take(text))
 		return
 	}
 	s.open(m, ViewBlock{Type: kind, Text: text})
@@ -393,9 +412,11 @@ func (s *StreamAssembler) addError(m *asmMessage, root gjson.Result) bool {
 	if !failed {
 		return false
 	}
-	block.Text = s.take(block.Text)
-	m.blocks = append(m.blocks, block)
+	if text := strings.TrimSpace(block.Text); text == "" || text == "{}" {
+		return false
+	}
 	s.terminal = true
+	s.open(m, block)
 	return true
 }
 
@@ -426,14 +447,14 @@ func (s *StreamAssembler) openAI(root gjson.Result) {
 			i := s.toolBlock(m, "tool:"+strconvInt(slot))
 			s.setTool(m, i, call.Get("id").String(), call.Get("function.name").String())
 			if i >= 0 {
-				m.blocks[i].Arguments += s.take(call.Get("function.arguments").String())
+				m.args[i].WriteString(s.take(call.Get("function.arguments").String()))
 			}
 		}
 		if legacy := delta.Get("function_call"); legacy.IsObject() {
 			i := s.toolBlock(m, "function_call")
 			s.setTool(m, i, "", legacy.Get("name").String())
 			if i >= 0 {
-				m.blocks[i].Arguments += s.take(legacy.Get("arguments").String())
+				m.args[i].WriteString(s.take(legacy.Get("arguments").String()))
 			}
 		}
 		if choice.Get("finish_reason").Type == gjson.String {
@@ -455,12 +476,14 @@ func (s *StreamAssembler) responses(root gjson.Result) {
 			summary := root.Get("summary_index").Int()
 			if last, seen := m.lastSummary[key]; seen && last != summary {
 				if i, ok := m.byKey[key]; ok {
-					m.blocks[i].Text += s.take("\n")
+					m.texts[i].WriteString(s.take("\n"))
 				}
 			}
-			m.lastSummary[key] = summary
 		}
 		s.appendTo(m, key, blockThinking, root.Get("delta").String())
+		if _, ok := m.byKey[key]; ok && kind == "response.reasoning_summary_text.delta" {
+			m.lastSummary[key] = root.Get("summary_index").Int()
+		}
 	case "response.output_item.added":
 		item := root.Get("item")
 		if item.Get("type").String() == "function_call" {
@@ -471,12 +494,12 @@ func (s *StreamAssembler) responses(root gjson.Result) {
 			}
 			s.setTool(m, i, id, item.Get("name").String())
 			if i >= 0 {
-				m.blocks[i].Arguments += s.take(item.Get("arguments").String())
+				m.args[i].WriteString(s.take(item.Get("arguments").String()))
 			}
 		}
 	case "response.function_call_arguments.delta":
 		if i := s.toolBlock(m, "f:"+oi); i >= 0 {
-			m.blocks[i].Arguments += s.take(root.Get("delta").String())
+			m.args[i].WriteString(s.take(root.Get("delta").String()))
 		}
 	case "response.completed", "response.failed", "response.incomplete":
 		s.terminal = true
@@ -491,8 +514,8 @@ func (s *StreamAssembler) responses(root gjson.Result) {
 		}
 	case "error":
 		if message := root.Get("message").String(); message != "" {
-			m.blocks = append(m.blocks, ViewBlock{Type: blockError, Text: s.take(message)})
 			s.terminal = true
+			s.open(m, ViewBlock{Type: blockError, Text: message})
 		} else {
 			s.addError(m, root)
 		}
@@ -525,7 +548,7 @@ func (s *StreamAssembler) claude(root gjson.Result) {
 			s.appendTo(m, key, blockThinking, delta.Get("thinking").String())
 		case "input_json_delta":
 			if i, ok := m.byKey[key]; ok && m.blocks[i].Type == blockToolCall {
-				m.blocks[i].Arguments += s.take(delta.Get("partial_json").String())
+				m.args[i].WriteString(s.take(delta.Get("partial_json").String()))
 			}
 		}
 	case "message_stop":
@@ -556,16 +579,7 @@ func (s *StreamAssembler) gemini(root gjson.Result) {
 		case blockText, blockThinking:
 			s.appendRun(m, block.Type, block.Text)
 		default:
-			block.Text = s.take(block.Text)
-			block.Arguments = s.take(block.Arguments)
-			block.Id = s.take(block.Id)
-			block.Name = s.take(block.Name)
-			if s.used+assembleBlockCost > maxAssembled {
-				s.truncated = true
-				continue
-			}
-			s.used += assembleBlockCost
-			m.blocks = append(m.blocks, block)
+			s.open(m, block)
 		}
 	}
 	if candidate.Get("finishReason").String() != "" {
@@ -587,7 +601,11 @@ func (s *StreamAssembler) build() []ViewMessage {
 			continue
 		}
 		blocks := make([]ViewBlock, 0, len(m.blocks))
-		for _, block := range m.blocks {
+		for at, block := range m.blocks {
+			block.Text, block.Arguments = m.texts[at].String(), m.args[at].String()
+			if block.Type == blockError && block.Text == "" {
+				continue
+			}
 			if (block.Type == blockText || block.Type == blockThinking) && block.Text == "" {
 				continue
 			}

@@ -269,41 +269,122 @@ func SanitizeAssembled(text string, secrets Secrets) string {
 
 // SanitizeAssembledMessages cleans the messages rebuilt from a stream before they
 // are marshalled. Each text field is redacted and stripped of base64 runs, then
-// the total is capped at maxAssembled by trimming field text, never by cutting
-// serialized JSON, so what is stored always parses. The input is not modified.
-// The result reports whether the cap trimmed anything.
+// the result is capped by trimming field text, never by cutting serialized JSON,
+// so what is stored always parses. The cap applies to the marshalled size: the
+// text budget shrinks until the JSON, with its escaping and per-block overhead,
+// fits in maxAssembled. The input is not modified. The result reports whether
+// the cap trimmed anything.
 func SanitizeAssembledMessages(msgs []ViewMessage, secrets Secrets) ([]ViewMessage, bool) {
+	cleaned := make([]ViewMessage, len(msgs))
+	for i, msg := range msgs {
+		blocks := make([]ViewBlock, 0, len(msg.Blocks))
+		for _, block := range msg.Blocks {
+			block.Text = cleanAssembledJSON(block.Text, secrets)
+			block.Arguments = cleanAssembledJSON(block.Arguments, secrets)
+			block.MediaType = cleanMediaType(block.MediaType)
+			if len(block.MediaType) > 127 {
+				block.MediaType = "unknown"
+			}
+			block.Id = cleanAssembledText(block.Id, secrets)
+			block.Name = cleanAssembledText(block.Name, secrets)
+			blocks = append(blocks, block)
+		}
+		cleaned[i] = ViewMessage{Role: msg.Role, Source: msg.Source, Blocks: blocks}
+	}
+
 	budget := maxAssembled
 	trimmed := false
-	clean := func(text string) string {
-		if text == "" {
-			return ""
+	for attempt := 0; ; attempt++ {
+		out, cut := capAssembled(cleaned, budget)
+		trimmed = trimmed || cut
+		size := marshalledSize(out)
+		if size <= maxAssembled {
+			return out, trimmed
 		}
-		body := secrets.redact([]byte(strings.ToValidUTF8(text, "")))
-		body, _ = stripBase64Runs(body)
-		if len(body) > budget {
-			trimmed = true
+		trimmed = true
+		if budget == 0 || attempt >= 24 {
+			// Only per-block overhead is left: drop blocks from the end.
+			return dropToFit(out), true
 		}
-		body = cutAtRune(body, budget)
-		budget -= len(body)
-		return string(body)
+		// Scale down by the overshoot, with a little extra so it converges.
+		budget = budget * (maxAssembled - maxAssembled/64) / size
+	}
+}
+
+func cleanAssembledText(text string, secrets Secrets) string {
+	if text == "" {
+		return ""
+	}
+	body := secrets.redact([]byte(strings.ToValidUTF8(text, "")))
+	body, _ = stripBase64Runs(body)
+	return string(body)
+}
+
+// cleanMediaType keeps a well-formed media type and replaces anything else.
+func cleanMediaType(mime string) string {
+	if mime == "" || mimePattern.MatchString(mime) {
+		return mime
+	}
+	return "unknown"
+}
+
+// cleanAssembledJSON also redacts keys spelled with escapes when the field is JSON.
+func cleanAssembledJSON(text string, secrets Secrets) string {
+	text = cleanAssembledText(text, secrets)
+	if len(secrets) == 0 || len(text) > maxParsedBody || !isParsableJSON([]byte(text)) {
+		return text
+	}
+	return string(secrets.redactDecodedJSON([]byte(text)))
+}
+
+// capAssembled trims field text so the fields total at most budget bytes.
+func capAssembled(msgs []ViewMessage, budget int) ([]ViewMessage, bool) {
+	cut := false
+	take := func(text string) string {
+		if len(text) > budget {
+			cut = true
+		}
+		text = string(cutAtRune([]byte(text), budget))
+		budget -= len(text)
+		return text
 	}
 	out := make([]ViewMessage, 0, len(msgs))
 	for _, msg := range msgs {
 		blocks := make([]ViewBlock, 0, len(msg.Blocks))
 		for _, block := range msg.Blocks {
-			block.Text = clean(block.Text)
-			block.Arguments = clean(block.Arguments)
-			block.Id = clean(block.Id)
-			block.Name = clean(block.Name)
-			if (block.Type == blockText || block.Type == blockThinking) && block.Text == "" {
+			block.Text = take(block.Text)
+			block.Arguments = take(block.Arguments)
+			block.Id = take(block.Id)
+			block.Name = take(block.Name)
+			empty := block.Text == ""
+			if empty && (block.Type == blockText || block.Type == blockThinking || block.Type == blockError) {
 				continue
 			}
 			blocks = append(blocks, block)
 		}
 		out = append(out, ViewMessage{Role: msg.Role, Source: msg.Source, Blocks: blocks})
 	}
-	return out, trimmed
+	return out, cut
+}
+
+func marshalledSize(msgs []ViewMessage) int {
+	raw, err := common.Marshal(msgs)
+	if err != nil {
+		return maxAssembled + 1
+	}
+	return len(raw)
+}
+
+func dropToFit(msgs []ViewMessage) []ViewMessage {
+	for marshalledSize(msgs) > maxAssembled && len(msgs) > 0 {
+		last := len(msgs) - 1
+		if n := len(msgs[last].Blocks); n > 0 {
+			msgs[last].Blocks = msgs[last].Blocks[:n-1]
+		} else {
+			msgs = msgs[:last]
+		}
+	}
+	return msgs
 }
 
 func sanitizeHead(body []byte, meta model.BodyMeta) SanitizedBody {
