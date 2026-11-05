@@ -228,7 +228,7 @@ func computeReportTrend(scope reportRoleScope, start int64, end int64, granulari
 func queryReportTrendBuckets(scope reportRoleScope, start int64, end int64, intervalSeconds int64) ([]reportBucketRow, error) {
 	// Compute the bucket number portably in Go from created_at, then aggregate in the DB.
 	// GORM Scan into a struct works across SQLite/MySQL/PostgreSQL; for ClickHouse the
-	// same column arithmetic applies (integer division on Int64).
+	// bucket expression uses intDiv because / is float division there.
 	bucketExpr := reportBucketExpr(start, intervalSeconds)
 	tx := model.LOG_DB.Table("logs").
 		Select(bucketExpr+" as bucket, "+
@@ -794,6 +794,10 @@ func reportIntervalSeconds(granularity dto.ReportGranularity) int64 {
 
 // reportBucketExpr builds the portable bucket-number expression for created_at.
 func reportBucketExpr(start int64, intervalSeconds int64) string {
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		// ClickHouse's / is float division, so use intDiv.
+		return fmt.Sprintf("intDiv(created_at - %d, %d)", start, intervalSeconds)
+	}
 	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
 		// MySQL's / is decimal division, so the bucket number needs an explicit floor.
 		return fmt.Sprintf("FLOOR((created_at - %d) / %d)", start, intervalSeconds)

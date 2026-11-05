@@ -39,6 +39,10 @@ func logSummaryBucketSeconds(rangeSeconds int64) int64 {
 }
 
 func logSummaryBucketExpr(bucketSize int64) string {
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		// ClickHouse's / is float division, so use intDiv.
+		return fmt.Sprintf("intDiv(logs.created_at, %d) * %d", bucketSize, bucketSize)
+	}
 	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
 		return fmt.Sprintf("FLOOR(logs.created_at / %d) * %d", bucketSize, bucketSize)
 	}
@@ -49,6 +53,9 @@ func logSummaryBucketExpr(bucketSize int64) string {
 // filter. Tokens, quota and latency come only from consume logs. userID 0
 // means every user. A filter without a start covers the last 24 hours.
 func GetLogSummary(userID int, filter LogFilter) (LogSummary, error) {
+	if filter.StartTimestamp < 0 || filter.EndTimestamp < 0 {
+		return LogSummary{}, common.NewMessage("Invalid time range")
+	}
 	now := common.GetTimestamp()
 	if filter.StartTimestamp == 0 {
 		filter.StartTimestamp = now - 24*3600

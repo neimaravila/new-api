@@ -628,3 +628,18 @@ func TestReportRankingChannelPercentilesFilterNumerically(t *testing.T) {
 	}
 	assert.True(t, found)
 }
+
+func TestReportBucketExprByDatabase(t *testing.T) {
+	previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+	t.Cleanup(func() { common.SetDatabaseTypes(previousMain, previousLog) })
+	for typ, want := range map[common.DatabaseType]string{
+		common.DatabaseTypeClickHouse: "intDiv(created_at - 100, 3600)",
+		common.DatabaseTypeMySQL:      "FLOOR((created_at - 100) / 3600)",
+		common.DatabaseTypeSQLite:     "(created_at - 100) / 3600",
+	} {
+		common.SetLogDatabaseType(typ)
+		if got := reportBucketExpr(100, 3600); got != want {
+			t.Errorf("%s: got %q want %q", typ, got, want)
+		}
+	}
+}

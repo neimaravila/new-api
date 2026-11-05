@@ -86,3 +86,32 @@ func TestGetLogSummaryBucketsSumToRequests(t *testing.T) {
 	require.LessOrEqual(t, len(got.Buckets), 60)
 	require.Equal(t, int64(3600), got.BucketSeconds)
 }
+
+func TestLogSummaryBucketExprByDatabase(t *testing.T) {
+	previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+	t.Cleanup(func() { common.SetDatabaseTypes(previousMain, previousLog) })
+	for typ, want := range map[common.DatabaseType]string{
+		common.DatabaseTypeClickHouse: "intDiv(logs.created_at, 300) * 300",
+		common.DatabaseTypeMySQL:      "FLOOR(logs.created_at / 300) * 300",
+		common.DatabaseTypeSQLite:     "(logs.created_at / 300) * 300",
+	} {
+		common.SetLogDatabaseType(typ)
+		require.Equal(t, want, logSummaryBucketExpr(300), string(typ))
+	}
+}
+
+func TestLogSummaryBucketSecondsBoundaries(t *testing.T) {
+	day := int64(24 * 3600)
+	require.Equal(t, int64(3600), logSummaryBucketSeconds(day))
+	week := logSummaryBucketSeconds(7 * day)
+	require.Equal(t, int64(21600), week)
+	require.LessOrEqual(t, (7*day+week-1)/week+1, int64(61))
+	require.Equal(t, int64(86400), logSummaryBucketSeconds(1000*day))
+}
+
+func TestGetLogSummaryRejectsNegativeTimestamps(t *testing.T) {
+	_, err := GetLogSummary(0, LogFilter{StartTimestamp: -9223372036854775808})
+	require.Error(t, err)
+	_, err = GetLogSummary(0, LogFilter{EndTimestamp: -1})
+	require.Error(t, err)
+}

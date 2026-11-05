@@ -107,6 +107,10 @@ func GetUserLogSummary(c *gin.Context) {
 
 func logSummary(c *gin.Context, all bool) {
 	filter := logFilterFromQuery(c, all)
+	if filter.StartTimestamp < 0 || filter.EndTimestamp < 0 {
+		common.ApiErrorT(c, "Invalid time range")
+		return
+	}
 	if !all && c.GetInt("role") < common.RoleAdminUser && filter.StartTimestamp != 0 {
 		if _, err := limitLogTimeRange(filter.StartTimestamp, filter.EndTimestamp); err != nil {
 			common.ApiError(c, err)

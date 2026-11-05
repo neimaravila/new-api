@@ -52,4 +52,9 @@ func TestLogSummarySelfRouteIgnoresUsernameAndChannel(t *testing.T) {
 
 	tooLong := callLogSummary(t, GetUserLogSummary, 1, common.RoleCommonUser, "start_timestamp=1")
 	assert.Equal(t, false, tooLong["success"])
+
+	negative := callLogSummary(t, GetUserLogSummary, 1, common.RoleCommonUser, "start_timestamp=-9223372036854775808")
+	assert.Equal(t, false, negative["success"])
+	negative = callLogSummary(t, GetAllLogSummary, 3, common.RoleAdminUser, "end_timestamp=-1")
+	assert.Equal(t, false, negative["success"])
 }
