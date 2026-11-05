@@ -294,7 +294,7 @@ func TestCaptureNonStreamStoresCallAndAttempt(t *testing.T) {
 	assert.Contains(t, gunzipText(t, rows[0].RequestBody), "say hi")
 	assert.Contains(t, gunzipText(t, rows[0].ResponseBody), `"chat.completion"`)
 	assert.Contains(t, gunzipText(t, rows[1].RequestBody), "say hi")
-	assert.Contains(t, gunzipText(t, rows[1].ResponseBody), "hi; auth Bearer ")
+	assert.Contains(t, gunzipText(t, rows[1].ResponseBody), "hi; auth [REDACTED]")
 	assertNoSecrets(t, rows)
 }
 
@@ -647,4 +647,27 @@ func TestBillingUnchangedWithCapture(t *testing.T) {
 	assert.Equal(t, off.CompletionTokens, on.CompletionTokens)
 	assert.Equal(t, off.CacheTokens, on.CacheTokens)
 	assert.Equal(t, offQuota, onQuota)
+}
+
+func TestCaptureRedactsHeaderOverrideSecret(t *testing.T) {
+	const overrideSecret = "override-header-secret-0123456789abcdef"
+	env := newCaptureEnv(t)
+	override := `{"X-Custom-Auth":"` + overrideSecret + `"}`
+	require.NoError(t, env.db.Model(env.channel).Update("header_override", override).Error)
+	env.setUpstream(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, overrideSecret, r.Header.Get("X-Custom-Auth"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"h1","object":"chat.completion","model":"`+captureModel+`","choices":[{"index":0,"message":{"role":"assistant","content":"saw `+overrideSecret+`"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`)
+	})
+
+	requestID, body, status := env.call(t, "/v1/chat/completions", chatBody(false))
+	require.Equal(t, http.StatusOK, status, body)
+	require.Contains(t, body, overrideSecret, "the client still gets the answer unchanged")
+	rows := waitLogContents(t, requestID)
+	require.Equal(t, []int{0, 1}, attemptNumbers(rows))
+	for _, row := range rows {
+		assert.NotContains(t, gunzipText(t, row.ResponseBody), overrideSecret, "attempt %d", row.Attempt)
+		assert.NotContains(t, row.Meta, overrideSecret)
+	}
+	assert.Contains(t, gunzipText(t, rows[1].ResponseBody), "saw [REDACTED]")
 }

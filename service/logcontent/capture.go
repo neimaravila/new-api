@@ -3,6 +3,8 @@ package logcontent
 import (
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +29,8 @@ type Capture struct {
 	writer    *clientWriter
 	response  *tapBuffer
 	disabled  atomic.Bool
+	// skip: nothing more of the client response is copied.
+	skip atomic.Bool
 
 	// mu guards everything below and the start of the stream fold.
 	mu           sync.Mutex
@@ -54,7 +58,34 @@ type AttemptInfo struct {
 	MultiKeyIndex int
 	ChannelKey    string
 	Format        string
+	// SecretHeaders names headers set by the channel's header override; their
+	// values sent upstream are redacted from every stored body.
+	SecretHeaders []string
+	// StreamEnd tells, once the call is over, how the relay ended reading the
+	// provider stream. Nil means unknown.
+	StreamEnd func() StreamEnd
+	// KnownStreamFormat: the provider streams OpenAI, Responses, Claude or
+	// Gemini frames, so a stream without their end frame was cut.
+	KnownStreamFormat bool
 }
+
+// StreamEnd is how the relay stopped reading a provider stream.
+type StreamEnd int
+
+const (
+	// StreamEndUnknown: the stream ended at EOF, or nothing was recorded.
+	StreamEndUnknown StreamEnd = iota
+	// StreamEndComplete: the provider sent its end frame, or the handler stopped.
+	StreamEndComplete
+	// StreamEndCut: timeout, read error, panic, failed ping or client gone.
+	StreamEndCut
+)
+
+// defaultSecretHeaders carry provider credentials in the common APIs.
+var defaultSecretHeaders = []string{"Authorization", "X-Api-Key", "Api-Key", "X-Goog-Api-Key"}
+
+// secretQueryWords mark URL query names whose values are credentials.
+var secretQueryWords = []string{"key", "token", "secret", "auth", "sig", "password", "credential"}
 
 // Attempt follows one provider call of a Capture.
 type Attempt struct {
@@ -68,6 +99,8 @@ type Attempt struct {
 	request            capturedBody
 	requestReserved    int64
 	requestUnavailable bool
+	// secrets are credential values sent upstream in headers or the query.
+	secrets []string
 
 	mu           sync.Mutex
 	status       int
@@ -112,6 +145,11 @@ func (cp *Capture) ClientCopy() []byte {
 
 func (cp *Capture) disable() {
 	cp.disabled.Store(true)
+}
+
+// copying reports whether client writes may still be copied.
+func (cp *Capture) copying() bool {
+	return cp != nil && !cp.disabled.Load() && !cp.skip.Load()
 }
 
 // observeClient copies bytes the client accepted. It runs after every write,
@@ -233,8 +271,42 @@ func BeginAttempt(c *gin.Context, info AttemptInfo, req *http.Request) (attempt 
 	if attempt == nil {
 		return nil
 	}
+	attempt.secrets = requestSecrets(req, info.SecretHeaders)
 	attempt.copyRequest(req)
 	return attempt
+}
+
+// requestSecrets collects the credential values sent upstream in headers and
+// the URL query. They are only used for redaction; headers and URLs are
+// never stored.
+func requestSecrets(req *http.Request, overrideHeaders []string) []string {
+	var secrets []string
+	add := func(value string) {
+		if value = strings.TrimSpace(value); value != "" {
+			secrets = append(secrets, value)
+		}
+	}
+	for _, name := range append(slices.Clone(defaultSecretHeaders), overrideHeaders...) {
+		for _, value := range req.Header.Values(name) {
+			add(value)
+			if _, credential, ok := strings.Cut(strings.TrimSpace(value), " "); ok {
+				add(credential)
+			}
+		}
+	}
+	if req.URL == nil {
+		return secrets
+	}
+	for name, values := range req.URL.Query() {
+		lower := strings.ToLower(name)
+		if !slices.ContainsFunc(secretQueryWords, func(word string) bool { return strings.Contains(lower, word) }) {
+			continue
+		}
+		for _, value := range values {
+			add(value)
+		}
+	}
+	return secrets
 }
 
 // addAttempt numbers a new attempt and makes it current. An ineligible
@@ -263,6 +335,7 @@ func (cp *Capture) addAttempt(info AttemptInfo, req *http.Request) (*Attempt, *t
 			return nil, nil
 		}
 		cp.ineligible = true
+		cp.skip.Store(true)
 		dropped := cp.response
 		cp.response = nil
 		return nil, dropped
@@ -386,6 +459,7 @@ func (cp *Capture) Finish() {
 	}
 	// From here on no write copies or feeds the fold.
 	cp.finished = true
+	cp.skip.Store(true)
 	attempts, fold, response := cp.attempts, cp.fold, cp.response
 	held := cp.foldReserved
 	cp.foldReserved = 0
@@ -414,7 +488,7 @@ func (cp *Capture) Finish() {
 		held = 0
 		fold.finish(nil)
 		if store {
-			cp.enqueueNotCaptured(now)
+			cp.enqueueNotCaptured(now, len(attempts) == 0)
 		}
 		return
 	}
@@ -432,19 +506,50 @@ func (cp *Capture) Finish() {
 		if attempt.info.ChannelKey != "" {
 			rec.Secrets = append(rec.Secrets, attempt.info.ChannelKey)
 		}
+		rec.Secrets = append(rec.Secrets, attempt.secrets...)
 		row, reserved, keep := attempt.record(now)
 		held += reserved
 		if keep {
 			rec.Attempts = append(rec.Attempts, row)
 		}
 	}
+	checkTail := judgeServingStream(rec, attempts)
 	rec.reserved = held
 	held = 0
 	if fold == nil {
 		enqueue(rec)
 		return
 	}
+	fold.checkServing = checkTail
 	fold.finish(rec)
+}
+
+// judgeServingStream marks the call incomplete when the relay stopped reading
+// the stream of the attempt that served it early. When the stream simply
+// ended, it reports whether its tail should be checked for an end frame,
+// which only providers speaking a known format allow.
+func judgeServingStream(rec *captureRecord, attempts []*Attempt) bool {
+	if len(rec.Attempts) < 2 || len(attempts) == 0 {
+		return false
+	}
+	serving := &rec.Attempts[len(rec.Attempts)-1]
+	last := attempts[len(attempts)-1]
+	if serving.Attempt != last.index || !serving.Meta.IsStream || serving.Meta.HttpStatus >= http.StatusBadRequest {
+		return false
+	}
+	end := StreamEndUnknown
+	if last.info.StreamEnd != nil {
+		end = last.info.StreamEnd()
+	}
+	switch end {
+	case StreamEndComplete:
+		return false
+	case StreamEndCut:
+		serving.Meta.Incomplete = true
+		rec.Attempts[0].Meta.Incomplete = true
+		return false
+	}
+	return last.info.KnownStreamFormat
 }
 
 func (cp *Capture) newRecord(now time.Time) *captureRecord {
@@ -461,11 +566,13 @@ func (cp *Capture) newRecord(now time.Time) *captureRecord {
 }
 
 // enqueueNotCaptured stores the marker of a logged call that had no eligible
-// attempt: the client level with no bodies.
-func (cp *Capture) enqueueNotCaptured(now time.Time) {
+// attempt: the client level with no bodies. A call that failed before any
+// attempt gets its own status, since it may well have been eligible.
+func (cp *Capture) enqueueNotCaptured(now time.Time, noAttempt bool) {
 	rec := cp.newRecord(now)
 	client := cp.clientAttempt(now, capturedBody{})
 	client.NotCaptured = true
+	client.NoAttempt = noAttempt
 	rec.Attempts = []captureAttempt{client}
 	enqueue(rec)
 }

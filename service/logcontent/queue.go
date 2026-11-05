@@ -52,8 +52,10 @@ type captureAttempt struct {
 	Meta    model.LogContentMeta
 	// NotCaptured stores the marker row with no bodies.
 	NotCaptured bool
-	Request     capturedBody
-	Response    capturedBody
+	// NoAttempt: the marker is for a call that failed before any attempt.
+	NoAttempt bool
+	Request   capturedBody
+	Response  capturedBody
 	// Assembled is the message rebuilt from a stream; nil when there is none.
 	Assembled []ViewMessage
 	// AssembledTruncated: the rebuilt message misses part of the stream.
@@ -244,6 +246,9 @@ func buildRows(rec *captureRecord) []*model.LogContent {
 		meta := attempt.Meta
 		if attempt.NotCaptured {
 			row.CaptureStatus = model.LogContentStatusNotCaptured
+			if attempt.NoAttempt {
+				row.CaptureStatus = model.LogContentStatusNoAttempt
+			}
 		} else {
 			row.RequestBody, meta.Request = storeBody(attempt.Request, secrets)
 			row.ResponseBody, meta.Response = storeBody(attempt.Response, secrets)

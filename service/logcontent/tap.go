@@ -11,6 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// sseCutMarker replaces a partial line at the cut of a long SSE copy; it is
+// an SSE comment, so the stream still parses.
+const sseCutMarker = ": [cut]\n"
+
 // providerTailBytes is how much of the end of a provider stream is read to
 // find its terminal frame.
 const providerTailBytes = 64 << 10
@@ -213,8 +217,15 @@ func (b *tapBuffer) middleDropped() bool {
 // linear returns the copy in order. For SSE with a dropped middle, the head
 // ends and the tail starts at a line boundary.
 func (b *tapBuffer) linear() []byte {
+	out, _ := b.linearWithEnd()
+	return out
+}
+
+// linearWithEnd is linear, also telling whether the copy still holds a whole
+// data line from the end of the body, which a stream's end frame needs.
+func (b *tapBuffer) linearWithEnd() ([]byte, bool) {
 	if !b.sse || b.tail == nil {
-		return bytes.Clone(b.data)
+		return bytes.Clone(b.data), true
 	}
 	var tail []byte
 	if b.tailFull {
@@ -223,17 +234,25 @@ func (b *tapBuffer) linear() []byte {
 		tail = bytes.Clone(b.tail[:b.tailPos])
 	}
 	head := b.data
+	endKept := true
 	if b.middleDropped() {
+		// Only whole lines survive the cut, so no key is kept in part. A side
+		// with no line end is a single partial line and becomes a marker.
 		if cut := bytes.LastIndexByte(head, '\n'); cut >= 0 {
 			head = head[:cut+1]
+		} else {
+			head = []byte(sseCutMarker)
 		}
 		if cut := bytes.IndexByte(tail, '\n'); cut >= 0 {
 			tail = tail[cut+1:]
+		} else {
+			tail = []byte(sseCutMarker)
 		}
+		endKept = bytes.HasPrefix(tail, []byte("data:")) || bytes.Contains(tail, []byte("\ndata:"))
 	}
 	out := make([]byte, 0, len(head)+len(tail))
 	out = append(out, head...)
-	return append(out, tail...)
+	return append(out, tail...), endKept
 }
 
 // peek returns a copy of what was kept so far, without stopping the buffer.
@@ -257,11 +276,12 @@ func (b *tapBuffer) snapshot(encoding string) capturedBody {
 	b.sealed = true
 	data := b.data
 	truncated := b.truncated
+	endKept := true
 	if b.sse && b.tail != nil {
-		data = b.linear()
+		data, endKept = b.linearWithEnd()
 		truncated = truncated || b.middleDropped()
 	}
-	body := capturedBody{Data: data, Encoding: encoding, HeadOnly: b.headOnly, Truncated: truncated, EndKept: !b.stopped && !b.headOnly}
+	body := capturedBody{Data: data, Encoding: encoding, HeadOnly: b.headOnly, Truncated: truncated, EndKept: endKept && !b.stopped && !b.headOnly}
 	if b.headOnly || truncated {
 		body.OriginalBytes = b.total
 	}
@@ -314,8 +334,12 @@ func (w *clientWriter) Write(p []byte) (int, error) {
 
 func (w *clientWriter) WriteString(s string) (int, error) {
 	n, err := w.ResponseWriter.WriteString(s)
-	if accepted := max(0, min(n, len(s))); accepted > 0 || err != nil {
-		w.capture.observeClient([]byte(s[:accepted]), err)
+	if w.capture.copying() {
+		if accepted := max(0, min(n, len(s))); accepted > 0 || err != nil {
+			w.capture.observeClient([]byte(s[:accepted]), err)
+		}
+	} else if err != nil {
+		w.capture.observeClient(nil, err)
 	}
 	return n, err
 }
@@ -359,6 +383,9 @@ type streamFold struct {
 	once    sync.Once
 	// rec is set by finish before chunks is closed; nil means nothing to store.
 	rec *captureRecord
+	// checkServing: judge from its tail whether the provider stream that
+	// served the call ended with an end frame. Set before finish.
+	checkServing bool
 }
 
 // finish closes the fold once. Called after the capture stopped feeding it;
@@ -433,36 +460,50 @@ func (f *streamFold) apply(rec *captureRecord) {
 	if !result.Terminal {
 		client.Meta.Incomplete = true
 	}
-	if len(rec.Attempts) < 2 {
+	if !f.checkServing {
 		return
 	}
 	serving := &rec.Attempts[len(rec.Attempts)-1]
 	body := serving.Response
-	if !serving.Meta.IsStream || serving.Meta.HttpStatus >= http.StatusBadRequest || !body.EndKept || body.Encoding != "" {
+	if !body.EndKept || body.Encoding != "" {
 		return
 	}
-	if !endsWithTerminal(body.Data) {
+	if terminal, known := endsWithTerminal(body.Data); known && !terminal {
 		serving.Meta.Incomplete = true
 		client.Meta.Incomplete = true
 	}
 }
 
 // endsWithTerminal reports whether the end of a provider stream holds a frame
-// its format defines as the end, in any of the formats the gateway speaks.
-func endsWithTerminal(stream []byte) bool {
-	tail := stream
-	if len(tail) > providerTailBytes {
-		tail = tail[len(tail)-providerTailBytes:]
-		if cut := bytes.IndexByte(tail, '\n'); cut >= 0 {
-			tail = tail[cut+1:]
-		}
+// its format defines as the end, in any of the formats the capture knows.
+// known is false when the last data line is not whole, as when one frame is
+// larger than the copy: nothing can be said then.
+func endsWithTerminal(stream []byte) (terminal, known bool) {
+	trimmed := bytes.TrimRight(stream, " \t\r\n")
+	lineStart := bytes.LastIndexByte(trimmed, '\n') + 1
+	for lineStart > 0 && !bytes.HasPrefix(trimmed[lineStart:], []byte("data:")) {
+		lineStart = bytes.LastIndexByte(trimmed[:lineStart-1], '\n') + 1
 	}
+	last := trimmed[lineStart:]
+	payload, ok := bytes.CutPrefix(last, []byte("data:"))
+	if !ok {
+		return false, false
+	}
+	payload = bytes.TrimSpace(payload)
+	if string(payload) != "[DONE]" && !isParsableJSON(payload) {
+		return false, false
+	}
+	start := min(max(0, len(stream)-providerTailBytes), lineStart)
+	if start > 0 {
+		start = bytes.LastIndexByte(stream[:start], '\n') + 1
+	}
+	tail := stream[start:]
 	for _, format := range []string{FormatOpenAI, FormatResponses, FormatClaude, FormatGemini} {
 		asm := NewStreamAssembler(format)
 		asm.Write(tail)
 		if asm.Result().Terminal {
-			return true
+			return true, true
 		}
 	}
-	return false
+	return false, true
 }

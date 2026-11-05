@@ -13,6 +13,9 @@ import (
 const (
 	LogContentStatusCaptured    = "captured"
 	LogContentStatusNotCaptured = "not_captured"
+	// LogContentStatusNoAttempt marks a logged call that failed before any
+	// provider attempt; the view reports it as unavailable.
+	LogContentStatusNoAttempt = "no_attempt"
 
 	defaultLogContentRetentionDays = 30
 	maxLogContentsPerRequest       = 32

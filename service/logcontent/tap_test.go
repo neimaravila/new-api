@@ -294,30 +294,6 @@ func TestTapHeadOnlyStopsWithoutBudget(t *testing.T) {
 	assert.Equal(t, int64(160<<10), body.OriginalBytes)
 }
 
-func TestTapRedactsKeyStraddlingTheCut(t *testing.T) {
-	key := "sk-straddling-secret-key-0123456789abcdef"
-	buf := newTapBuffer(false, nil)
-	head := bytes.Repeat([]byte("a"), maxStoredBody-len(key)/2)
-	buf.write(head)
-	buf.write([]byte(key))
-	filler := bytes.Repeat([]byte("z"), 1<<20)
-	for range 9 {
-		buf.write(filler)
-	}
-	body := buf.snapshot("")
-	defer release(buf.takeReserved())
-	require.True(t, body.HeadOnly)
-
-	stored, meta := storeBody(body, NewSecrets(key))
-	reader, err := gzip.NewReader(bytes.NewReader(stored))
-	require.NoError(t, err)
-	text, err := io.ReadAll(reader)
-	require.NoError(t, err)
-	assert.True(t, meta.HeadOnly)
-	assert.NotContains(t, string(text), key[:len(key)/2])
-	assert.NotContains(t, string(text), "sk-straddling")
-}
-
 func TestLateWriteAfterFinishIsIgnored(t *testing.T) {
 	withCaptureEnabled(t, true)
 	newTestPipeline(t, true)
@@ -603,40 +579,6 @@ func TestUpstreamRequestWithoutGetBodyIsUnavailable(t *testing.T) {
 	release(rec.reserved)
 }
 
-func TestFinishMarksProviderCutIncomplete(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		provider string
-		cut      bool
-	}{
-		{"cut", `data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}` + "\n\n", true},
-		{"done", `data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}` + "\n\ndata: [DONE]\n\n", false},
-		{"claude", "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			withCaptureEnabled(t, true)
-			p := newTestPipeline(t, true)
-			c, _ := newCaptureContext(t)
-			capture := Begin(c, types.RelayFormatOpenAI)
-			attempt := BeginAttempt(c, eligibleAttempt(), upstreamRequest(t, `{"stream":true}`))
-			header := http.Header{"Content-Type": {"text/event-stream"}}
-			resp := attempt.ObserveResponse(&http.Response{StatusCode: 200, Header: header, Body: io.NopCloser(strings.NewReader(tc.provider))}, nil)
-			_, _ = io.ReadAll(resp.Body)
-			c.Writer.Header().Set("Content-Type", "text/event-stream")
-			// The gateway closes the client stream cleanly either way.
-			_, _ = c.Writer.WriteString(`data: {"choices":[{"index":0,"delta":{"content":"Hel"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n")
-			capture.OnLogRow(&model.Log{UserId: 2, Type: model.LogTypeConsume})
-			capture.Finish()
-
-			rec := takeRecord(t, p)
-			require.Len(t, rec.Attempts, 2)
-			assert.Equal(t, tc.cut, rec.Attempts[0].Meta.Incomplete)
-			assert.Equal(t, tc.cut, rec.Attempts[1].Meta.Incomplete)
-			release(rec.reserved)
-		})
-	}
-}
-
 func TestBuildRowsMarksTruncatedAssembly(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -660,4 +602,208 @@ func TestBuildRowsMarksTruncatedAssembly(t *testing.T) {
 			assert.Equal(t, tc.want, meta.Response.Truncated)
 		})
 	}
+}
+
+// providerRecord runs one call whose provider answers with body, with the
+// given attempt info, and returns the stored record.
+func providerRecord(t *testing.T, info AttemptInfo, contentType, body string, clientSSE bool) *captureRecord {
+	t.Helper()
+	withCaptureEnabled(t, true)
+	p := newTestPipeline(t, true)
+	c, _ := newCaptureContext(t)
+	capture := Begin(c, types.RelayFormatOpenAI)
+	attempt := BeginAttempt(c, info, upstreamRequest(t, `{"stream":true}`))
+	require.NotNil(t, attempt)
+	header := http.Header{"Content-Type": {contentType}}
+	resp := attempt.ObserveResponse(&http.Response{StatusCode: 200, Header: header, Body: io.NopCloser(strings.NewReader(body))}, nil)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if clientSSE {
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		// The gateway closes the client stream cleanly either way.
+		_, _ = c.Writer.WriteString(`data: {"choices":[{"index":0,"delta":{"content":"Hel"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n")
+	} else {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+	capture.OnLogRow(&model.Log{UserId: 2, Type: model.LogTypeConsume})
+	capture.Finish()
+	rec := takeRecord(t, p)
+	t.Cleanup(func() { release(rec.reserved) })
+	return rec
+}
+
+func storedText(t *testing.T, body capturedBody, secrets Secrets) string {
+	t.Helper()
+	stored, _ := storeBody(body, secrets)
+	if len(stored) == 0 {
+		return ""
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(stored))
+	require.NoError(t, err)
+	text, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	return string(text)
+}
+
+func TestFinishMarksProviderCutIncomplete(t *testing.T) {
+	ends := func(end StreamEnd) func() StreamEnd { return func() StreamEnd { return end } }
+	geminiFinal := `data: {"candidates":[{"content":{"parts":[{"text":"` + strings.Repeat("g ", 60<<10) + `"}]},"finishReason":"STOP"}]}` + "\n\n"
+	hugeFinal := "data: {\"a\":1}\n\n" + strings.Repeat(`data: {"choices":[{"delta":{"content":"x"}}]}`+"\n\n", 20000) +
+		`data: {"choices":[{"delta":{"content":"` + strings.Repeat("y ", 400<<10) + `"},"finish_reason":"stop"}]}` + "\n\n"
+	for _, tc := range []struct {
+		name     string
+		provider string
+		known    bool
+		end      StreamEnd
+		cut      bool
+	}{
+		{"known format without end frame", `data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}` + "\n\n", true, StreamEndUnknown, true},
+		{"known format with done", `data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}` + "\n\ndata: [DONE]\n\n", true, StreamEndUnknown, false},
+		{"claude message_stop", "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n", true, StreamEndUnknown, false},
+		{"gemini final frame over 64 KiB", `data: {"candidates":[{"content":{"parts":[{"text":"a"}]}}]}` + "\n\n" + geminiFinal, true, StreamEndUnknown, false},
+		{"final frame larger than the kept tail", hugeFinal, true, StreamEndUnknown, false},
+		{"dify message_end completes", `data: {"event":"message","answer":"hi"}` + "\n\n" + `data: {"event":"message_end","metadata":{}}` + "\n\n", false, StreamEndUnknown, false},
+		{"unknown format at eof is never judged", `data: {"event":"message","answer":"hi"}` + "\n\n", false, StreamEndUnknown, false},
+		{"relay saw the end", `data: {"event":"message_end"}` + "\n\n", false, StreamEndComplete, false},
+		{"relay timed out", `data: {"event":"message","answer":"hi"}` + "\n\n", false, StreamEndCut, true},
+		{"relay end wins over the tail", `data: {"choices":[{"index":0,"delta":{"content":"Hel"}}]}` + "\n\n", true, StreamEndComplete, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := eligibleAttempt()
+			info.KnownStreamFormat = tc.known
+			info.StreamEnd = ends(tc.end)
+			rec := providerRecord(t, info, "text/event-stream", tc.provider, true)
+			require.Len(t, rec.Attempts, 2)
+			assert.Equal(t, tc.cut, rec.Attempts[0].Meta.Incomplete)
+			assert.Equal(t, tc.cut, rec.Attempts[1].Meta.Incomplete)
+		})
+	}
+}
+
+func TestHeaderAndQuerySecretsAreRedacted(t *testing.T) {
+	headerKey := "header-only-secret-0123456789abcd"
+	overrideKey := "override-only-secret-0123456789ab"
+	queryKey := "query-only-secret-0123456789abcdef"
+	bearerKey := "bearer-only-secret-0123456789abcd"
+	withCaptureEnabled(t, true)
+	p := newTestPipeline(t, true)
+	c, _ := newCaptureContext(t)
+	capture := Begin(c, types.RelayFormatOpenAI)
+	info := eligibleAttempt()
+	info.SecretHeaders = []string{"X-Custom-Auth"}
+	req, err := http.NewRequest(http.MethodPost, "https://upstream.example/v1/chat?api_key="+queryKey+"&model=m", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	req.Header.Set("X-Api-Key", headerKey)
+	req.Header.Set("X-Custom-Auth", overrideKey)
+	req.Header.Set("Authorization", "Bearer "+bearerKey)
+	attempt := BeginAttempt(c, info, req)
+	echo := `{"echo":"` + headerKey + " " + overrideKey + " " + queryKey + " " + bearerKey + `"}`
+	resp := attempt.ObserveResponse(&http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(echo))}, nil)
+	_, _ = io.ReadAll(resp.Body)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+	capture.OnLogRow(&model.Log{UserId: 2, Type: model.LogTypeConsume})
+	capture.Finish()
+
+	rec := takeRecord(t, p)
+	defer release(rec.reserved)
+	assert.NotContains(t, rec.Secrets, "m", "plain query values are not secrets")
+	rows := buildRows(rec)
+	require.Len(t, rows, 2)
+	text := gunzipForTest(t, rows[1].ResponseBody)
+	assert.Contains(t, text, redactedMarker)
+	for _, key := range []string{headerKey, overrideKey, queryKey, bearerKey} {
+		assert.NotContains(t, text, key)
+		assert.NotContains(t, rows[1].Meta, key)
+	}
+}
+
+func gunzipForTest(t *testing.T, data []byte) string {
+	t.Helper()
+	reader, err := gzip.NewReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	text, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	return string(text)
+}
+
+func TestTapRedactsKeyStraddlingHeadOnlyCut(t *testing.T) {
+	key := "sk-straddling-secret-key-0123456789abcdef"
+	body := strings.Repeat("a", maxStoredBody-len(key)/2) + key + strings.Repeat("z", 9<<20)
+	rec := providerRecord(t, eligibleAttempt(), "application/json", body, false)
+	upstream := rec.Attempts[1].Response
+	require.True(t, upstream.HeadOnly)
+	text := storedText(t, upstream, NewSecrets(key))
+	assert.NotContains(t, text, key[:len(key)/2])
+	assert.NotContains(t, text, "sk-straddling")
+}
+
+func TestTapSSECutKeepsNoKeyFragment(t *testing.T) {
+	key := "sk-sse-straddling-secret-0123456789abcdef"
+	frame := func(fill int) string { return "data: " + strings.Repeat("f", fill) + "\n\n" }
+	// A key line crosses the end of the head, and another crosses the start of
+	// the tail ring.
+	var b strings.Builder
+	b.WriteString(frame(sseHeadBytes - 40))
+	b.WriteString("data: {\"k\":\"" + key + "\"}\n\n")
+	for b.Len() < 3<<20 {
+		b.WriteString(frame(1000))
+	}
+	tailStart := b.Len() + 2000 + len("data: {\"k\":\"") + len(key)/2
+	b.WriteString(frame(2000 - 8))
+	b.WriteString("data: {\"k\":\"" + key + "\"}\n\n")
+	b.WriteString(strings.Repeat(frame(1000), (sseTailBytes-2100)/1008))
+	pad := tailStart + sseTailBytes - b.Len() - len("data: [DONE]\n\n")
+	require.Positive(t, pad)
+	b.WriteString(frame(pad - 8))
+	b.WriteString("data: [DONE]\n\n")
+
+	rec := providerRecord(t, eligibleAttempt(), "text/event-stream", b.String(), false)
+	upstream := rec.Attempts[1].Response
+	require.True(t, upstream.Truncated)
+	text := storedText(t, upstream, NewSecrets(key))
+	assert.NotContains(t, text, key[:len(key)/2])
+	assert.NotContains(t, text, key[len(key)/2:])
+	assert.True(t, strings.HasSuffix(text, "data: [DONE]\n\n"))
+}
+
+func TestTapSSECutWithoutLineBoundaryKeepsMarkers(t *testing.T) {
+	key := "sk-sse-straddling-secret-0123456789abcdef"
+	line := "data: " + strings.Repeat("a", sseHeadBytes-len(key)/2-6) + key + strings.Repeat("b", 2<<20) + key + strings.Repeat("c", sseTailBytes-len(key)/2)
+	rec := providerRecord(t, eligibleAttempt(), "text/event-stream", line, false)
+	upstream := rec.Attempts[1].Response
+	assert.False(t, upstream.EndKept)
+	assert.Equal(t, sseCutMarker+sseCutMarker, storedText(t, upstream, NewSecrets(key)))
+}
+
+func TestFinishWithoutAttemptStoresNoAttempt(t *testing.T) {
+	withCaptureEnabled(t, true)
+	p := newTestPipeline(t, true)
+	c, _ := newCaptureContext(t)
+	capture := Begin(c, types.RelayFormatOpenAI)
+	c.JSON(http.StatusBadGateway, gin.H{"error": "conversion failed"})
+	capture.OnLogRow(&model.Log{UserId: 2, Type: model.LogTypeError, Content: "conversion failed"})
+	capture.Finish()
+
+	rec := takeRecord(t, p)
+	require.Len(t, rec.Attempts, 1)
+	assert.True(t, rec.Attempts[0].NoAttempt)
+	rows := buildRows(rec)
+	require.Len(t, rows, 1)
+	assert.Equal(t, model.LogContentStatusNoAttempt, rows[0].CaptureStatus)
+	assert.Empty(t, rows[0].ResponseBody)
+	release(rec.reserved)
+}
+
+func TestIneligibleCallStopsCopyingClientWrites(t *testing.T) {
+	withCaptureEnabled(t, true)
+	c, recorder := newCaptureContext(t)
+	capture := Begin(c, types.RelayFormatOpenAI)
+	defer capture.Finish()
+	_, _ = c.Writer.WriteString("before")
+	BeginAttempt(c, AttemptInfo{MultiKeyIndex: -1}, upstreamRequest(t, `{}`))
+	n, err := c.Writer.WriteString("after")
+	assert.Equal(t, 5, n)
+	assert.NoError(t, err)
+	assert.Equal(t, "beforeafter", recorder.Body.String())
+	assert.Empty(t, capture.ClientCopy())
 }
