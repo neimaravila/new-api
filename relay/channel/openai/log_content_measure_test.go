@@ -92,8 +92,8 @@ func lcmScaleFor() lcmScale {
 		durationBytes:   1 * mib,
 		durationRuns:    1,
 		memStreams:      4,
-		memLong:         2 * mib,
-		memShort:        1 * mib,
+		memLong:         4 * mib,
+		memShort:        2 * mib,
 		memRuns:         1,
 		largeCalls:      2,
 		largeBytes:      9 * mib,
@@ -107,11 +107,11 @@ func lcmScaleFor() lcmScale {
 
 const lcmContent = "lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor. "
 
-// lcmFrame is a 4 KiB chat chunk: 512 bytes of text, so the rebuilt message
-// reaches its 1 MiB cap within 10 MiB of stream, padded by an obfuscation
-// field as OpenAI sends.
+// lcmFrame is a 4 KiB chat chunk: 1 KiB of text, so the rebuilt message
+// reaches its 1 MiB cap within the first 5 MiB of stream, padded by an
+// obfuscation field as OpenAI sends.
 func lcmFrame() string {
-	text := strings.Repeat(lcmContent, 512/len(lcmContent)+1)[:512]
+	text := strings.Repeat(lcmContent, 1024/len(lcmContent)+1)[:1024]
 	frame := `data: {"id":"chatcmpl-lcm","object":"chat.completion.chunk","created":1767225600,"model":"gpt-test","choices":[{"index":0,"delta":{"content":"` +
 		text + `"}}],"obfuscation":"%s"}` + "\n\n"
 	pad := 4096 - len(frame) + 2
@@ -120,9 +120,17 @@ func lcmFrame() string {
 
 var lcmStreamEnd = lccSSE(lccChatFinish, lccChatUsage) + "data: [DONE]\n\n"
 
+// lcmGate holds every stream of a run at its midpoint, so the heap can be
+// read with nothing allocating.
+type lcmGate struct {
+	arrived atomic.Int64
+	release chan struct{}
+}
+
 // lcmStreamProvider streams the role frame, then 1 MiB blocks of frames until
-// size, then finish, usage and [DONE], with no wait between writes.
-func lcmStreamProvider(size int64) http.HandlerFunc {
+// size, then finish, usage and [DONE], with no wait between writes. With a
+// gate set, each stream waits at half its size until the gate opens.
+func lcmStreamProvider(size int64, gate *atomic.Pointer[lcmGate]) http.HandlerFunc {
 	frame := lcmFrame()
 	block := []byte(strings.Repeat(frame, mib/len(frame)))
 	return func(w http.ResponseWriter, _ *http.Request) {
@@ -131,7 +139,16 @@ func lcmStreamProvider(size int64) http.HandlerFunc {
 		flusher := w.(http.Flusher)
 		_, _ = w.Write([]byte(lccSSE(lccChatRole)))
 		flusher.Flush()
+		var held *lcmGate
+		if gate != nil {
+			held = gate.Load()
+		}
 		for sent := int64(0); sent < size; sent += int64(len(block)) {
+			if held != nil && sent >= size/2 {
+				held.arrived.Add(1)
+				<-held.release
+				held = nil
+			}
 			if _, err := w.Write(block); err != nil {
 				return
 			}
@@ -142,17 +159,18 @@ func lcmStreamProvider(size int64) http.HandlerFunc {
 }
 
 // lcmClient is the client side of a call: it keeps no body, only when the
-// first data arrived and how many bytes came.
+// first data arrived and how many bytes came, also added to progress when set.
 type lcmClient struct {
-	header http.Header
-	status int
-	start  time.Time
-	first  atomic.Int64
-	bytes  atomic.Int64
+	header   http.Header
+	status   int
+	start    time.Time
+	first    atomic.Int64
+	bytes    atomic.Int64
+	progress *atomic.Int64
 }
 
-func newLcmClient(start time.Time) *lcmClient {
-	return &lcmClient{header: http.Header{}, status: http.StatusOK, start: start}
+func newLcmClient(start time.Time, progress *atomic.Int64) *lcmClient {
+	return &lcmClient{header: http.Header{}, status: http.StatusOK, start: start, progress: progress}
 }
 
 func (w *lcmClient) Header() http.Header    { return w.header }
@@ -167,6 +185,9 @@ func (w *lcmClient) Write(p []byte) (int, error) {
 		w.first.CompareAndSwap(0, int64(time.Since(w.start)))
 	}
 	w.bytes.Add(int64(len(p)))
+	if w.progress != nil {
+		w.progress.Add(int64(len(p)))
+	}
 	return len(p), nil
 }
 
@@ -174,6 +195,10 @@ type lcmCall struct {
 	baseURL string
 	stream  bool
 	request []byte
+	// progress counts the bytes all clients of a run received.
+	progress *atomic.Int64
+	// gate, when set, is the midpoint gate of the provider's streams.
+	gate *atomic.Pointer[lcmGate]
 }
 
 type lcmResult struct {
@@ -188,7 +213,7 @@ var lcmRequestSeq atomic.Int64
 // duration is timed apart. The caller sets the capture switch.
 func lcmServe(call lcmCall, capture bool) (lcmResult, error) {
 	start := time.Now()
-	client := newLcmClient(start)
+	client := newLcmClient(start, call.progress)
 	c, _ := gin.CreateTestContext(client)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(call.request))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -393,7 +418,7 @@ func TestLogContentMeasureStreamLatency(t *testing.T) {
 	t.Logf("first byte, on minus off: p50 %v (limit 1ms), p99 %v (limit 5ms)", p50[true]-p50[false], p99[true]-p99[false])
 
 	// Total duration of one long stream with no wait at the provider.
-	long := httptest.NewServer(lcmStreamProvider(scale.durationBytes))
+	long := httptest.NewServer(lcmStreamProvider(scale.durationBytes, nil))
 	defer long.Close()
 	call = lcmCall{baseURL: long.URL, stream: true, request: request}
 	durations := map[bool][]float64{}
@@ -427,30 +452,49 @@ func TestLogContentMeasureStreamLatency(t *testing.T) {
 	}
 }
 
-// lcmMemory is one memory run: heap in use before, at its peak while the calls
-// ran, and after they ended, the settle wait and a GC.
+// lcmMemory is one memory run. Raw peak HeapInuse is reported only: under
+// GOGC=100 extra live data raises the heap goal with it, and its run-to-run
+// noise exceeded the limits. What the capture holds is measured instead as
+// the budget in use and as the heap still allocated after a forced GC in the
+// middle of the streams.
 type lcmMemory struct {
-	base, peak, after uint64
-	peakBudget        int64
-	budgetAfter       int64
-	elapsed           time.Duration
+	base, peak, after   uint64
+	baseAlloc, midAlloc uint64
+	midSampled          bool
+	peakBudget          int64
+	budgetAfter         int64
+	elapsed             time.Duration
 }
 
-func (m lcmMemory) growth() float64 { return float64(m.peak) - float64(m.base) }
+func (m lcmMemory) retained() float64 { return float64(m.midAlloc) - float64(m.baseAlloc) }
 
-func lcmHeapInuse() uint64 {
+func lcmMemStats() runtime.MemStats {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
-	return stats.HeapInuse
+	return stats
 }
 
-// lcmMeasureMemory runs n concurrent calls and samples HeapInuse until they
-// end.
+// lcmMeasureMemory runs n concurrent calls, sampling HeapInuse and the budget
+// until they end. For gated streams, once every stream waits at its midpoint
+// and the clients received all that was sent, it forces a GC and reads
+// HeapAlloc: the memory the calls keep, with nothing allocating meanwhile.
 func lcmMeasureMemory(t *testing.T, scale lcmScale, n int, call lcmCall, capture bool, minBytes int64) lcmMemory {
 	t.Helper()
+	call.progress = &atomic.Int64{}
+	var gate *lcmGate
+	if call.gate != nil {
+		gate = &lcmGate{release: make(chan struct{})}
+		call.gate.Store(gate)
+		defer call.gate.Store(nil)
+	}
+	var lastProgress int64
+	var steadySince time.Time
+	gateOpen := false
+	gateDeadline := time.Now().Add(30 * time.Second)
 	runtime.GC()
 	runtime.GC()
-	run := lcmMemory{base: lcmHeapInuse()}
+	stats := lcmMemStats()
+	run := lcmMemory{base: stats.HeapInuse, baseAlloc: stats.HeapAlloc}
 	stop := make(chan struct{})
 	sampled := make(chan struct{})
 	go func() {
@@ -458,8 +502,26 @@ func lcmMeasureMemory(t *testing.T, scale lcmScale, n int, call lcmCall, capture
 		ticker := time.NewTicker(scale.samplePeriod)
 		defer ticker.Stop()
 		for {
-			run.peak = max(run.peak, lcmHeapInuse())
+			run.peak = max(run.peak, lcmMemStats().HeapInuse)
 			run.peakBudget = max(run.peakBudget, logcontent.Stats().BudgetInUse)
+			if gate != nil && !run.midSampled && gate.arrived.Load() == int64(n) {
+				// All held: wait until the relay has passed on what it read.
+				if progress := call.progress.Load(); progress != lastProgress {
+					lastProgress, steadySince = progress, time.Now()
+				} else if time.Since(steadySince) >= 100*time.Millisecond {
+					runtime.GC()
+					runtime.GC()
+					run.midAlloc = lcmMemStats().HeapAlloc
+					run.midSampled = true
+					close(gate.release)
+					gateOpen = true
+				}
+			}
+			if gate != nil && !gateOpen && time.Now().After(gateDeadline) {
+				// Not every stream reached the gate: open it so none hangs.
+				close(gate.release)
+				gateOpen = true
+			}
 			select {
 			case <-stop:
 				return
@@ -476,29 +538,48 @@ func lcmMeasureMemory(t *testing.T, scale lcmScale, n int, call lcmCall, capture
 	for _, result := range results {
 		require.GreaterOrEqual(t, result.bytes, minBytes, "the whole body reached the client")
 	}
+	if gate != nil {
+		require.True(t, run.midSampled, "the heap was sampled in the middle of the streams")
+	}
 
 	run.budgetAfter = lcmWaitBudget(10 * time.Second)
 	time.Sleep(scale.settle)
 	runtime.GC()
-	run.after = lcmHeapInuse()
-	t.Logf("capture %s: base %.1f MiB, peak %.1f MiB (+%.1f), peak budget %.1f MiB, after %.1f MiB (base %+.1f), budget after %d, %v",
-		lcmMode(capture), lcmMiB(float64(run.base)), lcmMiB(float64(run.peak)), lcmMiB(run.growth()),
-		lcmMiB(float64(run.peakBudget)), lcmMiB(float64(run.after)), lcmMiB(float64(run.after)-float64(run.base)),
+	run.after = lcmMemStats().HeapInuse
+	midpointText := "not sampled"
+	if run.midSampled {
+		midpointText = fmt.Sprintf("%.1f MiB", lcmMiB(run.retained()))
+	}
+	t.Logf("capture %s: retained at midpoint %s, peak budget %.2f MiB (%d B), heap in use base %.1f MiB, peak %.1f MiB (+%.1f), after %.1f MiB (base %+.1f), budget after %d, %v",
+		lcmMode(capture), midpointText, lcmMiB(float64(run.peakBudget)), run.peakBudget,
+		lcmMiB(float64(run.base)), lcmMiB(float64(run.peak)), lcmMiB(float64(run.peak)-float64(run.base)),
+		lcmMiB(float64(run.after)), lcmMiB(float64(run.after)-float64(run.base)),
 		run.budgetAfter, run.elapsed.Round(time.Millisecond))
 	return run
 }
 
-// lcmCompareMemory alternates off and on runs and returns the median peak
-// growth of each, checking after every run that nothing stayed behind.
-func lcmCompareMemory(t *testing.T, scale lcmScale, label string, n int, call lcmCall, minBytes int64) (off, on float64) {
+// lcmMemoryCost is what alternating off and on runs measured: the median
+// retained heap of each mode and the highest budget in use.
+type lcmMemoryCost struct {
+	retainedOff, retainedOn float64
+	peakBudget              int64
+}
+
+func (c lcmMemoryCost) retained() float64 { return c.retainedOn - c.retainedOff }
+
+// lcmCompareMemory alternates off and on runs, checking after every run that
+// nothing stayed behind.
+func lcmCompareMemory(t *testing.T, scale lcmScale, label string, n int, call lcmCall, minBytes int64) lcmMemoryCost {
 	t.Helper()
-	growth := map[bool][]float64{}
+	retained := map[bool][]float64{}
+	var cost lcmMemoryCost
 	before := logcontent.Stats()
 	for i := range scale.memRuns {
 		for _, capture := range []bool{false, true} {
 			t.Logf("%s run %d", label, i+1)
 			run := lcmMeasureMemory(t, scale, n, call, capture, minBytes)
-			growth[capture] = append(growth[capture], run.growth())
+			retained[capture] = append(retained[capture], run.retained())
+			cost.peakBudget = max(cost.peakBudget, run.peakBudget)
 			assert.Zero(t, run.budgetAfter, "%s: budget returned after the calls", label)
 			if scale.thresholds {
 				assert.LessOrEqual(t, float64(run.after), float64(run.base)+16*mib,
@@ -507,10 +588,13 @@ func lcmCompareMemory(t *testing.T, scale lcmScale, label string, n int, call lc
 		}
 	}
 	lcmCheckRecorder(t, before, n*scale.memRuns, false)
-	off, on = lcmMedian(growth[false]), lcmMedian(growth[true])
-	t.Logf("%s: median peak growth off %.1f MiB, on %.1f MiB, on minus off %.1f MiB",
-		label, lcmMiB(off), lcmMiB(on), lcmMiB(on-off))
-	return off, on
+	cost.retainedOff, cost.retainedOn = lcmMedian(retained[false]), lcmMedian(retained[true])
+	t.Logf("%s: peak budget %.2f MiB (%d B)", label, lcmMiB(float64(cost.peakBudget)), cost.peakBudget)
+	if call.gate != nil {
+		t.Logf("%s: median retained at midpoint off %.1f MiB, on %.1f MiB, on minus off %.1f MiB",
+			label, lcmMiB(cost.retainedOff), lcmMiB(cost.retainedOn), lcmMiB(cost.retained()))
+	}
+	return cost
 }
 
 func TestLogContentMeasureLongStreamMemory(t *testing.T) {
@@ -518,25 +602,30 @@ func TestLogContentMeasureLongStreamMemory(t *testing.T) {
 	lcmUseLogDB(t)
 	request := []byte(lccChatRequest)
 
-	long := httptest.NewServer(lcmStreamProvider(scale.memLong))
+	var longGate, shortGate atomic.Pointer[lcmGate]
+	long := httptest.NewServer(lcmStreamProvider(scale.memLong, &longGate))
 	defer long.Close()
-	shortServer := httptest.NewServer(lcmStreamProvider(scale.memShort))
+	shortServer := httptest.NewServer(lcmStreamProvider(scale.memShort, &shortGate))
 	defer shortServer.Close()
 
 	longLabel := fmt.Sprintf("%d streams of %d MiB", scale.memStreams, scale.memLong/mib)
-	longOff, longOn := lcmCompareMemory(t, scale, longLabel, scale.memStreams,
-		lcmCall{baseURL: long.URL, stream: true, request: request}, scale.memLong)
+	longCost := lcmCompareMemory(t, scale, longLabel, scale.memStreams,
+		lcmCall{baseURL: long.URL, stream: true, request: request, gate: &longGate}, scale.memLong)
 	shortLabel := fmt.Sprintf("%d streams of %d MiB", scale.memStreams, scale.memShort/mib)
-	shortOff, shortOn := lcmCompareMemory(t, scale, shortLabel, scale.memStreams,
-		lcmCall{baseURL: shortServer.URL, stream: true, request: request}, scale.memShort)
+	shortCost := lcmCompareMemory(t, scale, shortLabel, scale.memStreams,
+		lcmCall{baseURL: shortServer.URL, stream: true, request: request, gate: &shortGate}, scale.memShort)
 
-	longCost, shortCost := longOn-longOff, shortOn-shortOff
-	spread := math.Abs(longCost-shortCost) / math.Max(longCost, shortCost)
-	t.Logf("capture peak cost: %s %.1f MiB (limit 207 MiB), %s %.1f MiB, difference %.1f%% (limit 10%%)",
-		longLabel, lcmMiB(longCost), shortLabel, lcmMiB(shortCost), spread*100)
+	// 50 x 3.5 MiB: provider copy, client copy, fold blocks and rebuilt message.
+	designed := int64(scale.memStreams) * (7 * mib / 2)
+	spread := math.Abs(longCost.retained()-shortCost.retained()) / math.Max(longCost.retained(), shortCost.retained())
+	t.Logf("%s: peak budget %d B (limit %d B), retained on minus off %.1f MiB (limit %.1f MiB)",
+		longLabel, longCost.peakBudget, designed, lcmMiB(longCost.retained()), lcmMiB(float64(designed+32*mib)))
+	t.Logf("retained on minus off: %s %.1f MiB, %s %.1f MiB, difference %.1f%% (limit 10%%)",
+		longLabel, lcmMiB(longCost.retained()), shortLabel, lcmMiB(shortCost.retained()), spread*100)
 	if scale.thresholds {
-		assert.LessOrEqual(t, longCost, float64(207*mib), "peak HeapInuse, on minus off, 50 streams of 100 MiB")
-		assert.LessOrEqual(t, spread, 0.10, "capture peak cost must not depend on stream length")
+		assert.LessOrEqual(t, longCost.peakBudget, designed, "peak budget in use, 50 streams of 100 MiB")
+		assert.LessOrEqual(t, longCost.retained(), float64(designed+32*mib), "retained heap, on minus off, 50 streams of 100 MiB")
+		assert.LessOrEqual(t, spread, 0.10, "retained capture memory must not depend on stream length")
 	}
 }
 
@@ -555,14 +644,17 @@ func TestLogContentMeasureLargeResponseMemory(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// The relay itself holds each 50 MiB body several times over, so the heap
+	// with capture off varies by more than the capture costs: the budget in
+	// use is the measure.
 	label := fmt.Sprintf("%d non-stream responses of %d MiB", scale.largeCalls, scale.largeBytes/mib)
-	off, on := lcmCompareMemory(t, scale, label, scale.largeCalls, lcmCall{
+	cost := lcmCompareMemory(t, scale, label, scale.largeCalls, lcmCall{
 		baseURL: server.URL,
 		request: []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}`),
 	}, int64(scale.largeBytes))
-	t.Logf("%s: capture peak cost %.1f MiB (limit 288 MiB)", label, lcmMiB(on-off))
+	t.Logf("%s: peak budget %.2f MiB (limit 256 MiB)", label, lcmMiB(float64(cost.peakBudget)))
 	if scale.thresholds {
-		assert.LessOrEqual(t, on-off, float64(288*mib), "peak HeapInuse, on minus off, 20 responses of 50 MiB")
+		assert.LessOrEqual(t, cost.peakBudget, int64(256*mib), "peak budget in use, 20 responses of 50 MiB")
 	}
 }
 
