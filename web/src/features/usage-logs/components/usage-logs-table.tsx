@@ -46,7 +46,10 @@ import type { UsageLog } from '../data/schema'
 import { shouldShowBillingSource } from '../lib/billing-source'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
-import { getLogRowInteractionProps } from '../lib/row-interaction'
+import {
+  buildSelectedLogResetKey,
+  getLogRowInteractionProps,
+} from '../lib/row-interaction'
 import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
@@ -235,6 +238,15 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const isCommon = logCategory === 'common'
+  // A plain refetch keeps the open panel; a new page, filter or category
+  // changes this key and closes it.
+  const selectedLogResetKey = buildSelectedLogResetKey({
+    logCategory,
+    viewAccess,
+    pagination,
+    columnFilters,
+    searchParams,
+  })
 
   return (
     <DataTablePage
@@ -265,7 +277,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
             <CommonLogsSummary />
             <CommonLogsFilterBar table={table} />
             {/* Portal-based panel: one instance for the whole table. */}
-            <LogDetailsSheet isAdmin={isAdmin} isRoot={isRoot} />
+            <LogDetailsSheet
+              isAdmin={isAdmin}
+              isRoot={isRoot}
+              resetKey={selectedLogResetKey}
+            />
           </>
         ) : (
           <TaskLogsFilterBar table={table} logCategory={logCategory} />
@@ -286,19 +302,25 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
           }
         }
 
+        const rowInteraction = isCommon
+          ? getLogRowInteractionProps(
+              row.original as unknown as UsageLog,
+              setSelectedLog
+            )
+          : undefined
+
         return (
           <DataTableRow
             key={row.id}
             row={row}
-            className={cn('transition-colors', tintClass)}
+            {...rowInteraction}
+            className={cn(
+              'transition-colors',
+              tintClass,
+              rowInteraction?.className
+            )}
             getColumnClassName={getColumnClassName}
             cellRenderColumns={table.options.columns}
-            {...(isCommon
-              ? getLogRowInteractionProps(
-                  row.original as unknown as UsageLog,
-                  setSelectedLog
-                )
-              : {})}
           />
         )
       }}

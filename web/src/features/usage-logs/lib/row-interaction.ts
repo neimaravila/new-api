@@ -23,27 +23,53 @@ import type { UsageLog } from '../data/schema'
 const INTERACTIVE_SELECTOR =
   'button,a,input,select,textarea,[role="button"],[role="checkbox"],[role="menuitem"],[data-no-row-click]'
 
+/** Visible keyboard focus for clickable rows (theme focus-visible ring). */
+export const LOG_ROW_FOCUS_CLASS =
+  'cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset'
+
 /**
- * Row props that open the details panel on click or Enter. Clicks on
+ * Row props that open the details panel on click, Enter or Space. Clicks on
  * interactive children and text selections are ignored.
  */
 export function getLogRowInteractionProps(
   log: UsageLog,
-  setSelectedLog: (log: UsageLog | null) => void
+  setSelectedLog: (log: UsageLog | null, opener?: HTMLElement | null) => void
 ) {
   return {
     tabIndex: 0,
+    className: LOG_ROW_FOCUS_CLASS,
     onClick: (event: MouseEvent<HTMLElement>) => {
       const target = event.target as Element | null
       if (target?.closest(INTERACTIVE_SELECTOR)) return
       const selection = window.getSelection?.()
       if (selection && !selection.isCollapsed) return
-      setSelectedLog(log)
+      setSelectedLog(log, event.currentTarget)
     },
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
-      if (event.key !== 'Enter' || event.target !== event.currentTarget) return
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      if (event.target !== event.currentTarget) return
       event.preventDefault()
-      setSelectedLog(log)
+      setSelectedLog(log, event.currentTarget)
     },
   }
+}
+
+/**
+ * Stable key for what the table is showing. It changes with category, scope,
+ * page or filters, but not when the same query is merely refetched.
+ */
+export function buildSelectedLogResetKey(query: {
+  logCategory: string
+  viewAccess: string
+  pagination: unknown
+  columnFilters: unknown
+  searchParams: unknown
+}): string {
+  return JSON.stringify([
+    query.logCategory,
+    query.viewAccess,
+    query.pagination,
+    query.columnFilters,
+    query.searchParams,
+  ])
 }

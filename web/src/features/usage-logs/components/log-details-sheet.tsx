@@ -16,14 +16,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect } from 'react'
+
 import { DetailsDialog } from './dialogs/details-dialog'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 /** Single side panel showing the log selected in the common logs table. */
-export function LogDetailsSheet(props: { isAdmin: boolean; isRoot: boolean }) {
-  const { selectedLog, setSelectedLog, sensitiveVisible } =
+export function LogDetailsSheet(props: {
+  isAdmin: boolean
+  isRoot: boolean
+  /** Changes when page, filters or category change; closes the panel. */
+  resetKey?: string
+}) {
+  const { selectedLog, setSelectedLog, selectedLogOpener, sensitiveVisible } =
     useUsageLogsContext()
+  const { resetKey } = props
+
+  useEffect(() => {
+    setSelectedLog(null)
+  }, [resetKey, setSelectedLog])
+
   if (!selectedLog) return null
+
+  const close = () => {
+    const opener = selectedLogOpener.current
+    setSelectedLog(null)
+    // Return focus to the row that opened the panel, if it is still there.
+    setTimeout(() => {
+      if (opener?.isConnected) opener.focus()
+    }, 0)
+  }
 
   return (
     <DetailsDialog
@@ -37,8 +59,14 @@ export function LogDetailsSheet(props: { isAdmin: boolean; isRoot: boolean }) {
         // row clicks that switch the log, not requests to close.
         if (open) return
         const reason = eventDetails?.reason
-        if (reason === 'escape-key' || reason === 'close-press') {
-          setSelectedLog(null)
+        if (reason === 'close-press') {
+          close()
+        } else if (reason === 'escape-key') {
+          // Escape elsewhere (e.g. typing in a filter) must not close it.
+          const active = document.activeElement
+          const inPanel = !!active?.closest('[data-slot="sheet-content"]')
+          const inRow = !!selectedLogOpener.current?.contains(active)
+          if (inPanel || inRow) close()
         }
       }}
       presentation='sheet'

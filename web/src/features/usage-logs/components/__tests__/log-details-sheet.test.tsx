@@ -35,7 +35,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { DataTableRow } from '@/components/data-table'
 
 import { usageLogSchema, type UsageLog } from '../../data/schema'
-import { getLogRowInteractionProps } from '../../lib/row-interaction'
+import {
+  LOG_ROW_FOCUS_CLASS,
+  buildSelectedLogResetKey,
+  getLogRowInteractionProps,
+} from '../../lib/row-interaction'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
 import { LogDetailsSheet } from '../log-details-sheet'
 import { UsageLogsProvider, useUsageLogsContext } from '../usage-logs-provider'
@@ -64,7 +68,11 @@ function makeLog(overrides: Partial<UsageLog> = {}): UsageLog {
   })
 }
 
-function Harness(props: { logs: UsageLog[]; admin?: boolean }) {
+function Harness(props: {
+  logs: UsageLog[]
+  admin?: boolean
+  resetKey?: string
+}) {
   const columns = useCommonLogsColumns(props.admin ?? true, false)
   const extra: ColumnDef<UsageLog> = {
     id: 'extra',
@@ -100,23 +108,32 @@ function Harness(props: { logs: UsageLog[]; admin?: boolean }) {
           ))}
         </tbody>
       </table>
-      <LogDetailsSheet isAdmin={props.admin ?? true} isRoot={false} />
+      <input aria-label='filter' />
+      <LogDetailsSheet
+        isAdmin={props.admin ?? true}
+        isRoot={false}
+        resetKey={props.resetKey}
+      />
     </>
   )
 }
 
-function renderHarness(props: Parameters<typeof Harness>[0]) {
-  return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+const testClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
+
+function tree(props: Parameters<typeof Harness>[0]) {
+  return (
+    <QueryClientProvider client={testClient}>
       <UsageLogsProvider>
         <Harness {...props} />
       </UsageLogsProvider>
     </QueryClientProvider>
   )
+}
+
+function renderHarness(props: Parameters<typeof Harness>[0]) {
+  return render(tree(props))
 }
 
 function before(a: HTMLElement, b: HTMLElement): boolean {
@@ -243,4 +260,126 @@ it('closes the panel with Escape', async () => {
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   )
+})
+
+const baseQuery = {
+  logCategory: 'common',
+  viewAccess: 'admin',
+  pagination: { pageIndex: 0, pageSize: 100 },
+  columnFilters: [{ id: 'model_name', value: 'a' }],
+  searchParams: { model: 'a' },
+}
+
+it('builds a reset key that changes with page, filter and category only', () => {
+  const key = buildSelectedLogResetKey(baseQuery)
+  expect(
+    buildSelectedLogResetKey({
+      ...baseQuery,
+      pagination: { pageIndex: 1, pageSize: 100 },
+    })
+  ).not.toBe(key)
+  expect(
+    buildSelectedLogResetKey({
+      ...baseQuery,
+      columnFilters: [{ id: 'model_name', value: 'b' }],
+      searchParams: { model: 'b' },
+    })
+  ).not.toBe(key)
+  expect(
+    buildSelectedLogResetKey({ ...baseQuery, logCategory: 'drawing' })
+  ).not.toBe(key)
+  // Same values in fresh objects (a refetch) keep the key.
+  expect(
+    buildSelectedLogResetKey({
+      ...baseQuery,
+      pagination: { ...baseQuery.pagination },
+      columnFilters: baseQuery.columnFilters.map((f) => ({ ...f })),
+      searchParams: { ...baseQuery.searchParams },
+    })
+  ).toBe(key)
+})
+
+it('closes the panel when the reset key changes and keeps it on a refetch', async () => {
+  const user = userEvent.setup()
+  const key = buildSelectedLogResetKey(baseQuery)
+  const { rerender } = renderHarness({ logs: [makeLog()], resetKey: key })
+  await user.click(screen.getByTestId('row-1'))
+  await screen.findByRole('dialog')
+
+  // Refetch: new log objects, same query.
+  rerender(tree({ logs: [makeLog()], resetKey: key }))
+  expect(screen.getByRole('dialog')).toBeVisible()
+
+  rerender(
+    tree({
+      logs: [makeLog()],
+      resetKey: buildSelectedLogResetKey({
+        ...baseQuery,
+        pagination: { pageIndex: 1, pageSize: 100 },
+      }),
+    })
+  )
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+})
+
+it('moves focus into the panel on open and back to the row on close', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()] })
+  const row = screen.getByTestId('row-1')
+  await user.click(row)
+  const dialog = await screen.findByRole('dialog')
+  await waitFor(() =>
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  )
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+  await waitFor(() => expect(row).toHaveFocus())
+})
+
+it('moves focus into the panel when opened from the Details button', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog({ content: 'hello' })] })
+  await user.click(screen.getByTitle('Click to view full details'))
+  const dialog = await screen.findByRole('dialog')
+  await waitFor(() =>
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  )
+  await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.getByTestId('row-1')).toHaveFocus())
+})
+
+it('ignores Escape typed in an unrelated input', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()] })
+  await user.click(screen.getByTestId('row-1'))
+  await screen.findByRole('dialog')
+  await user.click(screen.getByLabelText('filter'))
+  await user.keyboard('abc{Escape}')
+  expect(screen.getByRole('dialog')).toBeVisible()
+})
+
+it('opens with Space on the row itself, preventing scroll, with a focus ring', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()] })
+  const row = screen.getByTestId('row-1')
+  expect(row.className).toContain('focus-visible:ring')
+  expect(LOG_ROW_FOCUS_CLASS).toContain('focus-visible:ring')
+  // Space on a child control is not hijacked.
+  screen.getByText('inner-button').focus()
+  await user.keyboard(' ')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  row.focus()
+  const event = new KeyboardEvent('keydown', {
+    key: ' ',
+    bubbles: true,
+    cancelable: true,
+  })
+  row.dispatchEvent(event)
+  expect(event.defaultPrevented).toBe(true)
+  expect(await screen.findByRole('dialog')).toBeVisible()
 })

@@ -899,7 +899,9 @@ export function useCommonLogsColumns(
             <button
               type='button'
               className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
-              onClick={() => setSelectedLog(log)}
+              onClick={(event) =>
+                setSelectedLog(log, event.currentTarget.closest('tr'))
+              }
               title={t('Click to view full details')}
             >
               {detailPreview}

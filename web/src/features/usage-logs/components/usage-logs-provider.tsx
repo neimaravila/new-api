@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -48,7 +55,9 @@ interface UsageLogsContextValue {
   sensitiveVisible: boolean
   setSensitiveVisible: (visible: boolean) => void
   selectedLog: UsageLog | null
-  setSelectedLog: (log: UsageLog | null) => void
+  /** `opener` is the row element to refocus when the panel closes. */
+  setSelectedLog: (log: UsageLog | null, opener?: HTMLElement | null) => void
+  selectedLogOpener: { current: HTMLElement | null }
   viewScope: LogsViewScope
   setViewScope: (scope: LogsViewScope) => void
 }
@@ -64,7 +73,15 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
     useState<ChannelAffinityInfo | null>(null)
   const [affinityDialogOpen, setAffinityDialogOpen] = useState(false)
   const [sensitiveVisible, setSensitiveVisible] = useState(true)
-  const [selectedLog, setSelectedLog] = useState<UsageLog | null>(null)
+  const [selectedLog, setSelectedLogState] = useState<UsageLog | null>(null)
+  const selectedLogOpener = useRef<HTMLElement | null>(null)
+  const setSelectedLog = useCallback(
+    (log: UsageLog | null, opener?: HTMLElement | null) => {
+      selectedLogOpener.current = log ? (opener ?? null) : null
+      setSelectedLogState(log)
+    },
+    []
+  )
   const [viewScope, setViewScope] = useState<LogsViewScope>('all')
 
   return (
@@ -82,6 +99,7 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
         setSensitiveVisible,
         selectedLog,
         setSelectedLog,
+        selectedLogOpener,
         viewScope,
         setViewScope,
       }}
