@@ -377,7 +377,7 @@ func (t *bodyTap) Close() error {
 // streamFold rebuilds the client stream off the call path: the writer hands
 // it copies of what was sent through a small channel and never waits.
 type streamFold struct {
-	chunks  chan []byte
+	chunks  chan *[]byte
 	asm     *StreamAssembler
 	dropped atomic.Bool
 	once    sync.Once
@@ -401,16 +401,26 @@ func (f *streamFold) finish(rec *captureRecord) {
 }
 
 func newStreamFold(format string) *streamFold {
-	return &streamFold{chunks: make(chan []byte, foldQueueChunks), asm: NewStreamAssembler(format)}
+	return &streamFold{chunks: make(chan *[]byte, foldQueueChunks), asm: NewStreamAssembler(format)}
 }
+
+// foldChunks recycles the blocks fed to the folds: the assembler copies what
+// it keeps, so a block is free again once written.
+var foldChunks = sync.Pool{New: func() any {
+	chunk := make([]byte, 0, foldChunkBytes)
+	return &chunk
+}}
 
 // feed sends copies of p in blocks; a full channel drops the block.
 func (f *streamFold) feed(p []byte) {
 	for len(p) > 0 {
 		n := min(len(p), foldChunkBytes)
+		chunk := foldChunks.Get().(*[]byte)
+		*chunk = append((*chunk)[:0], p[:n]...)
 		select {
-		case f.chunks <- bytes.Clone(p[:n]):
+		case f.chunks <- chunk:
 		default:
+			foldChunks.Put(chunk)
 			f.dropped.Store(true)
 		}
 		p = p[n:]
@@ -421,8 +431,9 @@ func (f *streamFold) run() {
 	ok := true
 	for chunk := range f.chunks {
 		if ok {
-			ok = f.write(chunk)
+			ok = f.write(*chunk)
 		}
+		foldChunks.Put(chunk)
 	}
 	rec := f.rec
 	if rec == nil {

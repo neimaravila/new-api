@@ -210,6 +210,11 @@ func (s *StreamAssembler) endFrame() {
 		return
 	}
 	s.handle(frame)
+	// handle keeps nothing of frame (gjson copies it), so a small buffer is
+	// reused for the next frame.
+	if cap(frame) <= reusedFrameBytes {
+		s.frame = frame[:0]
+	}
 }
 
 func (s *StreamAssembler) writeArray(chunk []byte) {

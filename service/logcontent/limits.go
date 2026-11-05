@@ -14,4 +14,7 @@ const (
 
 	foldChunkBytes  = 32 << 10
 	foldQueueChunks = 16
+
+	// reusedFrameBytes caps the frame buffer an assembler keeps between frames.
+	reusedFrameBytes = 64 << 10
 )
