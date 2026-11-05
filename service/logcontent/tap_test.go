@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -850,4 +851,47 @@ func TestOverrideHeaderSecretsSkipOnlyPublicHeaders(t *testing.T) {
 	assert.Contains(t, text, `"token":"[REDACTED]"`)
 	assert.NotContains(t, text, tenantKey, "a credential under a header with no telling name is redacted")
 	assert.Contains(t, text, `"tenant":"[REDACTED]"`)
+}
+
+func TestStreamFoldReusesBlocksWithoutMixingThem(t *testing.T) {
+	frame := func(text string) []byte {
+		return []byte(`data: {"choices":[{"index":0,"delta":{"content":"` + text + `"}}]}` + "\n\n")
+	}
+	fold := newStreamFold(FormatOpenAI)
+	// No reader yet: the queue fills, and the next block is dropped and its
+	// buffer goes back to the pool.
+	var want strings.Builder
+	for i := range foldQueueChunks {
+		text := fmt.Sprintf("[%02d]", i)
+		fold.feed(frame(text))
+		want.WriteString(text)
+	}
+	fold.feed(frame("[lost]"))
+	require.True(t, fold.dropped.Load())
+
+	done := make(chan struct{})
+	go func() {
+		fold.run()
+		close(done)
+	}()
+	// Later blocks, fed while the fold reads, take buffers from the pool,
+	// the dropped one included; a frame over two blocks crosses buffers.
+	for i := range 40 {
+		text := fmt.Sprintf("<%02d>", i)
+		if i == 20 {
+			text = strings.Repeat("w", foldChunkBytes+100)
+		}
+		for len(fold.chunks) > 0 {
+			runtime.Gosched()
+		}
+		fold.feed(frame(text))
+		want.WriteString(text)
+	}
+	fold.finish(nil)
+	<-done
+
+	got := fold.asm.Result()
+	require.Len(t, got.Messages, 1)
+	require.Len(t, got.Messages[0].Blocks, 1)
+	assert.Equal(t, want.String(), got.Messages[0].Blocks[0].Text)
 }

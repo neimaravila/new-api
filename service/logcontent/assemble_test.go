@@ -485,3 +485,24 @@ func TestDropToFitKeepsWholeMessagesThatFit(t *testing.T) {
 	assert.Empty(t, got[0].Blocks)
 	assert.LessOrEqual(t, marshalledSize(got), maxAssembled)
 }
+
+func TestAssembleReusedFrameBufferKeepsFramesApart(t *testing.T) {
+	frame := func(text string) string {
+		return `data: {"choices":[{"index":0,"delta":{"content":"` + text + `"}}]}` + "\n\n"
+	}
+	// A frame over the reused size is dropped after use; the small frames
+	// after it reuse one buffer, each shorter than the one before.
+	big := strings.Repeat("b", reusedFrameBytes+1024)
+	texts := []string{big, "small frame three", "frame two", "one"}
+	var stream strings.Builder
+	for _, text := range texts {
+		stream.WriteString(frame(text))
+	}
+	for _, size := range []int{1 << 20, 4096, 7} {
+		got := assembleChunks(FormatOpenAI, []byte(stream.String()), size)
+		require.Len(t, got.Messages, 1, "chunk size %d", size)
+		require.Len(t, got.Messages[0].Blocks, 1, "chunk size %d", size)
+		assert.Equal(t, strings.Join(texts, ""), got.Messages[0].Blocks[0].Text, "chunk size %d", size)
+		assert.False(t, got.Truncated, "chunk size %d", size)
+	}
+}
