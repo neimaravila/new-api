@@ -2840,7 +2840,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projetos Relacionados",
     "footer.defaultCopyright": "Todos os direitos reservados.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Todos os direitos reservados. Projetado e desenvolvido pelos colaboradores do projeto.",
+    "footer.newapi.projectAttributionSuffix": "Todos os direitos reservados. Projetado e desenvolvido pelos colaboradores do projeto.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Para canais personalizados avançados, isso se aplica apenas a rotas /v1/responses sem conversão de protocolo.",
     "GitHub ID is empty!": "O ID do GitHub está vazio!",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Para canais adicionados após 10 de maio de 2025, não é necessário remover o \".\" dos nomes dos modelos durante a implantação",
@@ -7581,6 +7581,17 @@
     "KB": "KB",
     "MB": "MB",
     "GB": "GB",
-    "Schema too deep to display": "Esquema profundo demais para exibir"
+    "Schema too deep to display": "Esquema profundo demais para exibir",
+    "Attempt {{attempt}}": "Tentativa {{attempt}}",
+    "Key {{index}}": "Chave {{index}}",
+    "Mapped model": "Modelo mapeado",
+    "Selected group": "Grupo selecionado",
+    "Client request": "Requisição do cliente",
+    "Delivered response": "Resposta entregue",
+    "Request sent to the provider": "Requisição enviada ao provedor",
+    "Response received from the provider": "Resposta recebida do provedor",
+    "The request sent to the provider was not captured for this attempt.": "A requisição enviada ao provedor não foi capturada nesta tentativa.",
+    "This body could not be decoded, so no text is shown.": "Este corpo não pôde ser decodificado, então nenhum texto é exibido.",
+    "Original size: {{size}}": "Tamanho original: {{size}}"
   }
 }

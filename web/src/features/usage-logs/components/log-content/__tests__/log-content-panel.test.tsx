@@ -261,6 +261,31 @@ it('hides channel and attempts from regular users, and a single attempt strip', 
   expect(q.queryByRole('tab', { name: 'Routing' })).toBeNull()
 })
 
+it('shows the Routing and Raw JSON tabs to admins and Raw JSON only to users', async () => {
+  getContent.mockResolvedValue(makeView({ attempts: twoAttempts }))
+  const admin = await openRow(1, { logs: [makeLog()] })
+  await admin.user.click(
+    await admin.within.findByRole('tab', { name: 'Routing' })
+  )
+  expect(await screen.findByTestId('log-content-tab-routing')).toBeVisible()
+  await admin.user.click(admin.within.getByRole('tab', { name: 'Raw JSON' }))
+  expect(await screen.findByTestId('log-content-tab-raw')).toBeVisible()
+})
+
+it('shows only the client bodies in Raw JSON to a regular user', async () => {
+  getContent.mockResolvedValue(makeView({ attempts: [] }))
+  const { within: q, user } = await openRow(1, {
+    logs: [makeLog()],
+    admin: false,
+  })
+  await user.click(await q.findByRole('tab', { name: 'Raw JSON' }))
+  expect(q.queryByRole('tab', { name: 'Routing' })).toBeNull()
+  const headings = within(await screen.findByTestId('log-content-tab-raw'))
+    .getAllByRole('heading')
+    .map((h) => h.textContent)
+  expect(headings).toEqual(['Client request', 'Delivered response'])
+})
+
 it('shows the five figures with cache tokens, cost and tools', async () => {
   getContent.mockResolvedValue(makeView({ tools_available: 4, tool_calls: 2 }))
   await openRow(1, { logs: [makeLog()] })

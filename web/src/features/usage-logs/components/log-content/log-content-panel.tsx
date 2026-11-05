@@ -38,6 +38,8 @@ import { ConversationTab } from './conversation-tab'
 import { LogContentHeader } from './log-content-header'
 import { LogContentNotice, LogContentWarnings } from './log-content-notice'
 import { LogContentStats } from './log-content-stats'
+import { RawJsonTab } from './raw-json-tab'
+import { RoutingTab } from './routing-tab'
 import { ToolsTab } from './tools-tab'
 import { logHasContent, useLogContent } from './use-log-content'
 
@@ -157,11 +159,20 @@ export function LogContentPanel(props: {
         </p>
       )
     }
-    // Task 15 puts the routing and raw views here.
     return (
       <div data-testid={`log-content-tab-${id}`}>
         {id === 'conversation' && <ConversationTab view={current} />}
         {id === 'tools' && <ToolsTab view={current} />}
+        {id === 'routing' && (
+          <RoutingTab
+            view={current}
+            log={log}
+            sensitiveVisible={sensitiveVisible}
+          />
+        )}
+        {id === 'raw' && (
+          <RawJsonTab view={current} selectedAttempt={selectedAttempt} />
+        )}
       </div>
     )
   }

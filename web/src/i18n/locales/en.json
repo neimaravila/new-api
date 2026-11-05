@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
@@ -7603,6 +7603,17 @@
     "KB": "KB",
     "MB": "MB",
     "GB": "GB",
-    "Schema too deep to display": "Schema too deep to display"
+    "Schema too deep to display": "Schema too deep to display",
+    "Attempt {{attempt}}": "Attempt {{attempt}}",
+    "Key {{index}}": "Key {{index}}",
+    "Mapped model": "Mapped model",
+    "Selected group": "Selected group",
+    "Client request": "Client request",
+    "Delivered response": "Delivered response",
+    "Request sent to the provider": "Request sent to the provider",
+    "Response received from the provider": "Response received from the provider",
+    "The request sent to the provider was not captured for this attempt.": "The request sent to the provider was not captured for this attempt.",
+    "This body could not be decoded, so no text is shown.": "This body could not be decoded, so no text is shown.",
+    "Original size: {{size}}": "Original size: {{size}}"
   }
 }

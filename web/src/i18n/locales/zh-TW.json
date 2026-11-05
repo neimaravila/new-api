@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相關項目",
     "footer.defaultCopyright": "版權所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
+    "footer.newapi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "進階自訂渠道僅對 /v1/responses 且不做協定轉換的路由生效。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "對於 2025 年 5 月 10 日之後新增的渠道，在部署時無需從模型名稱中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "對於私有部署，格式為：https://fastgpt.run/api/openapi",
@@ -7603,6 +7603,17 @@
     "KB": "KB",
     "MB": "MB",
     "GB": "GB",
-    "Schema too deep to display": "結構巢狀過深，無法顯示"
+    "Schema too deep to display": "結構巢狀過深，無法顯示",
+    "Attempt {{attempt}}": "嘗試 {{attempt}}",
+    "Key {{index}}": "金鑰 {{index}}",
+    "Mapped model": "對應後的模型",
+    "Selected group": "選取的群組",
+    "Client request": "用戶端請求",
+    "Delivered response": "已回傳的回應",
+    "Request sent to the provider": "傳送給供應商的請求",
+    "Response received from the provider": "從供應商收到的回應",
+    "The request sent to the provider was not captured for this attempt.": "此次嘗試未擷取傳送給供應商的請求。",
+    "This body could not be decoded, so no text is shown.": "此內容無法解碼，因此不顯示文字。",
+    "Original size: {{size}}": "原始大小：{{size}}"
   }
 }

@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Pour les canaux personnalisés avancés, ceci ne s’applique qu’aux routes /v1/responses sans conversion de protocole.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Pour les déploiements privés, format : https://fastgpt.run/api/openapi",
@@ -7603,6 +7603,17 @@
     "KB": "KB",
     "MB": "MB",
     "GB": "GB",
-    "Schema too deep to display": "Schéma trop profond pour être affiché"
+    "Schema too deep to display": "Schéma trop profond pour être affiché",
+    "Attempt {{attempt}}": "Tentative {{attempt}}",
+    "Key {{index}}": "Clé {{index}}",
+    "Mapped model": "Modèle mappé",
+    "Selected group": "Groupe sélectionné",
+    "Client request": "Requête du client",
+    "Delivered response": "Réponse livrée",
+    "Request sent to the provider": "Requête envoyée au fournisseur",
+    "Response received from the provider": "Réponse reçue du fournisseur",
+    "The request sent to the provider was not captured for this attempt.": "La requête envoyée au fournisseur n'a pas été capturée pour cette tentative.",
+    "This body could not be decoded, so no text is shown.": "Ce corps n'a pas pu être décodé, aucun texte n'est affiché.",
+    "Original size: {{size}}": "Taille d'origine : {{size}}"
   }
 }

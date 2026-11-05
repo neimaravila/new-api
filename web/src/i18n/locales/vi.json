@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Với kênh tùy chỉnh nâng cao, thiết lập này chỉ áp dụng cho các route /v1/responses không chuyển đổi giao thức.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
@@ -7603,6 +7603,17 @@
     "KB": "KB",
     "MB": "MB",
     "GB": "GB",
-    "Schema too deep to display": "Lược đồ quá sâu để hiển thị"
+    "Schema too deep to display": "Lược đồ quá sâu để hiển thị",
+    "Attempt {{attempt}}": "Lần thử {{attempt}}",
+    "Key {{index}}": "Khóa {{index}}",
+    "Mapped model": "Mô hình đã ánh xạ",
+    "Selected group": "Nhóm đã chọn",
+    "Client request": "Yêu cầu của máy khách",
+    "Delivered response": "Phản hồi đã trả về",
+    "Request sent to the provider": "Yêu cầu gửi tới nhà cung cấp",
+    "Response received from the provider": "Phản hồi nhận từ nhà cung cấp",
+    "The request sent to the provider was not captured for this attempt.": "Yêu cầu gửi tới nhà cung cấp không được ghi lại cho lần thử này.",
+    "This body could not be decoded, so no text is shown.": "Không thể giải mã nội dung này nên không hiển thị văn bản.",
+    "Original size: {{size}}": "Kích thước gốc: {{size}}"
   }
 }
