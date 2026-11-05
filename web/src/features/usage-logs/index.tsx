@@ -127,7 +127,13 @@ function UsageLogsContent() {
 
   return (
     <>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent
+        // Reserve the panel's width for header, list and pager footer alike.
+        className={cn(
+          selectedLog && activeCategory === 'common' && LOG_PANEL_RESERVE_CLASS
+        )}
+      >
         <SectionPageLayout.Title>
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
@@ -142,13 +148,7 @@ function UsageLogsContent() {
           )}
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div
-            className={cn(
-              'flex h-full min-h-0 flex-col gap-4',
-              // Keep the list, pager and filters usable beside the open panel.
-              selectedLog && activeCategory === 'common' && LOG_PANEL_RESERVE_CLASS
-            )}
-          >
+          <div className='flex h-full min-h-0 flex-col gap-4'>
             {showTaskSwitcher && (
               <Tabs value={activeCategory} onValueChange={handleSectionChange}>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
