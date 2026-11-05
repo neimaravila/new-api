@@ -5,7 +5,7 @@ Task 11. Captura ligada contra desligada, no mesmo processo e na mesma máquina,
 - **Máquina:** Apple M5 Pro, 18 núcleos, 48 GiB, macOS 27.2
 - **Go:** go1.26.10 darwin/arm64, `GOGC` e `GOMEMLIMIT` padrão
 - **Data:** 2026-11-05
-- **Commit:** `c00eed921`. Árvore sem patch = worktree. Árvore com patches = `git archive HEAD` + `scripts/apply-patches.sh`, via `sh scripts/log-content-compare.sh --local --keep` (`directForward` encontrado, testes do script passando).
+- **Commit:** `c00eed921` (tabela principal, as duas árvores); `e6eab3db0` (rodada 3, só a worktree). Árvore sem patch = worktree. Árvore com patches = `git archive HEAD` + `scripts/apply-patches.sh`, via `sh scripts/log-content-compare.sh --local --keep` (`directForward` encontrado, testes do script passando).
 - **Comando:** `go test -tags logcontentmeasure -count=1 -timeout 30m ./relay/channel/openai/ -run 'LogContentMeasure' -v`
 - **Teste:** `relay/channel/openai/log_content_measure_test.go`. Sem a tag roda uma versão curta (cerca de 9 s) que verifica a montagem, a gravação e a devolução do orçamento, sem limites. A tag `logcontentmeasure` (`log_content_measure_full_test.go`) liga os tamanhos completos e os limites.
 
@@ -28,7 +28,7 @@ Mudados nas rodadas de correção 1 e 2, por decisão do controlador, mantendo a
 - Orçamento por stream = 3,5 MiB + reserva das cópias da requisição. Requisição com menos de 4 KiB ocupa a primeira capacidade do tap, 4 KiB (`tapBuffer.grow`), e há duas cópias: a enviada ao provedor e a do cliente em `Finish`. Limite = 50 × (3,5 MiB + 2 × 4 KiB) = 183910400 B (175,39 MiB), calculado no teste (`lcmStreamBudget`), não medido.
 - Memória retida, ligada − desligada, ≤ 207 MiB em cada comprimento.
 - Independência do comprimento: streams de 100 e 300 MiB, os dois com todos os tetos cheios antes da metade; memória retida, ligada − desligada, com diferença ≤ 10%. A comparação com 10 MiB saiu: um stream curto guarda menos porque os tetos não enchem até a metade (texto remontado de ~400 KiB por stream contra ~1,06 MiB), o que não é crescimento com a duração.
-- Caso não stream: pico de `BudgetInUse` ≤ 256 MiB.
+- Caso não stream (rodada 3): limite de projeto calculado no teste (`lcmLargeCallBudget`), como o dos streams. Por chamada com resposta de 50 MiB: a cópia do provedor sabe o tamanho por `Content-Length` e guarda só o começo desde o início, `maxStoredBody + tapMarginBytes` = 1 MiB + 64 KiB; a cópia do cliente não sabe e pode crescer até `maxParsedBody` = 8 MiB antes de passar ao começo; mais as cópias da requisição, 2 × 4 KiB. Limite = 20 × (1 MiB + 64 KiB + 8 MiB + 8 KiB) = 190218240 B (181,4 MiB). O orçamento é lido com as 20 chamadas seguradas depois de entregar a resposta e antes de `Finish`, quando todas as cópias estão vivas ao mesmo tempo. O limite anterior, 256 MiB, nunca falharia: `tryReserve` não deixa o orçamento passar disso.
 
 ## Resultados
 
@@ -44,7 +44,7 @@ Mudados nas rodadas de correção 1 e 2, por decisão do controlador, mantendo a
 | Memória retida, ligada − desligada, 50 × 100 MiB | ≤ 207 MiB | 152,8 MiB | 150,1 MiB | Passa |
 | Memória retida, ligada − desligada, 50 × 300 MiB | ≤ 207 MiB | 154,9 MiB | 154,9 MiB | Passa |
 | Memória retida, 100 contra 300 MiB | diferença ≤ 10% | 1,4% | 3,1% | Passa |
-| Pico de `BudgetInUse`, 20 respostas não stream de 50 MiB | ≤ 256 MiB | 24,53 MiB | 22,39 MiB | Passa |
+| Pico de `BudgetInUse`, 20 respostas não stream de 50 MiB (rodada 2, sem segurar) | ≤ 256 MiB (substituído) | 24,53 MiB | 22,39 MiB | — |
 | 5 s depois, com `GC`: `BudgetInUse` | = 0 | 0 em todas | 0 em todas | Passa |
 | 5 s depois, com `GC`: `HeapInuse` | ≤ base + 16 MiB | máx +6,2 MiB | máx +3,5 MiB | Passa |
 
@@ -85,6 +85,29 @@ Antes, 16,4 GiB vinham de `bytes.Clone` em `streamFold.feed`, uma cópia de cada
 ### Descarte na rajada
 
 Instrumentação temporária (não commitada) da fila: as 1000 chamadas capturadas da rajada chegam em cerca de 250 ms. Os 2 workers (limpeza e `gzip`) gastavam ~0,7 ms por registro, em 0,6 s de trabalho no total; o gravador SQLite gastou ~0,1 s em ~90 lotes e os workers esperaram 48 ms para entregar linhas. Gargalo: os workers. A fila chegou a 512 e descartou 113–137 chamadas por execução. Com 3 workers (`d481e4422`): 0 descartes em duas execuções e nas duas árvores. O desenho de nunca bloquear não mudou.
+
+## Rodada de correção 3
+
+Execução completa só na worktree, em `e6eab3db0`, 228 s, tudo passando:
+
+| Medida | Limite | Valor |
+|-|-|-|
+| Primeiro byte, p50 / p99 ligada − desligada | ≤ 1 ms / ≤ 5 ms | 0,541 ms (3,016 → 3,558) / −1,028 ms (9,681 → 8,653) |
+| Duração de stream de 100 MiB | ≤ +5% | +2,93% (565 → 582 ms) |
+| `Finish` p99, ~1 MiB / ~8 MiB | ≤ 2 ms / ≤ 10 ms | 0,575 ms / 1,513 ms |
+| Pico de `BudgetInUse`, 50 × 100 / 300 MiB | ≤ 183910400 B | 183713792 / 183717888 B |
+| Memória retida, ligada − desligada, 100 / 300 MiB | ≤ 207 MiB | 152,3 / 155,0 MiB |
+| Memória retida, 100 contra 300 MiB | ≤ 10% | 1,7% |
+| `BudgetInUse` com 20 chamadas não stream de 50 MiB seguradas | ≤ 190218240 B | 44646400 B (42,58 MiB) nas 3 execuções |
+| 5 s depois, com `GC` | orçamento 0, `HeapInuse` ≤ base + 16 MiB | 0, máx +7,2 MiB |
+| Gravador | — | 0 descartes, 0 erros |
+
+**O limite não stream pega a quebra da troca para o começo.** Mudança temporária, revertida com `git checkout`: `startHeadOnly` e `dropToHead` sem efeito, então as duas cópias guardam 8 MiB. Resultado: 260128768 B (248,08 MiB) nas 3 execuções, acima de 190218240 B, e o teste falha. Sem a mudança, 44646400 B (2,13 MiB por chamada: 1 MiB + 64 KiB de cada cópia de resposta, mais a requisição).
+
+Outras mudanças da rodada 3:
+
+- `lcmWaitWritten` lê enfileiradas, descartadas e gravadas na mesma leitura a cada volta, e espera até que todas as chamadas estejam enfileiradas ou descartadas e as enfileiradas gravadas. Antes, o número de descartes vinha de uma leitura feita uma vez, antes de a remontagem enfileirar os registros dela.
+- Testes de unidade em `service/logcontent` (`9b9f60286`): `TestAssembleReusedFrameBufferKeepsFramesApart` (quadro acima de 64 KiB seguido de quadros menores, cada um mais curto que o anterior, em blocos de 1 MiB, 4096 e 7 bytes) e `TestStreamFoldReusesBlocksWithoutMixingThem` (fila cheia, bloco descartado volta ao pool, blocos seguintes reaproveitam buffers enquanto a remontagem lê, quadro atravessando dois blocos). Passam com `-race -count=3`. Mutações temporárias, revertidas: devolver o bloco ao pool antes de escrevê-lo faz o teste do fold falhar com 4 avisos de corrida; reaproveitar o buffer de quadro sem zerar faz o teste do montador falhar.
 
 ### Rodada 1, valores que motivaram a rodada 2
 
