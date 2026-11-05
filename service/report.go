@@ -374,7 +374,7 @@ func computeReportErrors(scope reportRoleScope, start int64, end int64) ([]dto.R
 
 // reportPerfDimension pairs a grouping column with the predicate that drops rows carrying no
 // value for it. The predicate is column-typed on purpose: channel_id is an integer column, and
-// PostgreSQL rejects `channel_id <> ”` with SQLSTATE 22P02 instead of coercing like SQLite/MySQL.
+// PostgreSQL rejects comparing channel_id to an empty string with SQLSTATE 22P02 instead of coercing like SQLite/MySQL.
 type reportPerfDimension struct {
 	column   string
 	presence string
