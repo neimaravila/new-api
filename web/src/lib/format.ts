@@ -323,14 +323,17 @@ export function stringToColor(str: string): string {
 }
 
 /** Human readable size of a payload, e.g. 2048 -> "2 KB". */
-export function formatBytes(bytes: number | null | undefined): string {
+export function formatBytes(
+  bytes: number | null | undefined,
+  locales?: Intl.LocalesArgument,
+  units: string[] = ['B', 'KB', 'MB', 'GB']
+): string {
   if (bytes == null || Number.isNaN(bytes) || bytes < 0) return '-'
-  const units = ['B', 'KB', 'MB', 'GB']
   let value = bytes
   let unit = 0
   while (value >= 1024 && unit < units.length - 1) {
     value /= 1024
     unit++
   }
-  return `${formatNumber(value)} ${units[unit]}`
+  return `${formatNumber(value, locales)} ${units[unit]}`
 }

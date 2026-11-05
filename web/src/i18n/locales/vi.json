@@ -7598,6 +7598,10 @@
     "No messages to show": "Không có tin nhắn để hiển thị",
     "This call declared no tools": "Lệnh gọi này không khai báo công cụ",
     "Called {{count}} times": "Đã gọi {{count}} lần",
-    "Schema": "Lược đồ"
+    "Schema": "Lược đồ",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
   }
 }

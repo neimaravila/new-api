@@ -7598,6 +7598,10 @@
     "No messages to show": "No messages to show",
     "This call declared no tools": "This call declared no tools",
     "Called {{count}} times": "Called {{count}} times",
-    "Schema": "Schema"
+    "Schema": "Schema",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
   }
 }

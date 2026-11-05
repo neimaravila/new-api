@@ -16,14 +16,52 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { formatNumber } from '@/lib/format'
 
-import type { LogContentView } from '../../data/log-content-schema'
+import type {
+  LogContentTool,
+  LogContentView,
+} from '../../data/log-content-schema'
+import { prettyValue } from './content-format'
 import { RawOnlyNotice } from './conversation-tab'
 import { CopyButton, LongText } from './message-block'
+
+function ToolCard(props: { tool: LogContentTool }) {
+  const { t } = useTranslation()
+  const { tool } = props
+  const schema = useMemo(() => prettyValue(tool.schema), [tool.schema])
+  return (
+    <section
+      data-testid='log-content-tool'
+      className='space-y-2 rounded-lg border p-3'
+    >
+      <header className='flex items-center justify-between gap-2'>
+        <span className='font-mono text-sm font-medium break-all'>
+          {tool.name}
+        </span>
+        <Badge variant='secondary'>
+          {t('Called {{count}} times', { count: formatNumber(tool.called) })}
+        </Badge>
+      </header>
+      {tool.description && (
+        <LongText text={tool.description} className='font-sans' />
+      )}
+      {schema && (
+        <div className='bg-muted/30 rounded-md border px-3 py-2'>
+          <div className='mb-1 flex items-center justify-between'>
+            <span className='text-xs font-medium'>{t('Schema')}</span>
+            <CopyButton text={schema} />
+          </div>
+          <LongText text={schema} />
+        </div>
+      )}
+    </section>
+  )
+}
 
 /** The tools declared by the request: name, description and schema. */
 export function ToolsTab(props: { view: LogContentView }) {
@@ -37,46 +75,12 @@ export function ToolsTab(props: { view: LogContentView }) {
       </p>
     )
   }
+  const tools = view.tools.map((tool, position) => ({ tool, position }))
   return (
     <div className='space-y-3'>
-      {view.tools.map((tool) => {
-        const schema =
-          tool.schema === undefined || tool.schema === null
-            ? ''
-            : JSON.stringify(tool.schema, null, 2)
-        return (
-          <section
-            key={`${tool.name}-${view.tools.indexOf(tool)}`}
-            data-testid='log-content-tool'
-            className='space-y-2 rounded-lg border p-3'
-          >
-            <header className='flex items-center justify-between gap-2'>
-              <span className='font-mono text-sm font-medium break-all'>
-                {tool.name}
-              </span>
-              <Badge variant='secondary'>
-                {t('Called {{count}} times', {
-                  count: formatNumber(tool.called),
-                })}
-              </Badge>
-            </header>
-            {tool.description && (
-              <p className='text-sm break-words whitespace-pre-wrap'>
-                {tool.description}
-              </p>
-            )}
-            {schema && (
-              <div className='bg-muted/30 rounded-md border px-3 py-2'>
-                <div className='mb-1 flex items-center justify-between'>
-                  <span className='text-xs font-medium'>{t('Schema')}</span>
-                  <CopyButton text={schema} />
-                </div>
-                <LongText text={schema} />
-              </div>
-            )}
-          </section>
-        )
-      })}
+      {tools.map((entry) => (
+        <ToolCard key={entry.position} tool={entry.tool} />
+      ))}
     </div>
   )
 }

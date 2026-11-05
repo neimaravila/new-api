@@ -17,19 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDown, ChevronUp, Copy } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { formatBytes } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type {
   LogContentBlock,
   LogContentMessage,
 } from '../../data/log-content-schema'
+import { prettyJsonText, useFormatBytes } from './content-format'
 
 /** Text longer than this starts collapsed. */
 export const LONG_TEXT_CHARS = 4000
@@ -52,13 +52,20 @@ export function CopyButton(props: { text: string; label?: string }) {
   )
 }
 
+/** The first LONG_TEXT_CHARS characters, never ending inside a surrogate pair. */
+function cutText(text: string): string {
+  let end = LONG_TEXT_CHARS
+  const last = text.charCodeAt(end - 1)
+  if (last >= 0xd800 && last <= 0xdbff) end--
+  return text.slice(0, end)
+}
+
 /** Literal text (never HTML or Markdown), cut after LONG_TEXT_CHARS until expanded. */
 export function LongText(props: { text: string; className?: string }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const long = props.text.length > LONG_TEXT_CHARS
-  const shown =
-    long && !expanded ? props.text.slice(0, LONG_TEXT_CHARS) : props.text
+  const shown = long && !expanded ? cutText(props.text) : props.text
   return (
     <div>
       <div
@@ -86,15 +93,6 @@ export function LongText(props: { text: string; className?: string }) {
   )
 }
 
-/** Arguments are shown indented when they are JSON, as sent otherwise. */
-function prettyArguments(raw: string): string {
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
-}
-
 function SubBlock(props: {
   label: string
   error?: boolean
@@ -117,14 +115,17 @@ function SubBlock(props: {
 
 function BlockView(props: { block: LogContentBlock }) {
   const { t } = useTranslation()
+  const formatSize = useFormatBytes()
   const { block } = props
+  const pretty = useMemo(
+    () => prettyJsonText(block.arguments),
+    [block.arguments]
+  )
   switch (block.type) {
     case 'tool_call':
       return (
         <SubBlock label={`${t('Tool call')}: ${block.name}`}>
-          {block.arguments && (
-            <LongText text={prettyArguments(block.arguments)} />
-          )}
+          {block.arguments && <LongText text={pretty} />}
         </SubBlock>
       )
     case 'tool_result':
@@ -145,7 +146,7 @@ function BlockView(props: { block: LogContentBlock }) {
       else if (kind === 'image') label = t('Image')
       return (
         <Badge variant='outline' className='font-mono'>
-          {label} · {block.media_type} · {formatBytes(block.size_bytes)}
+          {label} · {block.media_type} · {formatSize(block.size_bytes)}
         </Badge>
       )
     }
@@ -179,6 +180,7 @@ function messageText(message: LogContentMessage): string {
 export function MessageBlock(props: { message: LogContentMessage }) {
   const { t } = useTranslation()
   const { message } = props
+  const blocks = message.blocks.map((block, position) => ({ block, position }))
   const hasError = message.blocks.some((b) => b.type === 'error')
   return (
     <section
@@ -199,8 +201,8 @@ export function MessageBlock(props: { message: LogContentMessage }) {
         <CopyButton text={messageText(message)} />
       </header>
       <div className='space-y-2'>
-        {message.blocks.map((block) => (
-          <BlockView key={message.blocks.indexOf(block)} block={block} />
+        {blocks.map((entry) => (
+          <BlockView key={entry.position} block={entry.block} />
         ))}
       </div>
     </section>

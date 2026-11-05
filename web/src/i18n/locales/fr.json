@@ -7598,6 +7598,10 @@
     "No messages to show": "Aucun message à afficher",
     "This call declared no tools": "Cet appel n'a déclaré aucun outil",
     "Called {{count}} times": "Appelé {{count}} fois",
-    "Schema": "Schéma"
+    "Schema": "Schéma",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
   }
 }

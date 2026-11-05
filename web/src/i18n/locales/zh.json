@@ -7598,6 +7598,10 @@
     "No messages to show": "没有可显示的消息",
     "This call declared no tools": "此调用未声明工具",
     "Called {{count}} times": "已调用 {{count}} 次",
-    "Schema": "模式"
+    "Schema": "模式",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
   }
 }

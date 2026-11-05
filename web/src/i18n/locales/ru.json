@@ -7598,6 +7598,10 @@
     "No messages to show": "Нет сообщений для показа",
     "This call declared no tools": "Этот вызов не объявил инструменты",
     "Called {{count}} times": "Вызван {{count}} раз",
-    "Schema": "Схема"
+    "Schema": "Схема",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
   }
 }

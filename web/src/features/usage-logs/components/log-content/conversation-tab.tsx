@@ -55,11 +55,16 @@ export function ConversationTab(props: { view: LogContentView }) {
 
   const roles = [...new Set(messages.map((m) => m.role))]
   const activeRole = role && roles.includes(role) ? role : null
+  const entries = messages.map((message, position) => ({ message, position }))
   const filtered = activeRole
-    ? messages.filter((m) => m.role === activeRole)
-    : messages
-  const requestMessages = filtered.filter((m) => m.source !== 'response')
-  const responseMessages = filtered.filter((m) => m.source === 'response')
+    ? entries.filter((e) => e.message.role === activeRole)
+    : entries
+  const requestMessages = filtered.filter(
+    (e) => e.message.source !== 'response'
+  )
+  const responseMessages = filtered.filter(
+    (e) => e.message.source === 'response'
+  )
   const folded = Math.max(0, requestMessages.length - RECENT_MESSAGES)
   const remaining = Math.max(0, folded - revealed)
   const visibleRequest = requestMessages.slice(remaining)
@@ -126,8 +131,8 @@ export function ConversationTab(props: { view: LogContentView }) {
           {t('Show {{count}} earlier messages', { count: nextPage })}
         </Button>
       )}
-      {[...visibleRequest, ...responseMessages].map((message) => (
-        <MessageBlock key={messages.indexOf(message)} message={message} />
+      {[...visibleRequest, ...responseMessages].map((entry) => (
+        <MessageBlock key={entry.position} message={entry.message} />
       ))}
       {filtered.length === 0 && (
         <p className='text-muted-foreground text-sm'>

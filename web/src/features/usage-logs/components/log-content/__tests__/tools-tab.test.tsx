@@ -76,3 +76,25 @@ it('points to the raw JSON when the tools are unknown', () => {
     screen.getByText('Only raw JSON is available for this call')
   ).toBeVisible()
 })
+
+it('copes with a huge and a deeply nested schema and a long description', () => {
+  let deep: unknown = 'leaf'
+  for (let i = 0; i < 50000; i++) deep = [deep]
+  render(
+    <ToolsTab
+      view={view({
+        tools: [
+          {
+            name: 'huge',
+            description: 'd'.repeat(5000),
+            schema: { v: 'x'.repeat(300 * 1024) },
+          },
+          { name: 'deep', schema: deep },
+        ],
+      })}
+    />
+  )
+  expect(screen.getByText('huge')).toBeVisible()
+  expect(screen.getByText('deep')).toBeVisible()
+  expect(screen.getAllByRole('button', { name: 'Show more' })[0]).toBeVisible()
+})

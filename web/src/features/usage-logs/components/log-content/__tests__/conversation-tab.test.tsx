@@ -266,3 +266,66 @@ it('warns when the response could not be read, except for embeddings', () => {
     screen.queryByText('The response of this call could not be read.')
   ).toBeNull()
 })
+
+it('formats sizes in the interface language', async () => {
+  const { default: i18n } = await import('i18next')
+  const before = i18n.language
+  await i18n.changeLanguage('pt-BR')
+  try {
+    const view = makeView(openaiFixture, {
+      conversation: conversation([
+        {
+          role: 'user',
+          source: 'request',
+          blocks: [
+            { type: 'media', media_type: 'image/png', size_bytes: 2560 },
+          ],
+        },
+      ]),
+    })
+    render(<ConversationTab view={view} />)
+    expect(screen.getByText(/2,5 KB/)).toBeVisible()
+  } finally {
+    await i18n.changeLanguage(before)
+  }
+})
+
+it('does not split a surrogate pair when cutting long text', () => {
+  const text = `${'a'.repeat(3999)}😀${'b'.repeat(10)}`
+  render(
+    <ConversationTab
+      view={makeView(openaiFixture, {
+        conversation: conversation([
+          { role: 'user', source: 'request', blocks: [{ type: 'text', text }] },
+        ]),
+      })}
+    />
+  )
+  expect(document.body.textContent).not.toContain('😀')
+  expect(document.body.textContent).not.toMatch(
+    /[\ud800-\udbff](?![\udc00-\udfff])/
+  )
+})
+
+it('shows huge or deeply nested arguments raw without failing', () => {
+  const huge = JSON.stringify({ v: 'x'.repeat(300 * 1024) })
+  const deep = '['.repeat(100000) + ']'.repeat(100000)
+  render(
+    <ConversationTab
+      view={makeView(openaiFixture, {
+        conversation: conversation([
+          {
+            role: 'assistant',
+            source: 'request',
+            blocks: [
+              { type: 'tool_call', name: 'big', arguments: huge },
+              { type: 'tool_call', name: 'deep', arguments: deep },
+            ],
+          },
+        ]),
+      })}
+    />
+  )
+  expect(screen.getByText(/Tool call: big/)).toBeVisible()
+  expect(screen.getByText(/Tool call: deep/)).toBeVisible()
+})

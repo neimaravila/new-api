@@ -7598,6 +7598,10 @@
     "No messages to show": "表示するメッセージがありません",
     "This call declared no tools": "この呼び出しではツールが宣言されていません",
     "Called {{count}} times": "{{count}} 回呼び出し",
-    "Schema": "スキーマ"
+    "Schema": "スキーマ",
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
   }
 }
