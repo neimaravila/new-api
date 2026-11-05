@@ -204,16 +204,20 @@ func queryReportTrendBuckets(scope reportRoleScope, start int64, end int64, inte
 	// GORM Scan into a struct works across SQLite/MySQL/PostgreSQL; for ClickHouse the
 	// same column arithmetic applies (integer division on Int64).
 	bucketExpr := fmt.Sprintf("(created_at - %d) / %d", start, intervalSeconds)
+	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
+		// MySQL's / is decimal division, so the bucket number needs an explicit floor.
+		bucketExpr = fmt.Sprintf("FLOOR((created_at - %d) / %d)", start, intervalSeconds)
+	}
 	tx := model.LOG_DB.Table("logs").
 		Select(bucketExpr+" as bucket, "+
-			"COALESCE(sum(quota), 0) as quota, "+
+			"COALESCE(sum(case when type = ? then quota else 0 end), 0) as quota, "+
 			"count(*) as requests, "+
-			"COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) + COALESCE(sum(cache_tokens), 0) as tokens, "+
+			"COALESCE(sum(case when type = ? then prompt_tokens + completion_tokens + cache_tokens else 0 end), 0) as tokens, "+
 			"sum(case when type = ? then 1 else 0 end) as failures, "+
-			"COALESCE(sum(use_time), 0) as latency_sum, "+
+			"COALESCE(sum(case when type = ? then use_time else 0 end), 0) as latency_sum, "+
 			"sum(case when type = ? then 1 else 0 end) as consumers",
-			model.LogTypeError, model.LogTypeConsume).
-		Where("created_at >= ? and created_at <= ?", start, end).
+			model.LogTypeConsume, model.LogTypeConsume, model.LogTypeError, model.LogTypeConsume, model.LogTypeConsume).
+		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
 		Group("bucket").
 		Order("bucket asc")
 	tx = scope.apply(tx)
@@ -239,7 +243,7 @@ func queryReportTrendBuckets(scope reportRoleScope, start int64, end int64, inte
 			Requests:   r.Requests,
 			Tokens:     r.Tokens,
 			Failures:   r.Failures,
-			LatencySum: r.LatencySum,
+			LatencySum: r.LatencySum * 1000,
 			Consumers:  r.Consumers,
 		})
 	}
@@ -259,14 +263,14 @@ func formatReportBucketLabel(bucketUnix int64, granularity dto.ReportGranularity
 func computeReportModels(scope reportRoleScope, start int64, end int64) ([]dto.ReportModelRow, error) {
 	tx := model.LOG_DB.Table("logs").
 		Select("model_name, "+
-			"COALESCE(sum(quota), 0) as quota, "+
+			"COALESCE(sum(case when type = ? then quota else 0 end), 0) as quota, "+
 			"count(*) as requests, "+
-			"COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) + COALESCE(sum(cache_tokens), 0) as tokens, "+
+			"COALESCE(sum(case when type = ? then prompt_tokens + completion_tokens + cache_tokens else 0 end), 0) as tokens, "+
 			"sum(case when type = ? then 1 else 0 end) as failures, "+
 			"sum(case when type = ? then 1 else 0 end) as consumers, "+
-			"COALESCE(sum(use_time), 0) as latency_sum",
-			model.LogTypeError, model.LogTypeConsume).
-		Where("created_at >= ? and created_at <= ?", start, end).
+			"COALESCE(sum(case when type = ? then use_time else 0 end), 0) as latency_sum",
+			model.LogTypeConsume, model.LogTypeConsume, model.LogTypeError, model.LogTypeConsume, model.LogTypeConsume).
+		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
 		Where("model_name <> ''").
 		Group("model_name").
 		Order("quota desc").
@@ -295,7 +299,7 @@ func computeReportModels(scope reportRoleScope, start int64, end int64) ([]dto.R
 			Tokens:       r.Tokens,
 			Failures:     r.Failures,
 			ErrorRate:    safeRate(r.Failures, r.Requests),
-			AvgLatencyMs: safeDivInt(r.LatencySum, r.Consumers),
+			AvgLatencyMs: safeDivInt(r.LatencySum*1000, r.Consumers),
 		})
 	}
 	return rows, nil
@@ -356,13 +360,13 @@ var (
 func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim reportPerfDimension) ([]dto.ReportPerformanceRow, error) {
 	// Aggregate average + throughput in the DB; compute p95 from a bounded sample per group in Go.
 	aggExpr := dim.column + " as name, " +
-		"COALESCE(sum(use_time), 0) as latency_sum, " +
+		"COALESCE(sum(case when type = ? then use_time else 0 end), 0) as latency_sum, " +
 		"sum(case when type = ? then 1 else 0 end) as consumers, " +
 		"count(*) as requests, " +
-		"COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) + COALESCE(sum(cache_tokens), 0) as tokens"
+		"COALESCE(sum(case when type = ? then prompt_tokens + completion_tokens + cache_tokens else 0 end), 0) as tokens"
 	tx := model.LOG_DB.Table("logs").
-		Select(aggExpr, model.LogTypeConsume).
-		Where("created_at >= ? and created_at <= ?", start, end).
+		Select(aggExpr, model.LogTypeConsume, model.LogTypeConsume, model.LogTypeConsume).
+		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
 		Where(dim.presence).
 		Group(dim.column).
 		Order("latency_sum desc").
@@ -386,10 +390,10 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim
 		if err != nil {
 			return nil, err
 		}
-		throughput := safeDivInt(r.Tokens, safeDivInt(r.LatencySum, 1000))
+		throughput := safeDivInt(r.Tokens, r.LatencySum)
 		rows = append(rows, dto.ReportPerformanceRow{
 			Name:         r.Name,
-			AvgLatencyMs: safeDivInt(r.LatencySum, r.Consumers),
+			AvgLatencyMs: safeDivInt(r.LatencySum*1000, r.Consumers),
 			P95LatencyMs: p95,
 			Requests:     r.Requests,
 			Tokens:       r.Tokens,
@@ -446,7 +450,7 @@ func reportGroupP95(scope reportRoleScope, start int64, end int64, groupCol stri
 	if idx >= len(samples) {
 		idx = len(samples) - 1
 	}
-	return samples[idx], nil
+	return samples[idx] * 1000, nil
 }
 
 // ---- token anatomy ----
@@ -513,10 +517,10 @@ func computeReportStreamComparison(scope reportRoleScope, start int64, end int64
 	out := &dto.ReportStreamComparison{}
 	for _, r := range rawRows {
 		if r.IsStream {
-			out.StreamAvgLatencyMs = safeDivInt(r.LatencySum, r.Consumers)
+			out.StreamAvgLatencyMs = safeDivInt(r.LatencySum*1000, r.Consumers)
 			out.StreamRequests = r.Requests
 		} else {
-			out.NonStreamAvgLatencyMs = safeDivInt(r.LatencySum, r.Consumers)
+			out.NonStreamAvgLatencyMs = safeDivInt(r.LatencySum*1000, r.Consumers)
 			out.NonStreamRequests = r.Requests
 		}
 	}
@@ -528,13 +532,13 @@ func computeReportStreamComparison(scope reportRoleScope, start int64, end int64
 func computeReportChannels(scope reportRoleScope, start int64, end int64) ([]dto.ReportChannelRow, error) {
 	tx := model.LOG_DB.Table("logs").
 		Select("channel_id, "+
-			"COALESCE(sum(quota), 0) as quota, "+
+			"COALESCE(sum(case when type = ? then quota else 0 end), 0) as quota, "+
 			"count(*) as requests, "+
 			"sum(case when type = ? then 1 else 0 end) as failures, "+
 			"sum(case when type = ? then 1 else 0 end) as consumers, "+
-			"COALESCE(sum(use_time), 0) as latency_sum",
-			model.LogTypeError, model.LogTypeConsume).
-		Where("created_at >= ? and created_at <= ?", start, end).
+			"COALESCE(sum(case when type = ? then use_time else 0 end), 0) as latency_sum",
+			model.LogTypeConsume, model.LogTypeError, model.LogTypeConsume, model.LogTypeConsume).
+		Where("created_at >= ? and created_at <= ? and type in (?, ?)", start, end, model.LogTypeConsume, model.LogTypeError).
 		Where("channel_id <> 0").
 		Group("channel_id").
 		Order("quota desc").
@@ -567,7 +571,7 @@ func computeReportChannels(scope reportRoleScope, start int64, end int64) ([]dto
 			Requests:     r.Requests,
 			Failures:     r.Failures,
 			ErrorRate:    safeRate(r.Failures, r.Requests),
-			AvgLatencyMs: safeDivInt(r.LatencySum, r.Consumers),
+			AvgLatencyMs: safeDivInt(r.LatencySum*1000, r.Consumers),
 		})
 	}
 	return rows, nil

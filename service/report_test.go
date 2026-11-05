@@ -241,3 +241,73 @@ func TestGetReportSummaryEmptyFixtureSafe(t *testing.T) {
 	assert.Empty(t, summary.Trend.Points)
 	assert.Equal(t, 0, summary.Trend.Totals.Requests)
 }
+
+func seedReportTypeMixFixture(t *testing.T) (int64, int64) {
+	t.Helper()
+	now := time.Now().Unix()
+	at := now - 2*3600
+	logs := []model.Log{
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 100, PromptTokens: 50, CompletionTokens: 30, UseTime: 2},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeError, ModelName: "gpt-4o", ChannelId: 10},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeTopup, ModelName: "gpt-4o", ChannelId: 10, Quota: 5000},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeRefund, ModelName: "gpt-4o", ChannelId: 10, Quota: 700},
+		{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeManage, ModelName: "gpt-4o", ChannelId: 10},
+	}
+	for i := range logs {
+		require.NoError(t, model.LOG_DB.Create(&logs[i]).Error)
+	}
+	return now - 24*3600, now
+}
+
+func TestReportTotalsCountOnlyConsumeAndError(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	start, end := seedReportTypeMixFixture(t)
+	admin := reportScope(99, "admin", common.RoleAdminUser)
+
+	trend, err := computeReportTrend(admin, start, end, dto.ReportGranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, 2, trend.Totals.Requests)
+	assert.Equal(t, 1, trend.Totals.Failures)
+	assert.Equal(t, 1, trend.Totals.Consumers)
+	assert.Equal(t, 100, trend.Totals.Quota)
+	assert.Equal(t, 80, trend.Totals.Tokens)
+	assert.Equal(t, 2000, trend.Totals.AvgLatencyMs)
+
+	models, err := computeReportModels(admin, start, end)
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	assert.Equal(t, 2, models[0].Requests)
+	assert.Equal(t, 100, models[0].Quota)
+	assert.Equal(t, 2000, models[0].AvgLatencyMs)
+
+	channels, err := computeReportChannels(admin, start, end)
+	require.NoError(t, err)
+	require.Len(t, channels, 1)
+	assert.Equal(t, 2, channels[0].Requests)
+	assert.Equal(t, 100, channels[0].Quota)
+	assert.Equal(t, 2000, channels[0].AvgLatencyMs)
+
+	perf, err := computeReportPerformance(admin, start, end, reportPerfByModel)
+	require.NoError(t, err)
+	require.Len(t, perf, 1)
+	assert.Equal(t, 2, perf[0].Requests)
+
+	stream, err := computeReportStreamComparison(admin, start, end)
+	require.NoError(t, err)
+	assert.Equal(t, 1, stream.NonStreamRequests)
+}
+
+func TestReportPerformanceUsesMilliseconds(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	at := time.Now().Unix() - 3600
+	for _, useTime := range []int{2, 4} {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 10, PromptTokens: 10, CompletionTokens: 20, UseTime: useTime}).Error)
+	}
+
+	rows, err := computeReportPerformance(reportScope(99, "admin", common.RoleAdminUser), at-3600, at+3600, reportPerfByModel)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 3000, rows[0].AvgLatencyMs)
+	assert.Equal(t, 4000, rows[0].P95LatencyMs)
+	assert.Equal(t, 10, rows[0].Throughput)
+}
