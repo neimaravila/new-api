@@ -71,6 +71,7 @@ type ReportErrorRow struct {
 type ReportPerformanceRow struct {
 	Name        string  `json:"name"`
 	AvgLatencyMs int    `json:"avg_latency_ms"`
+	P50LatencyMs int    `json:"p50_latency_ms"`
 	P95LatencyMs int    `json:"p95_latency_ms"`
 	Requests    int     `json:"requests"`
 	Tokens      int     `json:"tokens"`
@@ -112,6 +113,32 @@ type ReportSummary struct {
 	TokenAnatomy  []ReportTokenAnatomyRow `json:"token_anatomy"`
 	Channels      []ReportChannelRow     `json:"channels,omitempty"`
 	StreamPerformance *ReportStreamComparison `json:"stream_performance,omitempty"`
+	CostByModel   ReportCostSeries       `json:"cost_by_model"`
+	LatencySeries []ReportLatencyPoint   `json:"latency_series"`
+}
+
+// ReportCostOthersKey is the series key that groups every model outside the top cost models.
+const ReportCostOthersKey = "__others__"
+
+// ReportCostPoint is one temporal bucket of cost split by model.
+type ReportCostPoint struct {
+	BucketLabel     string         `json:"bucket_label"`
+	BucketTimestamp int64          `json:"bucket_timestamp"`
+	Values          map[string]int `json:"values"`
+}
+
+// ReportCostSeries is cost over time split by the top models, with the rest under ReportCostOthersKey.
+type ReportCostSeries struct {
+	Models []string          `json:"models"`
+	Points []ReportCostPoint `json:"points"`
+}
+
+// ReportLatencyPoint is the latency percentiles (ms) of one temporal bucket.
+type ReportLatencyPoint struct {
+	BucketLabel     string `json:"bucket_label"`
+	BucketTimestamp int64  `json:"bucket_timestamp"`
+	P50Ms           int    `json:"p50_ms"`
+	P95Ms           int    `json:"p95_ms"`
 }
 
 // ReportStreamComparison compares stream vs non-stream throughput.

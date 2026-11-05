@@ -21,6 +21,7 @@ const (
 	reportTokenAnatomyLimit      = 30
 	reportChannelLimit           = 30
 	reportLatencySampleLimit     = 5000
+	reportCostModelLimit         = 5
 	reportThroughputMinUseTimeMs = 1
 )
 
@@ -130,6 +131,15 @@ func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRan
 		return dto.ReportSummary{}, err
 	}
 
+	costByModel, err := computeReportCostByModel(scope, start, end, granularity)
+	if err != nil {
+		return dto.ReportSummary{}, err
+	}
+	latencySeries, err := computeReportLatencySeries(scope, start, end, granularity)
+	if err != nil {
+		return dto.ReportSummary{}, err
+	}
+
 	summary := dto.ReportSummary{
 		Role:              dto.DashboardRoleUser,
 		Range:             r,
@@ -142,6 +152,8 @@ func GetReportSummary(userID int, username string, role int, r dto.ReportTimeRan
 		ModelPerformance:  modelPerf,
 		TokenAnatomy:      tokenAnatomy,
 		StreamPerformance: streamPerf,
+		CostByModel:       costByModel,
+		LatencySeries:     latencySeries,
 	}
 	if scope.isAdmin {
 		summary.Role = dto.DashboardRoleAdmin
@@ -402,7 +414,7 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim
 
 	rows := make([]dto.ReportPerformanceRow, 0, len(rawRows))
 	for _, r := range rawRows {
-		p95, err := reportGroupP95(scope, start, end, dim.column, r.Name)
+		p50, p95, err := reportGroupPercentiles(scope, start, end, dim.column, r.Name, reportLatencySampleLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -410,6 +422,7 @@ func computeReportPerformance(scope reportRoleScope, start int64, end int64, dim
 		rows = append(rows, dto.ReportPerformanceRow{
 			Name:         r.Name,
 			AvgLatencyMs: safeDivInt(r.LatencySum*1000, r.Consumers),
+			P50LatencyMs: p50,
 			P95LatencyMs: p95,
 			Requests:     r.Requests,
 			Tokens:       r.Tokens,
@@ -444,29 +457,175 @@ func nameChannelPerformanceRows(rows []dto.ReportPerformanceRow) {
 	}
 }
 
-// reportGroupP95 fetches a bounded sample of use_time for a group and computes the 95th percentile.
-// Cross-DB-safe: only reads scalar use_time values; no percentile SQL function is used.
-func reportGroupP95(scope reportRoleScope, start int64, end int64, groupCol string, groupVal string) (int, error) {
+// reportGroupPercentiles fetches a bounded sample of use_time for a group and computes the 50th and
+// 95th percentiles in milliseconds. Cross-DB-safe: only reads scalar use_time values; no percentile
+// SQL function is used.
+func reportGroupPercentiles(scope reportRoleScope, start int64, end int64, groupCol string, groupVal string, sampleLimit int) (int, int, error) {
 	tx := model.LOG_DB.Table("logs").
 		Select("use_time").
 		Where("created_at >= ? and created_at <= ? and "+groupCol+" = ? and type = ? and use_time > 0", start, end, groupVal, model.LogTypeConsume).
 		Order("use_time asc").
-		Limit(reportLatencySampleLimit)
+		Limit(sampleLimit)
 	tx = scope.apply(tx)
 
 	var samples []int
 	if err := tx.Pluck("use_time", &samples).Error; err != nil {
-		return 0, err
+		return 0, 0, err
 	}
+	p50, p95 := reportPercentilesMs(samples)
+	return p50, p95, nil
+}
+
+// reportPercentilesMs returns the p50 and p95 of use_time samples (seconds) in milliseconds.
+func reportPercentilesMs(samples []int) (int, int) {
 	if len(samples) == 0 {
-		return 0, nil
+		return 0, 0
 	}
 	sort.Ints(samples)
-	idx := int(float64(len(samples)) * 0.95)
-	if idx >= len(samples) {
-		idx = len(samples) - 1
+	at := func(q float64) int {
+		idx := int(float64(len(samples)) * q)
+		if idx >= len(samples) {
+			idx = len(samples) - 1
+		}
+		return samples[idx] * 1000
 	}
-	return samples[idx] * 1000, nil
+	return at(0.5), at(0.95)
+}
+
+// ---- cost by model ----
+
+func computeReportCostByModel(scope reportRoleScope, start int64, end int64, granularity dto.ReportGranularity) (dto.ReportCostSeries, error) {
+	intervalSeconds := reportIntervalSeconds(granularity)
+	bucketStart := start - (start % intervalSeconds)
+	bucketExpr := reportBucketExpr(bucketStart, intervalSeconds)
+
+	tx := model.LOG_DB.Table("logs").
+		Select(bucketExpr+" as bucket, model_name, COALESCE(sum(quota), 0) as quota").
+		Where("created_at >= ? and created_at <= ? and type = ?", bucketStart, end, model.LogTypeConsume).
+		Where("model_name <> ''").
+		Group("bucket, model_name").
+		Order("bucket asc")
+	tx = scope.apply(tx)
+
+	var rawRows []struct {
+		Bucket    int64  `gorm:"column:bucket"`
+		ModelName string `gorm:"column:model_name"`
+		Quota     int    `gorm:"column:quota"`
+	}
+	if err := tx.Scan(&rawRows).Error; err != nil {
+		return dto.ReportCostSeries{}, err
+	}
+
+	totalByModel := make(map[string]int)
+	for _, r := range rawRows {
+		totalByModel[r.ModelName] += r.Quota
+	}
+	names := make([]string, 0, len(totalByModel))
+	for name := range totalByModel {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if totalByModel[names[i]] != totalByModel[names[j]] {
+			return totalByModel[names[i]] > totalByModel[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	hasOthers := len(names) > reportCostModelLimit
+	if hasOthers {
+		names = names[:reportCostModelLimit]
+	}
+	top := make(map[string]bool, len(names))
+	for _, name := range names {
+		top[name] = true
+	}
+	models := append([]string{}, names...)
+	if hasOthers {
+		models = append(models, dto.ReportCostOthersKey)
+	}
+
+	points := make([]dto.ReportCostPoint, 0)
+	byBucket := make(map[int64]*dto.ReportCostPoint)
+	for _, r := range rawRows {
+		ts := bucketStart + r.Bucket*intervalSeconds
+		p, ok := byBucket[ts]
+		if !ok {
+			points = append(points, dto.ReportCostPoint{
+				BucketLabel:     formatReportBucketLabel(ts, granularity),
+				BucketTimestamp: ts,
+				Values:          map[string]int{},
+			})
+			p = &points[len(points)-1]
+			byBucket[ts] = p
+		}
+		key := r.ModelName
+		if !top[key] {
+			key = dto.ReportCostOthersKey
+		}
+		p.Values[key] += r.Quota
+	}
+	return dto.ReportCostSeries{Models: models, Points: points}, nil
+}
+
+// ---- latency percentile series ----
+
+func computeReportLatencySeries(scope reportRoleScope, start int64, end int64, granularity dto.ReportGranularity) ([]dto.ReportLatencyPoint, error) {
+	intervalSeconds := reportIntervalSeconds(granularity)
+	bucketStart := start - (start % intervalSeconds)
+
+	// One bounded sample, most recent first; percentiles are computed in Go for cross-DB safety.
+	tx := model.LOG_DB.Table("logs").
+		Select("created_at, use_time").
+		Where("created_at >= ? and created_at <= ? and type = ? and use_time > 0", bucketStart, end, model.LogTypeConsume).
+		Order("created_at desc").
+		Limit(reportLatencySampleLimit)
+	tx = scope.apply(tx)
+
+	var rawRows []struct {
+		CreatedAt int64 `gorm:"column:created_at"`
+		UseTime   int   `gorm:"column:use_time"`
+	}
+	if err := tx.Scan(&rawRows).Error; err != nil {
+		return nil, err
+	}
+
+	samplesByBucket := make(map[int64][]int)
+	for _, r := range rawRows {
+		ts := bucketStart + (r.CreatedAt-bucketStart)/intervalSeconds*intervalSeconds
+		samplesByBucket[ts] = append(samplesByBucket[ts], r.UseTime)
+	}
+	timestamps := make([]int64, 0, len(samplesByBucket))
+	for ts := range samplesByBucket {
+		timestamps = append(timestamps, ts)
+	}
+	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
+
+	points := make([]dto.ReportLatencyPoint, 0, len(timestamps))
+	for _, ts := range timestamps {
+		p50, p95 := reportPercentilesMs(samplesByBucket[ts])
+		points = append(points, dto.ReportLatencyPoint{
+			BucketLabel:     formatReportBucketLabel(ts, granularity),
+			BucketTimestamp: ts,
+			P50Ms:           p50,
+			P95Ms:           p95,
+		})
+	}
+	return points, nil
+}
+
+func reportIntervalSeconds(granularity dto.ReportGranularity) int64 {
+	if granularity == dto.ReportGranularityDay {
+		return 86400
+	}
+	return 3600
+}
+
+// reportBucketExpr builds the portable bucket-number expression for created_at.
+func reportBucketExpr(start int64, intervalSeconds int64) string {
+	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
+		// MySQL's / is decimal division, so the bucket number needs an explicit floor.
+		return fmt.Sprintf("FLOOR((created_at - %d) / %d)", start, intervalSeconds)
+	}
+	return fmt.Sprintf("(created_at - %d) / %d", start, intervalSeconds)
 }
 
 // ---- token anatomy ----

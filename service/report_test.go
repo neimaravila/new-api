@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -240,6 +241,9 @@ func TestGetReportSummaryEmptyFixtureSafe(t *testing.T) {
 	assert.Empty(t, summary.Errors)
 	assert.Empty(t, summary.Trend.Points)
 	assert.Equal(t, 0, summary.Trend.Totals.Requests)
+	assert.Empty(t, summary.CostByModel.Models)
+	assert.Empty(t, summary.CostByModel.Points)
+	assert.Empty(t, summary.LatencySeries)
 }
 
 func seedReportTypeMixFixture(t *testing.T) (int64, int64) {
@@ -353,4 +357,70 @@ func TestReportSummaryChannelFilterAppliesForAdmin(t *testing.T) {
 	for _, row := range summary.Channels {
 		assert.Equal(t, 11, row.ChannelID)
 	}
+}
+
+func reportAdminScope() reportRoleScope {
+	return reportScope(99, "admin", common.RoleAdminUser, dto.ReportFilter{})
+}
+
+func TestReportCostByModelGroupsTopFiveAndOthers(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	at := time.Now().Unix() - 3600
+	for i := 1; i <= 7; i++ {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "model-" + strconv.Itoa(i), ChannelId: 10, Quota: i * 100, UseTime: 1}).Error)
+	}
+
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeToday, dto.ReportGranularityDay, dto.ReportFilter{})
+	require.NoError(t, err)
+	cost := summary.CostByModel
+	assert.Equal(t, []string{"model-7", "model-6", "model-5", "model-4", "model-3", dto.ReportCostOthersKey}, cost.Models)
+	sum := 0
+	for _, p := range cost.Points {
+		for _, v := range p.Values {
+			sum += v
+		}
+	}
+	assert.Equal(t, summary.Trend.Totals.Quota, sum)
+	assert.Equal(t, 300, cost.Points[0].Values[dto.ReportCostOthersKey])
+}
+
+func TestReportCostByModelSkipsEmptyModelName(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	at := time.Now().Unix() - 3600
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "", Quota: 50, UseTime: 1}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "gpt-4o", Quota: 70, UseTime: 1}).Error)
+
+	cost, err := computeReportCostByModel(reportAdminScope(), at-3600, at+3600, dto.ReportGranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gpt-4o"}, cost.Models)
+	for _, p := range cost.Points {
+		_, has := p.Values[""]
+		assert.False(t, has)
+	}
+}
+
+func TestReportLatencySeriesPercentiles(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	at := time.Now().Unix() - 3600
+	for _, useTime := range []int{1, 2, 3, 4, 100} {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeConsume, ModelName: "gpt-4o", Quota: 1, UseTime: useTime}).Error)
+	}
+
+	series, err := computeReportLatencySeries(reportAdminScope(), at-3600, at+3600, dto.ReportGranularityDay)
+	require.NoError(t, err)
+	require.Len(t, series, 1)
+	assert.Equal(t, 3000, series[0].P50Ms)
+	assert.Equal(t, 100000, series[0].P95Ms)
+}
+
+func TestReportLatencySeriesOmitsEmptyBuckets(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	at := time.Now().Unix() - 3600
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at, Type: model.LogTypeError, ModelName: "gpt-4o", UseTime: 5}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: at - 2*3600, Type: model.LogTypeConsume, ModelName: "gpt-4o", Quota: 1, UseTime: 2}).Error)
+
+	series, err := computeReportLatencySeries(reportAdminScope(), at-6*3600, at+3600, dto.ReportGranularityHour)
+	require.NoError(t, err)
+	require.Len(t, series, 1)
+	assert.Equal(t, 2000, series[0].P50Ms)
 }
