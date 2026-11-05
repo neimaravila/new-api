@@ -7583,6 +7583,21 @@
     "Conversation": "Conversation",
     "Routing": "Routage",
     "Sensitive data is hidden.": "Les données sensibles sont masquées.",
-    "Could not load the content of this call": "Impossible de charger le contenu de cet appel"
+    "Could not load the content of this call": "Impossible de charger le contenu de cet appel",
+    "Show more": "Afficher plus",
+    "Show less": "Afficher moins",
+    "Tool call": "Appel d'outil",
+    "Tool result": "Résultat d'outil",
+    "Media": "Média",
+    "Thinking": "Réflexion",
+    "Only raw JSON is available for this call": "Seul le JSON brut est disponible pour cet appel",
+    "The response of this call could not be read.": "La réponse de cet appel n'a pas pu être lue.",
+    "Filter by role": "Filtrer par rôle",
+    "Clear filter": "Effacer le filtre",
+    "Show {{count}} earlier messages": "Afficher {{count}} messages plus anciens",
+    "No messages to show": "Aucun message à afficher",
+    "This call declared no tools": "Cet appel n'a déclaré aucun outil",
+    "Called {{count}} times": "Appelé {{count}} fois",
+    "Schema": "Schéma"
   }
 }

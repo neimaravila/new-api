@@ -7583,6 +7583,21 @@
     "Conversation": "Hội thoại",
     "Routing": "Định tuyến",
     "Sensitive data is hidden.": "Dữ liệu nhạy cảm đã bị ẩn.",
-    "Could not load the content of this call": "Không thể tải nội dung của lệnh gọi này"
+    "Could not load the content of this call": "Không thể tải nội dung của lệnh gọi này",
+    "Show more": "Xem thêm",
+    "Show less": "Thu gọn",
+    "Tool call": "Lệnh gọi công cụ",
+    "Tool result": "Kết quả công cụ",
+    "Media": "Phương tiện",
+    "Thinking": "Suy luận",
+    "Only raw JSON is available for this call": "Chỉ có JSON thô cho lệnh gọi này",
+    "The response of this call could not be read.": "Không thể đọc phản hồi của lệnh gọi này.",
+    "Filter by role": "Lọc theo vai trò",
+    "Clear filter": "Xóa bộ lọc",
+    "Show {{count}} earlier messages": "Hiện {{count}} tin nhắn cũ hơn",
+    "No messages to show": "Không có tin nhắn để hiển thị",
+    "This call declared no tools": "Lệnh gọi này không khai báo công cụ",
+    "Called {{count}} times": "Đã gọi {{count}} lần",
+    "Schema": "Lược đồ"
   }
 }

@@ -7583,6 +7583,21 @@
     "Conversation": "對話",
     "Routing": "路由",
     "Sensitive data is hidden.": "敏感資料已隱藏。",
-    "Could not load the content of this call": "無法載入此次呼叫的內容"
+    "Could not load the content of this call": "無法載入此次呼叫的內容",
+    "Show more": "顯示更多",
+    "Show less": "收起",
+    "Tool call": "工具呼叫",
+    "Tool result": "工具結果",
+    "Media": "媒體",
+    "Thinking": "思考",
+    "Only raw JSON is available for this call": "此呼叫僅提供原始 JSON",
+    "The response of this call could not be read.": "無法讀取此呼叫的回應。",
+    "Filter by role": "依角色篩選",
+    "Clear filter": "清除篩選",
+    "Show {{count}} earlier messages": "顯示更早的 {{count}} 則訊息",
+    "No messages to show": "沒有可顯示的訊息",
+    "This call declared no tools": "此呼叫未宣告工具",
+    "Called {{count}} times": "已呼叫 {{count}} 次",
+    "Schema": "結構"
   }
 }

@@ -30,12 +30,15 @@ import {
 import { Sheet, SheetContent, SheetDescription } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+import type { LogContentView } from '../../data/log-content-schema'
 import type { UsageLog } from '../../data/schema'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { useUsageLogsContext } from '../usage-logs-provider'
+import { ConversationTab } from './conversation-tab'
 import { LogContentHeader } from './log-content-header'
 import { LogContentNotice, LogContentWarnings } from './log-content-notice'
 import { LogContentStats } from './log-content-stats'
+import { ToolsTab } from './tools-tab'
 import { logHasContent, useLogContent } from './use-log-content'
 
 /** The panel covers about 60% of the screen over the list from `lg` up. */
@@ -146,7 +149,7 @@ export function LogContentPanel(props: {
     }
   }
 
-  const tabBody = (id: TabId): ReactNode => {
+  const tabBody = (id: TabId, current: LogContentView): ReactNode => {
     if (!sensitiveVisible && id !== 'routing') {
       return (
         <p className='text-muted-foreground text-sm' role='status'>
@@ -154,8 +157,13 @@ export function LogContentPanel(props: {
         </p>
       )
     }
-    // Tasks 14 and 15 put the conversation, tools, routing and raw views here.
-    return <div data-testid={`log-content-tab-${id}`} />
+    // Task 15 puts the routing and raw views here.
+    return (
+      <div data-testid={`log-content-tab-${id}`}>
+        {id === 'conversation' && <ConversationTab view={current} />}
+        {id === 'tools' && <ToolsTab view={current} />}
+      </div>
+    )
   }
 
   let body: ReactNode = null
@@ -197,7 +205,7 @@ export function LogContentPanel(props: {
                 value={item.id}
                 data-log-content-scroll=''
               >
-                {tabBody(item.id)}
+                {tabBody(item.id, view)}
               </TabsContent>
             ))}
           </Tabs>

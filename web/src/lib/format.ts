@@ -321,3 +321,16 @@ export function stringToColor(str: string): string {
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }
+
+/** Human readable size of a payload, e.g. 2048 -> "2 KB". */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || Number.isNaN(bytes) || bytes < 0) return '-'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${formatNumber(value)} ${units[unit]}`
+}

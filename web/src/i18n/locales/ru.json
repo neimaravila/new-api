@@ -7583,6 +7583,21 @@
     "Conversation": "Диалог",
     "Routing": "Маршрутизация",
     "Sensitive data is hidden.": "Конфиденциальные данные скрыты.",
-    "Could not load the content of this call": "Не удалось загрузить содержимое этого вызова"
+    "Could not load the content of this call": "Не удалось загрузить содержимое этого вызова",
+    "Show more": "Показать больше",
+    "Show less": "Показать меньше",
+    "Tool call": "Вызов инструмента",
+    "Tool result": "Результат инструмента",
+    "Media": "Медиа",
+    "Thinking": "Рассуждение",
+    "Only raw JSON is available for this call": "Для этого вызова доступен только исходный JSON",
+    "The response of this call could not be read.": "Не удалось прочитать ответ этого вызова.",
+    "Filter by role": "Фильтр по роли",
+    "Clear filter": "Сбросить фильтр",
+    "Show {{count}} earlier messages": "Показать более ранние сообщения: {{count}}",
+    "No messages to show": "Нет сообщений для показа",
+    "This call declared no tools": "Этот вызов не объявил инструменты",
+    "Called {{count}} times": "Вызван {{count}} раз",
+    "Schema": "Схема"
   }
 }

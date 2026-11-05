@@ -7583,6 +7583,21 @@
     "Conversation": "会話",
     "Routing": "ルーティング",
     "Sensitive data is hidden.": "機密データは非表示です。",
-    "Could not load the content of this call": "この呼び出しの内容を読み込めませんでした"
+    "Could not load the content of this call": "この呼び出しの内容を読み込めませんでした",
+    "Show more": "もっと見る",
+    "Show less": "閉じる",
+    "Tool call": "ツール呼び出し",
+    "Tool result": "ツールの結果",
+    "Media": "メディア",
+    "Thinking": "思考",
+    "Only raw JSON is available for this call": "この呼び出しでは生の JSON のみ利用できます",
+    "The response of this call could not be read.": "この呼び出しのレスポンスを読み取れませんでした。",
+    "Filter by role": "ロールで絞り込む",
+    "Clear filter": "フィルターを解除",
+    "Show {{count}} earlier messages": "以前の {{count}} 件のメッセージを表示",
+    "No messages to show": "表示するメッセージがありません",
+    "This call declared no tools": "この呼び出しではツールが宣言されていません",
+    "Called {{count}} times": "{{count}} 回呼び出し",
+    "Schema": "スキーマ"
   }
 }

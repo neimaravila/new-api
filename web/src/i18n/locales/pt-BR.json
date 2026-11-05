@@ -7561,6 +7561,21 @@
     "Conversation": "Conversa",
     "Routing": "Roteamento",
     "Sensitive data is hidden.": "Os dados sensíveis estão ocultos.",
-    "Could not load the content of this call": "Não foi possível carregar o conteúdo desta chamada"
+    "Could not load the content of this call": "Não foi possível carregar o conteúdo desta chamada",
+    "Show more": "Mostrar mais",
+    "Show less": "Mostrar menos",
+    "Tool call": "Chamada de ferramenta",
+    "Tool result": "Resultado da ferramenta",
+    "Media": "Mídia",
+    "Thinking": "Raciocínio",
+    "Only raw JSON is available for this call": "Apenas o JSON bruto está disponível para esta chamada",
+    "The response of this call could not be read.": "Não foi possível ler a resposta desta chamada.",
+    "Filter by role": "Filtrar por papel",
+    "Clear filter": "Limpar filtro",
+    "Show {{count}} earlier messages": "Mostrar {{count}} mensagens anteriores",
+    "No messages to show": "Nenhuma mensagem para mostrar",
+    "This call declared no tools": "Esta chamada não declarou ferramentas",
+    "Called {{count}} times": "Chamada {{count}} vezes",
+    "Schema": "Esquema"
   }
 }

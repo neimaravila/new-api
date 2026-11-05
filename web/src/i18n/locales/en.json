@@ -7583,6 +7583,21 @@
     "Conversation": "Conversation",
     "Routing": "Routing",
     "Sensitive data is hidden.": "Sensitive data is hidden.",
-    "Could not load the content of this call": "Could not load the content of this call"
+    "Could not load the content of this call": "Could not load the content of this call",
+    "Show more": "Show more",
+    "Show less": "Show less",
+    "Tool call": "Tool call",
+    "Tool result": "Tool result",
+    "Media": "Media",
+    "Thinking": "Thinking",
+    "Only raw JSON is available for this call": "Only raw JSON is available for this call",
+    "The response of this call could not be read.": "The response of this call could not be read.",
+    "Filter by role": "Filter by role",
+    "Clear filter": "Clear filter",
+    "Show {{count}} earlier messages": "Show {{count}} earlier messages",
+    "No messages to show": "No messages to show",
+    "This call declared no tools": "This call declared no tools",
+    "Called {{count}} times": "Called {{count}} times",
+    "Schema": "Schema"
   }
 }
