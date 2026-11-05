@@ -27,6 +27,8 @@ import type {
   GetLogsResponse,
   GetLogStatsParams,
   GetLogStatsResponse,
+  GetLogSummaryParams,
+  GetLogSummaryResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
   TaskArtifactsResponse,
@@ -87,6 +89,20 @@ export const getLogStats = (params: GetLogStatsParams = {}) =>
 export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
+
+/** Totals and a request histogram for the logs matching params. */
+export async function getLogSummary(
+  params: GetLogSummaryParams,
+  isAdmin: boolean
+): Promise<GetLogSummaryResponse> {
+  const queryParams = buildQueryParams(
+    params as unknown as Record<string, unknown>
+  )
+  const res = await api.get(
+    `${buildApiPath('/api/log', isAdmin)}/summary?${queryParams}`
+  )
+  return res.data
+}
 
 /**
  * Stream the logs matching params, newest first. The server sends one JSON

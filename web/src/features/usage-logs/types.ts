@@ -465,6 +465,32 @@ export interface GetLogStatsParams {
   upstream_request_id?: string
 }
 
+export type GetLogSummaryParams = GetLogStatsParams
+
+export interface LogSummaryBucket {
+  timestamp: number
+  requests: number
+  failures: number
+}
+
+export interface LogSummary {
+  requests: number
+  successes: number
+  failures: number
+  tokens: number
+  quota: number
+  avg_use_time_seconds: number
+  bucket_seconds: number
+  buckets: LogSummaryBucket[]
+  error_log_enabled: boolean
+}
+
+export interface GetLogSummaryResponse {
+  success: boolean
+  message?: string
+  data?: LogSummary
+}
+
 export interface GetLogStatsResponse {
   success: boolean
   message?: string

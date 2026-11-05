@@ -33,9 +33,17 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+import { StubVChart } from '@/features/dashboard/components/reports/__tests__/vchart-stub'
 import { usageLogSchema } from '../../data/schema'
 import { UsageLogsProvider, useUsageLogsContext } from '../usage-logs-provider'
 import { UsageLogsTable } from '../usage-logs-table'
+
+// The summary chart needs a canvas; the stub keeps the table under test.
+vi.mock('@visactor/react-vchart', () => ({
+  VChart: (props: { spec: Record<string, unknown> }) => (
+    <StubVChart spec={props.spec} />
+  ),
+}))
 
 function LogsFixture() {
   const { viewScope, setViewScope } = useUsageLogsContext()
