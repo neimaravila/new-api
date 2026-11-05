@@ -294,7 +294,7 @@ func UpdateOption(c *gin.Context) {
 	case "LogContentRetentionDays":
 		days, convErr := strconv.Atoi(option.Value.(string))
 		if convErr != nil || days < common.LogContentRetentionDaysMin || days > common.LogContentRetentionDaysMax {
-			common.ApiErrorMsg(c, "Log content retention days must be an integer between 1 and 3650")
+			common.ApiErrorT(c, "Log content retention days must be an integer between 1 and 3650")
 			return
 		}
 	case "ImageRatio":

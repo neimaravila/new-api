@@ -7614,6 +7614,16 @@
     "Response received from the provider": "Ответ, полученный от провайдера",
     "The request sent to the provider was not captured for this attempt.": "Запрос, отправленный провайдеру, не был сохранён для этой попытки.",
     "This body could not be decoded, so no text is shown.": "Это тело не удалось декодировать, поэтому текст не показан.",
-    "Original size: {{size}}": "Исходный размер: {{size}}"
+    "Original size: {{size}}": "Исходный размер: {{size}}",
+    "Call content capture": "Сохранение содержимого вызовов",
+    "Capture call content": "Сохранять содержимое вызовов",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "Сохраняет запрос и ответ каждого вызова, чтобы администраторы и пользователи могли просматривать их в журналах использования. Ключи и заголовки не сохраняются.",
+    "Call content retention (days)": "Срок хранения содержимого вызовов (дни)",
+    "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "Сохранённое содержимое старше этого срока удаляется автоматически. От 1 до 3650 дней.",
+    "Enqueued: {{count}}": "В очереди: {{count}}",
+    "Written: {{count}}": "Записано: {{count}}",
+    "Dropped: {{count}}": "Отброшено: {{count}}",
+    "Write errors: {{count}}": "Ошибки записи: {{count}}",
+    "Log content retention days must be an integer between 1 and 3650": "Срок хранения содержимого должен быть целым числом от 1 до 3650 дней"
   }
 }

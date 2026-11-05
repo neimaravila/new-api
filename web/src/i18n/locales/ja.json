@@ -7614,6 +7614,16 @@
     "Response received from the provider": "プロバイダーから受信したレスポンス",
     "The request sent to the provider was not captured for this attempt.": "この試行ではプロバイダーへ送信したリクエストは記録されませんでした。",
     "This body could not be decoded, so no text is shown.": "この本文はデコードできないため、テキストは表示されません。",
-    "Original size: {{size}}": "元のサイズ: {{size}}"
+    "Original size: {{size}}": "元のサイズ: {{size}}",
+    "Call content capture": "通話内容のキャプチャ",
+    "Capture call content": "通話内容をキャプチャ",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "各呼び出しのリクエストとレスポンスを保存し、管理者とユーザーが使用ログから確認できるようにします。キーとヘッダーは保存されません。",
+    "Call content retention (days)": "通話内容の保持期間（日）",
+    "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "この期間より古いキャプチャ内容は自動的に削除されます。1〜3650日。",
+    "Enqueued: {{count}}": "キュー投入：{{count}}",
+    "Written: {{count}}": "書き込み済み：{{count}}",
+    "Dropped: {{count}}": "破棄：{{count}}",
+    "Write errors: {{count}}": "書き込みエラー：{{count}}",
+    "Log content retention days must be an integer between 1 and 3650": "内容の保持日数は1〜3650の整数である必要があります"
   }
 }

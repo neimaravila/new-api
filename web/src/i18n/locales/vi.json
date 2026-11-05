@@ -7614,6 +7614,16 @@
     "Response received from the provider": "Phản hồi nhận từ nhà cung cấp",
     "The request sent to the provider was not captured for this attempt.": "Yêu cầu gửi tới nhà cung cấp không được ghi lại cho lần thử này.",
     "This body could not be decoded, so no text is shown.": "Không thể giải mã nội dung này nên không hiển thị văn bản.",
-    "Original size: {{size}}": "Kích thước gốc: {{size}}"
+    "Original size: {{size}}": "Kích thước gốc: {{size}}",
+    "Call content capture": "Ghi lại nội dung cuộc gọi",
+    "Capture call content": "Ghi lại nội dung cuộc gọi",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "Lưu yêu cầu và phản hồi của mỗi cuộc gọi để quản trị viên và người dùng xem trong nhật ký sử dụng. Khóa và tiêu đề không bao giờ được lưu.",
+    "Call content retention (days)": "Thời gian lưu nội dung cuộc gọi (ngày)",
+    "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "Nội dung đã ghi cũ hơn mức này sẽ tự động bị xóa. Từ 1 đến 3650 ngày.",
+    "Enqueued: {{count}}": "Đã xếp hàng: {{count}}",
+    "Written: {{count}}": "Đã ghi: {{count}}",
+    "Dropped: {{count}}": "Đã bỏ: {{count}}",
+    "Write errors: {{count}}": "Lỗi ghi: {{count}}",
+    "Log content retention days must be an integer between 1 and 3650": "Số ngày lưu nội dung phải là số nguyên từ 1 đến 3650"
   }
 }

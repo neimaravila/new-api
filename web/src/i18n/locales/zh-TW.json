@@ -7614,6 +7614,16 @@
     "Response received from the provider": "從供應商收到的回應",
     "The request sent to the provider was not captured for this attempt.": "此次嘗試未擷取傳送給供應商的請求。",
     "This body could not be decoded, so no text is shown.": "此內容無法解碼，因此不顯示文字。",
-    "Original size: {{size}}": "原始大小：{{size}}"
+    "Original size: {{size}}": "原始大小：{{size}}",
+    "Call content capture": "呼叫內容擷取",
+    "Capture call content": "擷取呼叫內容",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "儲存每次呼叫的請求和回應，供管理員和使用者在使用日誌中查看。金鑰和標頭不會被儲存。",
+    "Call content retention (days)": "呼叫內容保留天數",
+    "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "超過此期限的已擷取內容將被自動刪除。範圍 1 至 3650 天。",
+    "Enqueued: {{count}}": "已入佇列：{{count}}",
+    "Written: {{count}}": "已寫入：{{count}}",
+    "Dropped: {{count}}": "已丟棄：{{count}}",
+    "Write errors: {{count}}": "寫入錯誤：{{count}}",
+    "Log content retention days must be an integer between 1 and 3650": "內容保留天數必須是 1 到 3650 之間的整數"
   }
 }

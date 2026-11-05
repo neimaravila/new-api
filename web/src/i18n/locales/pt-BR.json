@@ -7592,6 +7592,16 @@
     "Response received from the provider": "Resposta recebida do provedor",
     "The request sent to the provider was not captured for this attempt.": "A requisição enviada ao provedor não foi capturada nesta tentativa.",
     "This body could not be decoded, so no text is shown.": "Este corpo não pôde ser decodificado, então nenhum texto é exibido.",
-    "Original size: {{size}}": "Tamanho original: {{size}}"
+    "Original size: {{size}}": "Tamanho original: {{size}}",
+    "Call content capture": "Captura de conteúdo das chamadas",
+    "Capture call content": "Capturar conteúdo das chamadas",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "Guarda a requisição e a resposta de cada chamada para que administradores e usuários possam consultá-las nos registros de uso. Chaves e cabeçalhos nunca são armazenados.",
+    "Call content retention (days)": "Retenção do conteúdo das chamadas (dias)",
+    "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "O conteúdo capturado mais antigo que isso é apagado automaticamente. Entre 1 e 3650 dias.",
+    "Enqueued: {{count}}": "Enfileiradas: {{count}}",
+    "Written: {{count}}": "Gravadas: {{count}}",
+    "Dropped: {{count}}": "Descartadas: {{count}}",
+    "Write errors: {{count}}": "Erros de gravação: {{count}}",
+    "Log content retention days must be an integer between 1 and 3650": "Os dias de retenção do conteúdo devem ser um número inteiro entre 1 e 3650"
   }
 }

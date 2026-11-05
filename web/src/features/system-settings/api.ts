@@ -66,6 +66,19 @@ export async function confirmPaymentCompliance() {
   return res.data
 }
 
+export async function getLogContentCaptureStats() {
+  const res = await api.get<{
+    success: boolean
+    data: {
+      enqueued: number
+      written: number
+      dropped: number
+      write_errors: number
+    } | null
+  }>('/api/log/content_capture/stats')
+  return res.data.success ? res.data.data : null
+}
+
 export async function startLogCleanupTask(targetTimestamp: number) {
   const res = await api.post<SystemTaskResponse<LogCleanupTask>>(
     '/api/system-task/log-cleanup',

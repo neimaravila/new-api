@@ -33,7 +33,12 @@ import { api } from '@/lib/api'
 import { SettingsPageProvider } from '../../components/settings-page-context'
 import { LogSettingsSection } from '../log-settings-section'
 
-function Fixture() {
+type FixtureValues = {
+  LogContentCaptureEnabled?: boolean
+  LogContentRetentionDays?: number
+}
+
+function Fixture({ values = {} }: { values?: FixtureValues }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   return (
     <>
@@ -44,6 +49,8 @@ function Fixture() {
             LogConsumeEnabled: true,
             'log_setting.user_export_enabled': true,
             'log_setting.max_range_days': 30,
+            LogContentCaptureEnabled: values.LogContentCaptureEnabled ?? true,
+            LogContentRetentionDays: values.LogContentRetentionDays ?? 30,
           }}
         />
       </SettingsPageProvider>
@@ -51,13 +58,13 @@ function Fixture() {
   )
 }
 
-async function renderSettings() {
+async function renderSettings(values?: FixtureValues) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(
     <QueryClientProvider client={client}>
-      <Fixture />
+      <Fixture values={values} />
     </QueryClientProvider>
   )
   return screen.findByRole('spinbutton', {
@@ -66,25 +73,33 @@ async function renderSettings() {
 }
 
 beforeEach(() => {
-  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: {
-      success: true,
-      data:
-        url === '/api/performance/logs'
-          ? { enabled: true, log_dir: '/var/log/new-api', file_count: 3 }
-          : null,
-    },
-  }))
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    const responses: Record<string, unknown> = {
+      '/api/performance/logs': {
+        enabled: true,
+        log_dir: '/var/log/new-api',
+        file_count: 3,
+      },
+      '/api/log/content_capture/stats': {
+        enqueued: 120,
+        written: 100,
+        dropped: 7,
+        write_errors: 3,
+      },
+    }
+    return { data: { success: true, data: responses[url] ?? null } }
+  })
   vi.spyOn(api, 'put').mockResolvedValue({ data: { success: true } })
 })
 
-test('the page shows the four log modules in order, each with its own controls', async () => {
+test('the page shows the five log modules in order, each with its own controls', async () => {
   await renderSettings()
 
   expect(
     screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
   ).toEqual([
     'Log recording',
+    'Call content capture',
     'Log search and export',
     'Clean history logs',
     'Server Log Management',
@@ -181,4 +196,86 @@ test('a time range under one day shows a field error and is not saved', async ()
 
   await waitFor(() => expect(days).toHaveAttribute('aria-invalid', 'true'))
   expect(api.put).not.toHaveBeenCalled()
+})
+
+const captureSwitch = () =>
+  screen.getByRole('switch', { name: 'Capture call content' })
+const retentionField = () =>
+  screen.getByRole('spinbutton', { name: 'Call content retention (days)' })
+
+test('the content capture module shows the received switch and days', async () => {
+  await renderSettings({
+    LogContentCaptureEnabled: false,
+    LogContentRetentionDays: 45,
+  })
+
+  const group = screen.getByRole('group', { name: 'Call content capture' })
+  expect(within(group).getByRole('switch')).not.toBeChecked()
+  expect(retentionField()).toHaveValue(45)
+})
+
+test('saving sends only the content capture settings that changed', async () => {
+  const user = userEvent.setup()
+  await renderSettings()
+
+  await user.click(captureSwitch())
+  await user.click(screen.getByRole('button', { name: 'Save log settings' }))
+
+  await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+  expect(api.put).toHaveBeenCalledWith('/api/option/', {
+    key: 'LogContentCaptureEnabled',
+    value: false,
+  })
+})
+
+test.each(['0', '3651'])('retention of %s days is not saved', async (value) => {
+  const user = userEvent.setup()
+  await renderSettings()
+
+  fireEvent.change(retentionField(), { target: { value } })
+  await user.click(screen.getByRole('button', { name: 'Save log settings' }))
+
+  await waitFor(() =>
+    expect(retentionField()).toHaveAttribute('aria-invalid', 'true')
+  )
+  expect(api.put).not.toHaveBeenCalled()
+})
+
+test.each(['1', '3650'])('retention of %s days is saved', async (value) => {
+  const user = userEvent.setup()
+  await renderSettings()
+
+  fireEvent.change(retentionField(), { target: { value } })
+  await user.click(screen.getByRole('button', { name: 'Save log settings' }))
+
+  await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+  expect(api.put).toHaveBeenCalledWith('/api/option/', {
+    key: 'LogContentRetentionDays',
+    value: Number(value),
+  })
+})
+
+test('the capture counters come from the stats endpoint', async () => {
+  await renderSettings()
+
+  const group = screen.getByRole('group', { name: 'Call content capture' })
+  expect(await within(group).findByText('Dropped: 7')).toBeVisible()
+  expect(within(group).getByText('Write errors: 3')).toBeVisible()
+  expect(within(group).getByText('Enqueued: 120')).toBeVisible()
+  expect(within(group).getByText('Written: 100')).toBeVisible()
+})
+
+test('a failing stats request does not prevent saving', async () => {
+  const user = userEvent.setup()
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/log/content_capture/stats') throw new Error('boom')
+    return { data: { success: true, data: null } }
+  })
+  await renderSettings()
+
+  await user.click(captureSwitch())
+  await user.click(screen.getByRole('button', { name: 'Save log settings' }))
+
+  await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+  expect(screen.queryByText(/^Dropped:/)).not.toBeInTheDocument()
 })
