@@ -85,7 +85,7 @@ function AttemptRow(props: {
       {attempt.error_message && (
         <p className='text-destructive text-sm break-words whitespace-pre-wrap'>
           <span className='font-medium'>{t('Reason')}: </span>
-          {attempt.error_message}
+          {sensitiveVisible ? attempt.error_message : MASK}
         </p>
       )}
     </li>
@@ -103,16 +103,23 @@ export function RoutingTab(props: {
   const other = parseLogOther(log.other ?? '')
   const affinity = other?.admin_info?.channel_affinity
   const upstream = other?.upstream_model_name
+  const mask = (value: string) => (sensitiveVisible ? value : MASK)
   const facts: { label: string; value: string }[] = []
-  if (log.group) facts.push({ label: t('Group'), value: log.group })
+  if (log.group) facts.push({ label: t('Group'), value: mask(log.group) })
   if (upstream && upstream !== log.model_name) {
-    facts.push({ label: t('Mapped model'), value: upstream })
+    facts.push({ label: t('Mapped model'), value: mask(upstream) })
   }
   if (affinity?.rule_name) {
-    facts.push({ label: t('Channel Affinity'), value: affinity.rule_name })
+    facts.push({
+      label: t('Channel Affinity'),
+      value: mask(affinity.rule_name),
+    })
   }
   if (affinity?.selected_group) {
-    facts.push({ label: t('Selected group'), value: affinity.selected_group })
+    facts.push({
+      label: t('Selected group'),
+      value: mask(affinity.selected_group),
+    })
   }
   const attempts = [...view.attempts].sort((a, b) => a.attempt - b.attempt)
   return (

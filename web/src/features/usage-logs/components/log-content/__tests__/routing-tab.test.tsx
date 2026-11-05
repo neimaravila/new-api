@@ -90,7 +90,13 @@ it('shows group, affinity and mapped model', () => {
 it('masks channel names and key indexes when sensitive data is hidden', () => {
   render(<RoutingTab view={view} log={log} sensitiveVisible={false} />)
   expect(screen.queryByText(/first-ch|second-ch/)).toBeNull()
+  expect(screen.queryByText(/bad gateway/)).toBeNull()
+  const facts = within(screen.getByTestId('log-content-routing-facts'))
+  for (const hidden of ['vip', 'gpt-upstream', 'sticky-rule', 'edge']) {
+    expect(facts.queryByText(hidden)).toBeNull()
+  }
+  expect(facts.getAllByText('••••')).toHaveLength(4)
   expect(screen.queryByText('Key 0')).toBeNull()
   expect(screen.getByText('Key ••••')).toBeVisible()
-  expect(screen.getAllByText('••••')).toHaveLength(2)
+  expect(screen.getAllByText('••••')).toHaveLength(7)
 })

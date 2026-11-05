@@ -98,13 +98,15 @@ function BodyView(props: { title: string; body: LogContentBody }) {
  */
 export function RawJsonTab(props: {
   view: LogContentView
+  isAdmin: boolean
   selectedAttempt: number | null
 }) {
   const { t } = useTranslation()
   const { view, selectedAttempt } = props
-  const attempt =
-    view.attempts.find((item) => item.attempt === selectedAttempt) ??
-    view.attempts.at(-1)
+  const attempt = props.isAdmin
+    ? (view.attempts.find((item) => item.attempt === selectedAttempt) ??
+      view.attempts.at(-1))
+    : undefined
   return (
     <div className='space-y-3'>
       <BodyView title={t('Client request')} body={view.client.request} />

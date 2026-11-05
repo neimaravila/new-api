@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDown } from 'lucide-react'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
@@ -88,7 +94,12 @@ export function LogContentPanel(props: {
     useUsageLogsContext()
   const hasContent = logHasContent(log)
   const query = useLogContent(log, isAdmin)
-  const view = query.data
+  // Provider-side data is for admins: a self view never carries attempts.
+  const view = useMemo(
+    () =>
+      query.data && !isAdmin ? { ...query.data, attempts: [] } : query.data,
+    [query.data, isAdmin]
+  )
 
   const index = logs.findIndex((item) => item.id === log.id)
   const previous = index > 0 ? logs[index - 1] : undefined
@@ -171,7 +182,11 @@ export function LogContentPanel(props: {
           />
         )}
         {id === 'raw' && (
-          <RawJsonTab view={current} selectedAttempt={selectedAttempt} />
+          <RawJsonTab
+            view={current}
+            isAdmin={isAdmin}
+            selectedAttempt={selectedAttempt}
+          />
         )}
       </div>
     )

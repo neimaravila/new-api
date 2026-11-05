@@ -41,6 +41,27 @@ const view = (client: Record<string, unknown>, attempts: unknown[] = []) =>
     attempts,
   })
 
+it('hides provider bodies from a non-admin even if attempts are present', () => {
+  render(
+    <RawJsonTab
+      view={view({}, [
+        {
+          attempt: 1,
+          request: { text: '{"p":1}' },
+          response: { text: '{"q":2}' },
+        },
+      ])}
+      isAdmin={false}
+      selectedAttempt={1}
+    />
+  )
+  expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual([
+    'Client request',
+    'Delivered response',
+  ])
+  expect(screen.queryByText(/"p"/)).toBeNull()
+})
+
 it('shows only the client side for a regular user', () => {
   render(
     <RawJsonTab
@@ -48,6 +69,7 @@ it('shows only the client side for a regular user', () => {
         request: { text: '{"a":1}' },
         response: { text: '{"b":2}' },
       })}
+      isAdmin
       selectedAttempt={null}
     />
   )
@@ -67,6 +89,7 @@ it('formats valid JSON and leaves SSE, cut and invalid text as it came', () => {
           response: { text: 'not json' },
         },
       ])}
+      isAdmin
       selectedAttempt={1}
     />
   )
@@ -92,10 +115,10 @@ it('shows the selected attempt and a notice when its request is unavailable', ()
     { attempt: 2, request_unavailable: true, response: { text: '{"r2":2}' } },
   ]
   const { rerender } = render(
-    <RawJsonTab view={view({}, attempts)} selectedAttempt={1} />
+    <RawJsonTab view={view({}, attempts)} isAdmin selectedAttempt={1} />
   )
   expect(screen.getByText(/"one": 1/)).toBeVisible()
-  rerender(<RawJsonTab view={view({}, attempts)} selectedAttempt={2} />)
+  rerender(<RawJsonTab view={view({}, attempts)} isAdmin selectedAttempt={2} />)
   expect(screen.queryByText(/"one": 1/)).toBeNull()
   expect(screen.getByText(/"r2": 2/)).toBeVisible()
   expect(
@@ -111,6 +134,7 @@ it('does not parse above 256 KiB', () => {
   render(
     <RawJsonTab
       view={view({ request: { text: big } })}
+      isAdmin
       selectedAttempt={null}
     />
   )
@@ -129,6 +153,7 @@ it('warns about head-only bodies and shows no text for undecodable ones', () => 
         request: { text: 'head', head_only: true },
         response: { text: 'secret-bytes', undecodable: true },
       })}
+      isAdmin
       selectedAttempt={null}
     />
   )
@@ -148,6 +173,7 @@ it('copies the original text, not the formatted one', async () => {
   render(
     <RawJsonTab
       view={view({ request: { text: '{"a":1}' } })}
+      isAdmin
       selectedAttempt={null}
     />
   )
