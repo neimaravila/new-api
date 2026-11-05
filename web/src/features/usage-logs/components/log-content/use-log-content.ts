@@ -50,6 +50,8 @@ export function useLogContent(log: UsageLog, isAdmin: boolean) {
     queryFn: () => getLogContent(requestId, isAdmin),
     enabled: logHasContent(log) && settled,
     retry: false,
+    // The panel's error state is the only message for a failed lookup.
+    meta: { errorToast: false },
     staleTime: 30_000,
     refetchInterval: (query) =>
       query.state.data?.reason === 'pending' &&

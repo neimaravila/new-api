@@ -17,7 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api, getFreshAuthHeaders, type ApiRequestConfig } from '@/lib/api'
-import { createServerError } from '@/lib/server-error-message'
+import {
+  createServerError,
+  getServerErrorMessage,
+} from '@/lib/server-error-message'
 
 import {
   logContentSchema,
@@ -210,10 +213,17 @@ export async function getLogContent(
   requestId: string,
   isAdmin: boolean
 ): Promise<LogContentView> {
-  const res = await api.get(
-    `${buildApiPath('/api/log', isAdmin)}/content/${encodeURIComponent(requestId)}`,
-    { skipErrorHandler: true }
-  )
+  let res
+  try {
+    res = await api.get(
+      `${buildApiPath('/api/log', isAdmin)}/content/${encodeURIComponent(requestId)}`,
+      { skipErrorHandler: true }
+    )
+  } catch (error) {
+    // The panel shows its own error state: without the HTTP status, a 500
+    // from this lookup does not send the whole app to the error page.
+    throw new Error(getServerErrorMessage(error))
+  }
   const body = res.data as {
     success?: boolean
     message?: string
