@@ -41,6 +41,10 @@ import {
   getLogRowInteractionProps,
 } from '../../lib/row-interaction'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
+import {
+  LOG_PANEL_RESERVE_CLASS,
+  LOG_PANEL_WIDTH_CLASS,
+} from '../dialogs/details-dialog'
 import { LogDetailsSheet } from '../log-details-sheet'
 import { UsageLogsProvider, useUsageLogsContext } from '../usage-logs-provider'
 
@@ -382,4 +386,19 @@ it('opens with Space on the row itself, preventing scroll, with a focus ring', a
   row.dispatchEvent(event)
   expect(event.defaultPrevented).toBe(true)
   expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+it('sizes the panel to the width the logs page reserves beside it', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog({ id: 1, type: 2 })] })
+  await user.click(screen.getByTestId('row-1'))
+  const panel = await waitFor(() => {
+    const el = document.querySelector('[data-slot="sheet-content"]')
+    if (!el) throw new Error('panel not open')
+    return el
+  })
+  expect(panel).toHaveClass(LOG_PANEL_WIDTH_CLASS)
+  // 28rem (max-w-md) is what lg:pr-[28rem] reserves.
+  expect(LOG_PANEL_WIDTH_CLASS).toBe('lg:max-w-md')
+  expect(LOG_PANEL_RESERVE_CLASS).toBe('lg:pr-[28rem]')
 })

@@ -24,6 +24,7 @@ import { formatNumber } from '@/lib/format'
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportChart } from './report-chart'
 import { ReportTable, type ReportTableColumn } from './report-table'
+import { usePercentFormatter } from '../../lib/percent'
 import { buildErrorShareSpec } from '../../lib/report-charts'
 import type { ReportErrorRow } from '../../types'
 
@@ -34,12 +35,13 @@ interface ReportErrorsPanelProps {
 
 export function ReportErrorsPanel(props: ReportErrorsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
+  const formatPercent = usePercentFormatter()
   const otherLabel = t('Other')
   const spec = useMemo(() => buildErrorShareSpec(props.errors, otherLabel), [props.errors, otherLabel])
   const columns: ReportTableColumn<ReportErrorRow>[] = [
     { key: 'model', header: t('Model'), render: (row) => row.model_name },
     { key: 'failures', header: t('Failures'), align: 'end', render: (row) => formatNumber(row.failures) },
-    { key: 'share', header: t('Share'), align: 'end', render: (row) => `${Math.round(row.share * 10) / 10}%` },
+    { key: 'share', header: t('Share of total'), align: 'end', render: (row) => formatPercent(row.share / 100) },
   ]
 
   return (

@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
 
 import { getReportRanking } from '../../api'
+import { usePercentFormatter } from '../../lib/percent'
 import { rankingRowsToCsv, sortRankingRows } from '../../lib/report-ranking'
 import type {
   ReportDimension,
@@ -34,6 +35,9 @@ import type {
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportTable, type ReportTableColumn } from './report-table'
 
+/** The ranking endpoint returns at most this many rows. */
+const RANKING_ROW_LIMIT = 50
+
 interface ReportRankingTabProps {
   dimension: ReportDimension
   title: string
@@ -44,10 +48,6 @@ interface ReportRankingTabProps {
   onCsvChange?: (csv: string | null) => void
 }
 
-function formatErrorRate(rate: number): string {
-  return `${Math.round(rate * 1000) / 10}%`
-}
-
 // No sample is an empty cell, not the "-" placeholder (which would be escaped as text).
 function csvLatency(ms: number): string {
   return ms > 0 ? formatLatencyMs(ms) : ''
@@ -55,6 +55,7 @@ function csvLatency(ms: number): string {
 
 export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Element {
   const { t } = useTranslation()
+  const formatErrorRate = usePercentFormatter()
   const { dimension, filters, enabled, onCsvChange } = props
   const [sort, setSort] = useState<{ key: ReportRankingSortKey; direction: ReportSortDirection }>({
     key: 'requests',
@@ -165,7 +166,7 @@ export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Elemen
         t('P95 latency'),
       ]
     )
-  }, [rows, t])
+  }, [rows, t, formatErrorRate])
 
   useEffect(() => {
     if (!enabled) return
@@ -207,7 +208,7 @@ export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Elemen
   return (
     <PanelShell
       title={props.title}
-      description={t('Only the 50 highest-volume rows are shown.')}
+      description={rows.length === RANKING_ROW_LIMIT ? t('Only the 50 highest-volume rows are shown.') : undefined}
     >
       {body}
     </PanelShell>

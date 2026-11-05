@@ -139,6 +139,21 @@ describe('ReportOverviewTab', () => {
     })
   })
 
+  it('paints the failures series with the theme error color, not a palette hue', async () => {
+    document.documentElement.style.setProperty('--destructive', '#ff0000')
+    try {
+      const { findAllByTestId } = render(
+        wrap(<ReportOverviewTab loading={false} summary={makeSummary() as never} />)
+      )
+      const charts = await findAllByTestId('chart-spec')
+      const ranges = charts.map((el) => JSON.parse(el.getAttribute('data-color-range') ?? '[]') as string[])
+      // Request volume is the only chart whose second series is Failures.
+      expect(ranges[0][1]).toBe('#ff0000')
+    } finally {
+      document.documentElement.style.removeProperty('--destructive')
+    }
+  })
+
   it('shows a dash instead of 0 ms for a missing percentile', async () => {
     const { findAllByTestId, getAllByRole } = render(
       wrap(<ReportOverviewTab loading={false} summary={makeSummary() as never} />)
@@ -266,6 +281,23 @@ describe('ReportsSection tabs and filters', () => {
     const { findAllByRole } = render(wrap(<ReportsSection />))
     const alerts = await findAllByRole('alert')
     expect(alerts.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('keeps the chart kind when switching Reports tabs and coming back', async () => {
+    setRole(1)
+    getReportSummary.mockResolvedValue({ success: true, data: makeSummary() })
+    const { findAllByTestId, getAllByRole, findByRole, getAllByTestId } = render(wrap(<ReportsSection />))
+    await findAllByTestId('chart-spec')
+    fireEvent.click(getAllByRole('button', { name: 'Line' })[0])
+    await waitFor(() =>
+      expect(getAllByTestId('chart-spec').filter((el) => el.getAttribute('data-chart-type') === 'line')).toHaveLength(2)
+    )
+    fireEvent.click(await findByRole('tab', { name: 'Models' }))
+    fireEvent.click(await findByRole('tab', { name: 'Overview' }))
+    await waitFor(() =>
+      expect(getAllByRole('button', { name: 'Line' })[0].getAttribute('aria-pressed')).toBe('true')
+    )
+    expect(getAllByTestId('chart-spec').filter((el) => el.getAttribute('data-chart-type') === 'line')).toHaveLength(2)
   })
 
   it('keeps the chart kind and the tab content mounted while a filter refetches', async () => {

@@ -40,7 +40,9 @@ export function getLogRowInteractionProps(
     className: LOG_ROW_FOCUS_CLASS,
     onClick: (event: MouseEvent<HTMLElement>) => {
       const target = event.target as Element | null
-      if (target?.closest(INTERACTIVE_SELECTOR)) return
+      // Portaled content (dialogs) bubbles through React but is not the row.
+      if (!target || !event.currentTarget.contains(target)) return
+      if (target.closest(INTERACTIVE_SELECTOR)) return
       const selection = window.getSelection?.()
       if (selection && !selection.isCollapsed) return
       setSelectedLog(log, event.currentTarget)

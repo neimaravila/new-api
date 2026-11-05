@@ -25,6 +25,7 @@ import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportChart } from './report-chart'
 import { ReportTable, type ReportTableColumn } from './report-table'
+import { usePercentFormatter } from '../../lib/percent'
 import { buildChannelCostSpec, CHANNEL_ERROR_RATE_THRESHOLD } from '../../lib/report-charts'
 import type { ReportChannelRow } from '../../types'
 
@@ -35,6 +36,7 @@ interface ReportChannelPanelProps {
 
 export function ReportChannelPanel(props: ReportChannelPanelProps): React.JSX.Element {
   const { t } = useTranslation()
+  const formatPercent = usePercentFormatter()
   const healthyLabel = t('Healthy')
   const degradedLabel = t('Degraded')
   const spec = useMemo(
@@ -50,7 +52,7 @@ export function ReportChannelPanel(props: ReportChannelPanelProps): React.JSX.El
       header: t('Error rate'),
       align: 'end',
       render: (row) => {
-        const value = `${Math.round(row.error_rate * 1000) / 10}%`
+        const value = formatPercent(row.error_rate)
         if (row.error_rate <= CHANNEL_ERROR_RATE_THRESHOLD) return value
         return (
           <span className='text-destructive inline-flex items-center gap-1'>

@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ReportChart } from '@/features/dashboard/components/reports/report-chart'
 import { getDashboardChartColors } from '@/features/dashboard/lib/charts'
+import { withFailureColor } from '@/features/dashboard/lib/failure-color'
 import { buildVolumeSpec } from '@/features/dashboard/lib/report-charts'
 import type { ReportTrendPoint } from '@/features/dashboard/types'
 import { useTheme } from '@/context/theme-provider'
@@ -50,32 +51,6 @@ function bucketLabel(timestamp: number, bucketSeconds: number): string {
   return dayjs
     .unix(timestamp)
     .format(bucketSeconds >= 86400 ? 'MM-DD' : 'MM-DD HH:mm')
-}
-
-/**
- * Reads the theme's destructive token for the chart. The chart canvas paints
- * the same plain colors the palette uses, so a modern CSS color such as oklch()
- * is converted to rgb through a canvas pixel; where that is unavailable the raw
- * token is returned.
- */
-function readDestructiveColor(): string | undefined {
-  if (typeof document === 'undefined') return undefined
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue('--destructive')
-    .trim()
-  if (!raw) return undefined
-  try {
-    const context = document.createElement('canvas').getContext('2d')
-    if (!context) return raw
-    context.canvas.width = 1
-    context.canvas.height = 1
-    context.fillStyle = raw
-    context.fillRect(0, 0, 1, 1)
-    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data
-    return a === 0 ? raw : `rgb(${r}, ${g}, ${b})`
-  } catch {
-    return raw
-  }
 }
 
 function SummaryStat(props: {
@@ -144,14 +119,8 @@ export function CommonLogsSummary() {
     const labels = { success: t('Success'), failures: t('Failures') }
     const base = buildVolumeSpec(points, labels, 'bar')
     if (!base) return null
-    const palette = getDashboardChartColors(2)
     return {
-      ...base,
-      color: {
-        type: 'ordinal',
-        domain: [labels.success, labels.failures],
-        range: [palette[0], readDestructiveColor() ?? palette[1]],
-      },
+      ...withFailureColor(base, labels),
       legends: { visible: false },
     }
     // resolvedTheme: the destructive token differs between light and dark.

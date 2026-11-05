@@ -74,6 +74,7 @@ function Fixture(props: {
       <button type='button' onClick={() => context.setSensitiveVisible(false)}>
         Hide sensitive data
       </button>
+      <output data-testid='selected-log'>{context.selectedLog?.id ?? 'none'}</output>
       <UsageLogsMobileList
         table={table}
         logCategory='common'
@@ -336,4 +337,32 @@ it('shows loading placeholders without displaying stale log fields', () => {
   expect(
     screen.queryByRole('button', { name: /^Model:/ })
   ).not.toBeInTheDocument()
+})
+
+it('opens the details panel when tapping the card body', async () => {
+  const user = userEvent.setup()
+  renderLogs()
+  expect(screen.getByTestId('selected-log')).toHaveTextContent('none')
+  await user.click(screen.getByText('Input'))
+  expect(screen.getByTestId('selected-log')).toHaveTextContent('1')
+})
+
+it('opens the details panel from the visible Details control', async () => {
+  const user = userEvent.setup()
+  renderLogs()
+  await user.click(screen.getByRole('button', { name: 'Details' }))
+  expect(screen.getByTestId('selected-log')).toHaveTextContent('1')
+})
+
+it('keeps the per-field dialogs on their own controls', async () => {
+  const user = userEvent.setup()
+  renderLogs()
+  await user.click(
+    screen.getByRole('button', { name: `Channel: ${longName} #372` })
+  )
+  const dialog = await screen.findByRole('dialog', { name: 'Channel' })
+  expect(screen.getByTestId('selected-log')).toHaveTextContent('none')
+  // The dialog is portaled but still inside the card in the React tree.
+  await user.click(within(dialog).getByText(`${longName} #372`))
+  expect(screen.getByTestId('selected-log')).toHaveTextContent('none')
 })

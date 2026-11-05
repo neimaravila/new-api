@@ -112,7 +112,7 @@ export function buildTrendSpec(
       { orient: 'left', type: 'linear', label: valueAxisLabel(format) },
     ],
     tooltip: valueTooltip('series', 'value', format),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -140,7 +140,7 @@ export function buildModelCostSpec(models: ReportModelRow[]): ReportChartSpec | 
       { orient: 'bottom', type: 'linear', visible: false },
     ],
     tooltip: valueTooltip('name', 'quota', formatQuota),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -179,7 +179,7 @@ export function buildErrorShareSpec(
     color: getDashboardChartColors(values.length),
     pie: { state: { hover: { outerRadius: 0.85, stroke: '#000', lineWidth: 1 } } },
     tooltip: valueTooltip('type', 'value', formatCount),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -215,7 +215,7 @@ export function buildPerformanceSpec(
       { orient: 'bottom', type: 'linear', label: valueAxisLabel(formatLatency) },
     ],
     tooltip: valueTooltip('series', 'value', formatLatency),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -248,7 +248,7 @@ export function buildTokenAnatomySpec(
       { orient: 'bottom', type: 'linear', label: valueAxisLabel(formatCount) },
     ],
     tooltip: valueTooltip('series', 'value', formatCount),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -293,7 +293,7 @@ export function buildChannelCostSpec(
       { orient: 'bottom', type: 'linear', visible: false },
     ],
     tooltip: valueTooltip('name', 'quota', formatQuota),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -326,7 +326,7 @@ export function buildStreamSpec(
       { orient: 'left', type: 'linear', label: valueAxisLabel(formatCount) },
     ],
     tooltip: valueTooltip('name', 'value', formatCount),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }
@@ -373,7 +373,7 @@ function buildTimeSeriesSpec(options: {
       { orient: 'left', type: 'linear', label: valueAxisLabel(options.format) },
     ],
     tooltip: valueTooltip('series', 'value', options.format),
-    background: { fill: 'transparent' },
+    background: 'transparent',
     animation: true,
   }
 }

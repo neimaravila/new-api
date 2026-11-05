@@ -118,12 +118,28 @@ describe('ReportRankingTab', () => {
     getReportRanking.mockResolvedValue({ success: true, data: [] })
     const empty = render(wrap(<ReportRankingTab dimension='user' title='Users' enabled filters={filters} />))
     await empty.findByText('No data in this period.')
-    expect(empty.getByText('Only the 50 highest-volume rows are shown.')).not.toBeNull()
+    expect(empty.queryByText('Only the 50 highest-volume rows are shown.')).toBeNull()
     empty.unmount()
 
     getReportRanking.mockResolvedValue({ success: false, message: 'boom' })
     const failed = render(wrap(<ReportRankingTab dimension='user' title='Users' enabled filters={filters} />))
     await failed.findByRole('alert')
+  })
+
+  it('shows the 50-row hint only when exactly 50 rows came back', async () => {
+    getReportRanking.mockResolvedValue({
+      success: true,
+      data: Array.from({ length: 50 }, (_, i) => row(`m${i}`)),
+    })
+    const full = render(wrap(<ReportRankingTab dimension='model' title='Models' enabled filters={filters} />))
+    await full.findByText('m0')
+    expect(full.getByText('Only the 50 highest-volume rows are shown.')).not.toBeNull()
+    full.unmount()
+
+    getReportRanking.mockResolvedValue({ success: true, data: [row('a'), row('b')] })
+    const few = render(wrap(<ReportRankingTab dimension='model' title='Models' enabled filters={filters} />))
+    await few.findByText('a')
+    expect(few.queryByText('Only the 50 highest-volume rows are shown.')).toBeNull()
   })
 
   it('reports the displayed CSV, in the displayed order and with formatted cost', async () => {
@@ -138,7 +154,7 @@ describe('ReportRankingTab', () => {
       )
     )
     await waitFor(() => expect(onCsvChange.mock.calls.some(([csv]) => typeof csv === 'string')).toBe(true))
-    const csv = onCsvChange.mock.calls.map(([c]) => c).filter(Boolean).pop() as string
+    const csv = [...onCsvChange.mock.calls].reverse().find(([c]) => typeof c === 'string')?.[0] as string
     const lines = csv.split('\r\n')
     expect(lines[0]).toBe(
       '"Name","Requests","Tokens","Cost","Error rate","Avg latency","P50 latency","P95 latency"'

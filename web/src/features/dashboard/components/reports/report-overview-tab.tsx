@@ -19,8 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useTheme } from '@/context/theme-provider'
 import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
 
+import { withFailureColor } from '../../lib/failure-color'
+import { usePercentFormatter } from '../../lib/percent'
 import {
   buildCostByModelSpec,
   buildLatencySeriesSpec,
@@ -50,10 +53,17 @@ interface ReportOverviewTabProps {
   isError?: boolean
   /** Undefined until the first load (or after a failed one). */
   summary: ReportSummary | undefined
+  /** Chart kind per card, kept by the parent so it survives tab switches. */
+  chartKinds?: Partial<Record<ReportOverviewChartKey, ReportChartKind>>
+  onChartKindChange?: (key: ReportOverviewChartKey, kind: ReportChartKind) => void
 }
+
+export type ReportOverviewChartKey = 'volume' | 'tokens' | 'cost' | 'latency'
 
 export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Element {
   const { t } = useTranslation()
+  const { resolvedTheme } = useTheme()
+  const formatPercent = usePercentFormatter()
   const { summary, loading } = props
   const successLabel = t('Successful')
   const failuresLabel = t('Failures')
@@ -70,14 +80,19 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
   // the card reads as its empty state.
   const builders = useMemo(
     () => ({
-      volume: (kind: ReportChartKind) =>
-        buildVolumeSpec(points, { success: successLabel, failures: failuresLabel }, kind),
+      volume: (kind: ReportChartKind) => {
+        const labels = { success: successLabel, failures: failuresLabel }
+        const spec = buildVolumeSpec(points, labels, kind)
+        return spec && withFailureColor(spec, labels)
+      },
       tokens: (kind: ReportChartKind) => buildTokensSpec(points, { tokens: tokensLabel }, kind),
       cost: (kind: ReportChartKind) => buildCostByModelSpec(costByModel, othersLabel, kind),
       latency: (kind: ReportChartKind) =>
         buildLatencySeriesSpec(latencySeries, { p50: p50Label, p95: p95Label }, kind),
     }),
-    [points, costByModel, latencySeries, successLabel, failuresLabel, tokensLabel, othersLabel, p50Label, p95Label]
+    // resolvedTheme: the destructive token differs between light and dark.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    [points, costByModel, latencySeries, successLabel, failuresLabel, tokensLabel, othersLabel, p50Label, p95Label, resolvedTheme]
   )
 
   const totals = summary?.trend.totals
@@ -91,10 +106,7 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
           { label: t('Requests'), value: formatNumber(totals.requests) },
           {
             label: t('Failure rate'),
-            value:
-              totals.requests > 0
-                ? `${Math.round((totals.failures / totals.requests) * 1000) / 10}%`
-                : '-',
+            value: totals.requests > 0 ? formatPercent(totals.failures / totals.requests) : '-',
           },
         ]
       : [],
@@ -174,6 +186,8 @@ export function ReportOverviewTab(props: ReportOverviewTabProps): React.JSX.Elem
               isEmpty={isEmpty}
               toggleable={card.toggleable}
               defaultKind={card.defaultKind}
+              kind={props.chartKinds?.[card.key]}
+              onKindChange={(kind) => props.onChartKindChange?.(card.key, kind)}
             >
               {(kind) => (
                 <ReportChart

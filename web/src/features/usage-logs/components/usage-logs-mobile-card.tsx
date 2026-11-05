@@ -34,7 +34,9 @@ import { LOG_TYPE_ENUM } from '../constants'
 import type { UsageLog } from '../data/schema'
 import { TASK_MOBILE_SUMMARY_FIELDS } from '../lib/task-mobile-layout'
 import type { LogCategory } from '../types'
+import { getLogRowInteractionProps } from '../lib/row-interaction'
 import { CommonLogMobileCard } from './common-log-mobile-card'
+import { useUsageLogsContext } from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]:
@@ -244,6 +246,7 @@ export function UsageLogsMobileList<TData>({
   logCategory,
 }: UsageLogsMobileListProps<TData>) {
   const { t } = useTranslation()
+  const { setSelectedLog } = useUsageLogsContext()
 
   const resolvedEmptyTitle = emptyTitle ?? t('No Logs Found')
   const resolvedEmptyDescription =
@@ -290,10 +293,20 @@ export function UsageLogsMobileList<TData>({
           | undefined
         const tintClass = logType != null ? (logTypeRowTint[logType] ?? '') : ''
 
+        // Tapping the card body opens the same details panel as a desktop row;
+        // taps on buttons and links keep their own behavior.
+        const cardInteraction =
+          logCategory === 'common'
+            ? getLogRowInteractionProps(row.original as UsageLog, setSelectedLog)
+            : undefined
+
         return (
           <div
             key={row.id}
+            {...cardInteraction}
+            data-log-card={cardInteraction ? '' : undefined}
             className={cn(
+              cardInteraction?.className,
               logCategory === 'common'
                 ? 'border-border/60 bg-card min-w-0 rounded-xl border p-3.5'
                 : 'border-border/40 border-b border-l-2 border-l-transparent p-3 transition-colors last:border-b-0',

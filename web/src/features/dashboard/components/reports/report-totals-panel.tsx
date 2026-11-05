@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 
 import { PanelShell } from './report-primitives'
+import { usePercentFormatter } from '../../lib/percent'
 import type { ReportSummary } from '../../types'
 
 interface ReportTotalsPanelProps {
@@ -37,9 +38,10 @@ interface TotalsTile {
 
 export function ReportTotalsPanel(props: ReportTotalsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
+  const formatPercent = usePercentFormatter()
   const totals = props.summary.trend.totals
   const failureRate =
-    totals.requests > 0 ? Math.round((totals.failures / totals.requests) * 1000) / 10 : null
+    totals.requests > 0 ? totals.failures / totals.requests : null
 
   const tiles: TotalsTile[] = [
     { key: 'quota', label: t('Quota used'), value: formatQuota(totals.quota) },
@@ -49,7 +51,7 @@ export function ReportTotalsPanel(props: ReportTotalsPanelProps): React.JSX.Elem
       key: 'failures',
       label: t('Failures'),
       value: formatNumber(totals.failures),
-      sublabel: failureRate === null ? undefined : `${failureRate}%`,
+      sublabel: failureRate === null ? undefined : formatPercent(failureRate),
     },
   ]
 

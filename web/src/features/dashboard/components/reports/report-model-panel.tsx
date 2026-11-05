@@ -24,6 +24,7 @@ import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
 import { EmptyOrLoading, PanelShell } from './report-primitives'
 import { ReportChart } from './report-chart'
 import { ReportTable, type ReportTableColumn } from './report-table'
+import { usePercentFormatter } from '../../lib/percent'
 import { buildModelCostSpec } from '../../lib/report-charts'
 import type { ReportModelRow } from '../../types'
 
@@ -34,6 +35,7 @@ interface ReportModelPanelProps {
 
 export function ReportModelPanel(props: ReportModelPanelProps): React.JSX.Element {
   const { t } = useTranslation()
+  const formatPercent = usePercentFormatter()
   const spec = useMemo(() => buildModelCostSpec(props.models), [props.models])
   const columns: ReportTableColumn<ReportModelRow>[] = [
     { key: 'model', header: t('Model'), render: (row) => row.model_name },
@@ -43,7 +45,7 @@ export function ReportModelPanel(props: ReportModelPanelProps): React.JSX.Elemen
       key: 'errors',
       header: t('Error rate'),
       align: 'end',
-      render: (row) => `${Math.round(row.error_rate * 1000) / 10}%`,
+      render: (row) => formatPercent(row.error_rate),
     },
     {
       key: 'latency',

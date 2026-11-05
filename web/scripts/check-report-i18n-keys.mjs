@@ -39,6 +39,8 @@ await walk(compDir)
 
 // Also include the dashboard index (section tab label) for the Reports entry.
 files.push(path.join(webRoot, 'src/features/dashboard/index.tsx'))
+// The logs summary strip and chart reuse the same locale keys.
+files.push(path.join(webRoot, 'src/features/usage-logs/components/common-logs-summary.tsx'))
 
 const keys = new Set()
 const skip = new Set([
@@ -48,7 +50,8 @@ const skip = new Set([
 ])
 for (const file of files) {
   const src = await fs.readFile(file, 'utf8')
-  const re = /\bt\(\s*'((?:[^'\\]|\\.)*)'/g
+  // t('key') calls, plus keys passed through `labelKey: 'key'` to a later t(labelKey).
+  const re = /(?:\bt\(\s*|\blabelKey:\s*)'((?:[^'\\]|\\.)*)'/g
   let m
   while ((m = re.exec(src)) !== null) {
     const k = m[1]

@@ -25,7 +25,9 @@ import type { NavGroup } from '@/components/layout/types'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
+import { cn } from '@/lib/utils'
 
+import { LOG_PANEL_RESERVE_CLASS } from './components/dialogs/details-dialog'
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
   type LogsViewScope,
@@ -64,6 +66,7 @@ function UsageLogsContent() {
       ? params.section
       : USAGE_LOGS_DEFAULT_SECTION
   const {
+    selectedLog,
     selectedUserId,
     userInfoDialogOpen,
     setUserInfoDialogOpen,
@@ -139,7 +142,13 @@ function UsageLogsContent() {
           )}
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='flex h-full min-h-0 flex-col gap-4'>
+          <div
+            className={cn(
+              'flex h-full min-h-0 flex-col gap-4',
+              // Keep the list, pager and filters usable beside the open panel.
+              selectedLog && activeCategory === 'common' && LOG_PANEL_RESERVE_CLASS
+            )}
+          >
             {showTaskSwitcher && (
               <Tabs value={activeCategory} onValueChange={handleSectionChange}>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>

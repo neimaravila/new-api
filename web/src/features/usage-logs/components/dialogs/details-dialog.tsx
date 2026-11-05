@@ -103,6 +103,13 @@ import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
 
+/**
+ * From `lg` up the panel is 28rem wide; the logs page reserves the same width
+ * (LOG_PANEL_RESERVE_CLASS) so the list sits beside it instead of underneath.
+ */
+export const LOG_PANEL_WIDTH_CLASS = 'lg:max-w-md'
+export const LOG_PANEL_RESERVE_CLASS = 'lg:pr-[28rem]'
+
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
 const CHANNEL_FIELD_LABELS: Record<string, string> = {
@@ -543,7 +550,7 @@ function DetailsShell({ presentation, ...dialogProps }: DetailsShellProps) {
     >
       <SheetContent
         showOverlay={false}
-        className='w-full max-sm:max-w-full sm:max-w-lg'
+        className={`w-full max-sm:max-w-full sm:max-w-lg ${LOG_PANEL_WIDTH_CLASS}`}
       >
         <SheetHeader className='pr-12'>
           <SheetTitle className='flex items-center gap-2 text-base'>

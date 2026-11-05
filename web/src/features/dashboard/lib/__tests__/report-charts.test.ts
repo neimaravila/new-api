@@ -326,6 +326,13 @@ describe('buildVolumeSpec and buildTokensSpec', () => {
     ])
   })
 
+  it('clears the chart canvas so the card background shows through', () => {
+    const points = [point({ bucket_label: 'a', requests: 10, failures: 3 })]
+    expect(buildVolumeSpec(points, { success: 'OK', failures: 'Failed' }, 'bar')?.background).toBe(
+      'transparent'
+    )
+  })
+
   it('plots tokens as one series', () => {
     const spec = buildTokensSpec([point({ bucket_label: 'a', tokens: 42 })], { tokens: 'Tokens' }, 'line')
     expect(spec?.type).toBe('line')

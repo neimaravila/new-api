@@ -36,6 +36,9 @@ interface ReportChartCardProps {
   /** Shows the bar/line selector. */
   toggleable?: boolean
   defaultKind?: ReportChartKind
+  /** Controlled kind: lets the parent keep it when this card unmounts. */
+  kind?: ReportChartKind
+  onKindChange?: (kind: ReportChartKind) => void
   children: (chartKind: ReportChartKind) => React.ReactNode
 }
 
@@ -47,7 +50,12 @@ const KIND_OPTIONS: { value: ReportChartKind; labelKey: string }[] = [
 /** One chart of the Overview grid, on the same shell as every other panel. */
 export function ReportChartCard(props: ReportChartCardProps): React.JSX.Element {
   const { t } = useTranslation()
-  const [chartKind, setChartKind] = useState<ReportChartKind>(props.defaultKind ?? 'bar')
+  const [localKind, setLocalKind] = useState<ReportChartKind>(props.defaultKind ?? 'bar')
+  const chartKind = props.kind ?? localKind
+  const setChartKind = (next: ReportChartKind) => {
+    setLocalKind(next)
+    props.onKindChange?.(next)
+  }
 
   let body: React.ReactNode
   if (props.isError) {

@@ -326,6 +326,22 @@ export function CommonLogMobileCard<TData>(props: {
           />
         </div>
       )}
+      <div className='flex justify-end'>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='text-primary -mr-2 min-h-8'
+          onClick={(event) =>
+            context.setSelectedLog(
+              log,
+              event.currentTarget.closest<HTMLElement>('[data-log-card]')
+            )
+          }
+        >
+          {t('Details')}
+          <ChevronRight aria-hidden='true' className='size-4' />
+        </Button>
+      </div>
       <Dialog
         open={!!activeField}
         onOpenChange={(open) => {

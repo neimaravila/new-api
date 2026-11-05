@@ -51,7 +51,11 @@ export function StubVChart(props: StubVChartProps): React.JSX.Element {
   const dataBlock = committedSpec.data as StubChartDataBlock[] | undefined
   const values = dataBlock?.[0]?.values ?? []
   return (
-    <div data-testid='chart-spec' data-chart-type={String(committedSpec.type)}>
+    <div
+      data-testid='chart-spec'
+      data-chart-type={String(committedSpec.type)}
+      data-color-range={JSON.stringify((committedSpec.color as { range?: string[] } | undefined)?.range ?? [])}
+    >
       {values.map((item) => String(item.value)).join(',')}
     </div>
   )

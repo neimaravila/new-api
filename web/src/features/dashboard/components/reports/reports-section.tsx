@@ -28,6 +28,7 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getReportExportUrl, getReportSummary } from '../../api'
+import type { ReportChartKind } from '../../lib/report-charts'
 import type {
   ReportDimension,
   ReportFilters,
@@ -37,7 +38,7 @@ import type {
 } from '../../types'
 import { ReportChannelPanel } from './report-channel-panel'
 import { ReportFiltersBar, type ReportChannelOption } from './report-filters'
-import { ReportOverviewTab } from './report-overview-tab'
+import { ReportOverviewTab, type ReportOverviewChartKey } from './report-overview-tab'
 import { ReportPerformancePanel } from './report-performance-panel'
 import { ReportRankingTab } from './report-ranking-tab'
 
@@ -89,6 +90,8 @@ export function ReportsSection(): React.JSX.Element {
   const [channelId, setChannelId] = useState<number | undefined>()
   const [options, setOptions] = useState<FilterOptions | null>(null)
   const [rankingCsv, setRankingCsv] = useState<string | null>(null)
+  // Kept here so the choice survives switching tabs (the Overview tab unmounts).
+  const [chartKinds, setChartKinds] = useState<Partial<Record<ReportOverviewChartKey, ReportChartKind>>>({})
   const handleCsvChange = useCallback((csv: string | null) => setRankingCsv(csv), [])
 
   const visibleTabs = TAB_OPTIONS.filter((option) => isAdmin || !option.adminOnly)
@@ -222,7 +225,13 @@ export function ReportsSection(): React.JSX.Element {
         </TabsList>
 
         <TabsContent value='overview'>
-          <ReportOverviewTab loading={loading} isError={summaryQuery.isError} summary={summary} />
+          <ReportOverviewTab
+            loading={loading}
+            isError={summaryQuery.isError}
+            summary={summary}
+            chartKinds={chartKinds}
+            onChartKindChange={(key, kind) => setChartKinds((prev) => ({ ...prev, [key]: kind }))}
+          />
         </TabsContent>
         {visibleTabs
           .filter((option) => option.value !== 'overview')
