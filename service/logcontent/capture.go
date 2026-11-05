@@ -87,6 +87,9 @@ var defaultSecretHeaders = []string{"Authorization", "X-Api-Key", "Api-Key", "X-
 // secretQueryWords mark URL query names whose values are credentials.
 var secretQueryWords = []string{"key", "token", "secret", "auth", "sig", "password", "credential"}
 
+// secretHeaderWords mark override header names whose values are credentials.
+var secretHeaderWords = []string{"authorization", "key", "token", "secret", "password", "credential", "auth", "signature", "cookie"}
+
 // Attempt follows one provider call of a Capture.
 type Attempt struct {
 	capture   *Capture
@@ -278,15 +281,22 @@ func BeginAttempt(c *gin.Context, info AttemptInfo, req *http.Request) (attempt 
 
 // requestSecrets collects the credential values sent upstream in headers and
 // the URL query. They are only used for redaction; headers and URLs are
-// never stored.
+// never stored. An override header counts only when its name looks like a
+// credential, so benign overrides such as User-Agent stay in the bodies.
 func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 	var secrets []string
 	add := func(value string) {
-		if value = strings.TrimSpace(value); value != "" {
+		if value = strings.TrimSpace(value); len(value) >= minSecretBytes {
 			secrets = append(secrets, value)
 		}
 	}
-	for _, name := range append(slices.Clone(defaultSecretHeaders), overrideHeaders...) {
+	names := slices.Clone(defaultSecretHeaders)
+	for _, name := range overrideHeaders {
+		if isSecretName(name, secretHeaderWords) {
+			names = append(names, name)
+		}
+	}
+	for _, name := range names {
 		for _, value := range req.Header.Values(name) {
 			add(value)
 			if _, credential, ok := strings.Cut(strings.TrimSpace(value), " "); ok {
@@ -298,8 +308,7 @@ func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 		return secrets
 	}
 	for name, values := range req.URL.Query() {
-		lower := strings.ToLower(name)
-		if !slices.ContainsFunc(secretQueryWords, func(word string) bool { return strings.Contains(lower, word) }) {
+		if !isSecretName(name, secretQueryWords) {
 			continue
 		}
 		for _, value := range values {
@@ -307,6 +316,11 @@ func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 		}
 	}
 	return secrets
+}
+
+func isSecretName(name string, words []string) bool {
+	lower := strings.ToLower(name)
+	return slices.ContainsFunc(words, func(word string) bool { return strings.Contains(lower, word) })
 }
 
 // addAttempt numbers a new attempt and makes it current. An ineligible
