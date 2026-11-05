@@ -73,8 +73,8 @@ func lcmScaleFor() lcmScale {
 			durationBytes:   100 * mib,
 			durationRuns:    5,
 			memStreams:      50,
-			memLong:         100 * mib,
-			memShort:        10 * mib,
+			memLong:         300 * mib,
+			memShort:        100 * mib,
 			memRuns:         3,
 			largeCalls:      20,
 			largeBytes:      50 * mib,
@@ -92,8 +92,8 @@ func lcmScaleFor() lcmScale {
 		durationBytes:   1 * mib,
 		durationRuns:    1,
 		memStreams:      4,
-		memLong:         4 * mib,
-		memShort:        2 * mib,
+		memLong:         8 * mib,
+		memShort:        4 * mib,
 		memRuns:         1,
 		largeCalls:      2,
 		largeBytes:      9 * mib,
@@ -597,10 +597,26 @@ func lcmCompareMemory(t *testing.T, scale lcmScale, label string, n int, call lc
 	return cost
 }
 
+// lcmRequestReserve is the budget a stream's request copies take: the copy
+// of the request sent to the provider and, in Finish, the copy of the client
+// request. A body under 4 KiB grows to the tap's first capacity, 4 KiB
+// (tapBuffer.grow), so each takes 4 KiB.
+const lcmRequestReserve = 2 * (4 << 10)
+
+// lcmStreamBudget is the designed budget of one stream: 1 MiB provider copy,
+// 1 MiB client copy, 512 KiB of fold blocks and 1 MiB rebuilt message, plus
+// the request copies.
+const lcmStreamBudget = 7*mib/2 + lcmRequestReserve
+
+// Both lengths fill every cap long before their midpoint (the rebuilt
+// message within the first 5 MiB), so a difference between them would be
+// memory growing with length. A stream too short to fill its caps holds less,
+// which says nothing about growth, so no shorter length is compared.
 func TestLogContentMeasureLongStreamMemory(t *testing.T) {
 	scale := lcmScaleFor()
 	lcmUseLogDB(t)
 	request := []byte(lccChatRequest)
+	require.Less(t, len(lccChatRequest), 4<<10, "the request copies take the first tap capacity")
 
 	var longGate, shortGate atomic.Pointer[lcmGate]
 	long := httptest.NewServer(lcmStreamProvider(scale.memLong, &longGate))
@@ -608,23 +624,30 @@ func TestLogContentMeasureLongStreamMemory(t *testing.T) {
 	shortServer := httptest.NewServer(lcmStreamProvider(scale.memShort, &shortGate))
 	defer shortServer.Close()
 
-	longLabel := fmt.Sprintf("%d streams of %d MiB", scale.memStreams, scale.memLong/mib)
-	longCost := lcmCompareMemory(t, scale, longLabel, scale.memStreams,
-		lcmCall{baseURL: long.URL, stream: true, request: request, gate: &longGate}, scale.memLong)
 	shortLabel := fmt.Sprintf("%d streams of %d MiB", scale.memStreams, scale.memShort/mib)
 	shortCost := lcmCompareMemory(t, scale, shortLabel, scale.memStreams,
 		lcmCall{baseURL: shortServer.URL, stream: true, request: request, gate: &shortGate}, scale.memShort)
+	longLabel := fmt.Sprintf("%d streams of %d MiB", scale.memStreams, scale.memLong/mib)
+	longCost := lcmCompareMemory(t, scale, longLabel, scale.memStreams,
+		lcmCall{baseURL: long.URL, stream: true, request: request, gate: &longGate}, scale.memLong)
 
-	// 50 x 3.5 MiB: provider copy, client copy, fold blocks and rebuilt message.
-	designed := int64(scale.memStreams) * (7 * mib / 2)
+	budgetLimit := int64(scale.memStreams) * lcmStreamBudget
+	const retainedLimit = 207 * mib
 	spread := math.Abs(longCost.retained()-shortCost.retained()) / math.Max(longCost.retained(), shortCost.retained())
-	t.Logf("%s: peak budget %d B (limit %d B), retained on minus off %.1f MiB (limit %.1f MiB)",
-		longLabel, longCost.peakBudget, designed, lcmMiB(longCost.retained()), lcmMiB(float64(designed+32*mib)))
+	for _, cost := range []struct {
+		label string
+		cost  lcmMemoryCost
+	}{{shortLabel, shortCost}, {longLabel, longCost}} {
+		t.Logf("%s: peak budget %d B (limit %d x (3.5 MiB + %d B) = %d B), retained on minus off %.1f MiB (limit 207 MiB)",
+			cost.label, cost.cost.peakBudget, scale.memStreams, lcmRequestReserve, budgetLimit, lcmMiB(cost.cost.retained()))
+		if scale.thresholds {
+			assert.LessOrEqual(t, cost.cost.peakBudget, budgetLimit, "%s: peak budget in use", cost.label)
+			assert.LessOrEqual(t, cost.cost.retained(), float64(retainedLimit), "%s: retained heap, on minus off", cost.label)
+		}
+	}
 	t.Logf("retained on minus off: %s %.1f MiB, %s %.1f MiB, difference %.1f%% (limit 10%%)",
-		longLabel, lcmMiB(longCost.retained()), shortLabel, lcmMiB(shortCost.retained()), spread*100)
+		shortLabel, lcmMiB(shortCost.retained()), longLabel, lcmMiB(longCost.retained()), spread*100)
 	if scale.thresholds {
-		assert.LessOrEqual(t, longCost.peakBudget, designed, "peak budget in use, 50 streams of 100 MiB")
-		assert.LessOrEqual(t, longCost.retained(), float64(designed+32*mib), "retained heap, on minus off, 50 streams of 100 MiB")
 		assert.LessOrEqual(t, spread, 0.10, "retained capture memory must not depend on stream length")
 	}
 }
