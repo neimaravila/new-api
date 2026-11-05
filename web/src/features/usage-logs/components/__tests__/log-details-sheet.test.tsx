@@ -41,12 +41,14 @@ import {
   getLogRowInteractionProps,
 } from '../../lib/row-interaction'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
-import {
-  LOG_PANEL_RESERVE_CLASS,
-  LOG_PANEL_WIDTH_CLASS,
-} from '../dialogs/details-dialog'
+import { LOG_PANEL_WIDTH_CLASS } from '../log-content/log-content-panel'
 import { LogDetailsSheet } from '../log-details-sheet'
 import { UsageLogsProvider, useUsageLogsContext } from '../usage-logs-provider'
+
+vi.mock('../../api', () => ({
+  // Never settles: these tests are about the panel shell, not the content.
+  getLogContent: vi.fn(() => new Promise(() => {})),
+}))
 
 function makeLog(overrides: Partial<UsageLog> = {}): UsageLog {
   return usageLogSchema.parse({
@@ -116,6 +118,7 @@ function Harness(props: {
       <LogDetailsSheet
         isAdmin={props.admin ?? true}
         isRoot={false}
+        logs={props.logs}
         resetKey={props.resetKey}
       />
     </>
@@ -138,6 +141,12 @@ function tree(props: Parameters<typeof Harness>[0]) {
 
 function renderHarness(props: Parameters<typeof Harness>[0]) {
   return render(tree(props))
+}
+
+async function openDetails(user: ReturnType<typeof userEvent.setup>) {
+  const dialog = await screen.findByRole('dialog')
+  await user.click(within(dialog).getByRole('button', { name: 'Details' }))
+  return dialog
 }
 
 function before(a: HTMLElement, b: HTMLElement): boolean {
@@ -182,7 +191,7 @@ it('opens the panel on row click with sections in the required order', async () 
     ],
   })
   await user.click(screen.getByTestId('row-1'))
-  const dialog = await screen.findByRole('dialog')
+  const dialog = await openDetails(user)
   const q = within(dialog)
   const ids = q.getByText('Request ID')
   const channel = q.getByText('Channel')
@@ -200,7 +209,8 @@ it('opens the panel on row click with sections in the required order', async () 
   await user.click(screen.getByTestId('row-2'))
   const same = screen.getByRole('dialog')
   expect(same).toBe(dialog)
-  expect(within(same).getByText('req-err')).toBeVisible()
+  await user.click(within(same).getByRole('button', { name: 'Details' }))
+  expect(within(same).getAllByText('req-err').length).toBeGreaterThan(0)
   const error = within(same).getByText('upstream exploded')
   expect(before(within(same).getByText('Response Time'), error)).toBe(true)
   expect(within(same).getAllByText('upstream exploded')).toHaveLength(1)
@@ -245,14 +255,16 @@ it('hides channel for regular users and consumption when sensitive data is hidde
   const user = userEvent.setup()
   renderHarness({ logs: [makeLog()], admin: false })
   await user.click(screen.getByTestId('row-1'))
-  const dialog = await screen.findByRole('dialog')
+  const dialog = await openDetails(user)
   expect(within(dialog).queryByText('Channel')).not.toBeInTheDocument()
   expect(within(dialog).queryByText('primary-channel')).toBeNull()
   expect(within(dialog).getByText('Consumption')).toBeVisible()
   expect(within(dialog).queryByText('••••')).not.toBeInTheDocument()
 
   await user.click(screen.getByText('hide-sensitive'))
-  expect(within(screen.getByRole('dialog')).getByText('••••')).toBeVisible()
+  expect(
+    within(screen.getByRole('dialog')).getAllByText('••••').length
+  ).toBeGreaterThan(0)
 })
 
 it('closes the panel with Escape', async () => {
@@ -388,7 +400,7 @@ it('opens with Space on the row itself, preventing scroll, with a focus ring', a
   expect(await screen.findByRole('dialog')).toBeVisible()
 })
 
-it('sizes the panel to the width the logs page reserves beside it', async () => {
+it('is 60vw wide from lg up and reserves no room on the page', async () => {
   const user = userEvent.setup()
   renderHarness({ logs: [makeLog({ id: 1, type: 2 })] })
   await user.click(screen.getByTestId('row-1'))
@@ -397,8 +409,6 @@ it('sizes the panel to the width the logs page reserves beside it', async () => 
     if (!el) throw new Error('panel not open')
     return el
   })
-  expect(panel).toHaveClass(LOG_PANEL_WIDTH_CLASS)
-  // 28rem (max-w-md) is what lg:pr-[28rem] reserves.
-  expect(LOG_PANEL_WIDTH_CLASS).toBe('lg:max-w-md')
-  expect(LOG_PANEL_RESERVE_CLASS).toBe('lg:pr-[28rem]')
+  expect(panel).toHaveClass('lg:w-[60vw]')
+  expect(LOG_PANEL_WIDTH_CLASS).toContain('lg:w-[60vw]')
 })

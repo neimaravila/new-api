@@ -7567,6 +7567,22 @@
     "{{requests}} requests in the last 24 hours · {{keys}} active keys": "过去 24 小时 {{requests}} 次请求 · {{keys}} 个活跃密钥",
     "{{requests}} requests · {{failures}} recent failures": "{{requests}} 次请求 · {{failures}} 次近期失败",
     "{{requests}} requests · {{quota}} quota used": "{{requests}} 次请求 · 已用 {{quota}} 额度",
-    "Generate speech with ElevenLabs text-to-speech models": "使用 ElevenLabs 文本转语音模型生成语音"
+    "Generate speech with ElevenLabs text-to-speech models": "使用 ElevenLabs 文本转语音模型生成语音",
+    "The content of this call is still being saved.": "此次调用的内容仍在保存中。",
+    "The content of this call was deleted after the retention period.": "此次调用的内容已在保留期后被删除。",
+    "Content not captured for this type of call": "此类调用不会捕获内容",
+    "The content of this call is not available.": "此次调用的内容不可用。",
+    "Some content was shortened to fit the storage limit.": "部分内容已被截短以符合存储限制。",
+    "The response did not finish, so the captured content may be incomplete.": "响应未完成，因此捕获的内容可能不完整。",
+    "Calls": "调用次数",
+    "Copy request body": "复制请求正文",
+    "Export call as JSON": "将调用导出为 JSON",
+    "Previous log": "上一条日志",
+    "Next log": "下一条日志",
+    "Attempts": "尝试",
+    "Conversation": "对话",
+    "Routing": "路由",
+    "Sensitive data is hidden.": "敏感数据已隐藏。",
+    "Could not load the content of this call": "无法加载此次调用的内容"
   }
 }

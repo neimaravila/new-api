@@ -282,6 +282,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
             <LogDetailsSheet
               isAdmin={isAdmin}
               isRoot={isRoot}
+              logs={logs as UsageLog[]}
               resetKey={selectedLogResetKey}
             />
           </>

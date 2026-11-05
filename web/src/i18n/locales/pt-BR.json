@@ -7545,6 +7545,22 @@
     "{{requests}} requests in the last 24 hours · {{keys}} active keys": "{{requests}} solicitações nas últimas 24 horas · {{keys}} chaves ativas",
     "{{requests}} requests · {{failures}} recent failures": "{{requests}} solicitações · {{failures}} falhas recentes",
     "{{requests}} requests · {{quota}} quota used": "{{requests}} solicitações · {{quota}} de cota usada",
-    "Generate speech with ElevenLabs text-to-speech models": "Gere fala com os modelos de conversão de texto em fala da ElevenLabs"
+    "Generate speech with ElevenLabs text-to-speech models": "Gere fala com os modelos de conversão de texto em fala da ElevenLabs",
+    "The content of this call is still being saved.": "O conteúdo desta chamada ainda está sendo salvo.",
+    "The content of this call was deleted after the retention period.": "O conteúdo desta chamada foi excluído após o período de retenção.",
+    "Content not captured for this type of call": "Conteúdo não capturado para este tipo de chamada",
+    "The content of this call is not available.": "O conteúdo desta chamada não está disponível.",
+    "Some content was shortened to fit the storage limit.": "Parte do conteúdo foi reduzida para caber no limite de armazenamento.",
+    "The response did not finish, so the captured content may be incomplete.": "A resposta não terminou, então o conteúdo capturado pode estar incompleto.",
+    "Calls": "Chamadas",
+    "Copy request body": "Copiar corpo da requisição",
+    "Export call as JSON": "Exportar chamada como JSON",
+    "Previous log": "Log anterior",
+    "Next log": "Próximo log",
+    "Attempts": "Tentativas",
+    "Conversation": "Conversa",
+    "Routing": "Roteamento",
+    "Sensitive data is hidden.": "Os dados sensíveis estão ocultos.",
+    "Could not load the content of this call": "Não foi possível carregar o conteúdo desta chamada"
   }
 }

@@ -7567,6 +7567,22 @@
     "{{requests}} requests in the last 24 hours · {{keys}} active keys": "{{requests}} yêu cầu trong 24 giờ qua · {{keys}} khóa đang hoạt động",
     "{{requests}} requests · {{failures}} recent failures": "{{requests}} yêu cầu · {{failures}} lỗi gần đây",
     "{{requests}} requests · {{quota}} quota used": "{{requests}} yêu cầu · đã dùng {{quota}} quota",
-    "Generate speech with ElevenLabs text-to-speech models": "Tạo giọng nói bằng các mô hình chuyển văn bản thành giọng nói của ElevenLabs"
+    "Generate speech with ElevenLabs text-to-speech models": "Tạo giọng nói bằng các mô hình chuyển văn bản thành giọng nói của ElevenLabs",
+    "The content of this call is still being saved.": "Nội dung của lệnh gọi này vẫn đang được lưu.",
+    "The content of this call was deleted after the retention period.": "Nội dung của lệnh gọi này đã bị xóa sau thời gian lưu giữ.",
+    "Content not captured for this type of call": "Nội dung không được ghi lại cho loại lệnh gọi này",
+    "The content of this call is not available.": "Nội dung của lệnh gọi này không khả dụng.",
+    "Some content was shortened to fit the storage limit.": "Một phần nội dung đã được rút gọn để vừa giới hạn lưu trữ.",
+    "The response did not finish, so the captured content may be incomplete.": "Phản hồi chưa hoàn tất nên nội dung ghi lại có thể chưa đầy đủ.",
+    "Calls": "Số lần gọi",
+    "Copy request body": "Sao chép nội dung yêu cầu",
+    "Export call as JSON": "Xuất lệnh gọi dưới dạng JSON",
+    "Previous log": "Nhật ký trước",
+    "Next log": "Nhật ký sau",
+    "Attempts": "Lần thử",
+    "Conversation": "Hội thoại",
+    "Routing": "Định tuyến",
+    "Sensitive data is hidden.": "Dữ liệu nhạy cảm đã bị ẩn.",
+    "Could not load the content of this call": "Không thể tải nội dung của lệnh gọi này"
   }
 }

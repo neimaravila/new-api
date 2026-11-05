@@ -41,6 +41,9 @@ import { LogDetailsSheet } from '../log-details-sheet'
 import { UsageLogsProvider } from '../usage-logs-provider'
 
 vi.mock('@lobehub/icons', () => ({}))
+vi.mock('../../api', () => ({
+  getLogContent: vi.fn(() => new Promise(() => {})),
+}))
 vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: () => null,
@@ -96,7 +99,7 @@ function DetailPreview(props: {
   return (
     <UsageLogsProvider>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
-      <LogDetailsSheet isAdmin={props.isAdmin} isRoot={false} />
+      <LogDetailsSheet isAdmin={props.isAdmin} isRoot={false} logs={[]} />
     </UsageLogsProvider>
   )
 }
@@ -345,7 +348,9 @@ test.each([true, false])(
     )
     expect(preview.textContent).toBe('Per-call · $0.25')
     fireEvent.click(preview)
-    const dialog = within(await screen.findByRole('dialog'))
+    const panel = await screen.findByRole('dialog')
+    fireEvent.click(within(panel).getByRole('button', { name: 'Details' }))
+    const dialog = within(panel)
     if (isAdmin) {
       expect(dialog.getByText('Incho')).toBeVisible()
       expect(dialog.getByText('1.0.1')).toBeVisible()

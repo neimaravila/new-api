@@ -25,9 +25,7 @@ import type { NavGroup } from '@/components/layout/types'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
-import { cn } from '@/lib/utils'
 
-import { LOG_PANEL_RESERVE_CLASS } from './components/dialogs/details-dialog'
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
   type LogsViewScope,
@@ -66,7 +64,6 @@ function UsageLogsContent() {
       ? params.section
       : USAGE_LOGS_DEFAULT_SECTION
   const {
-    selectedLog,
     selectedUserId,
     userInfoDialogOpen,
     setUserInfoDialogOpen,
@@ -127,13 +124,7 @@ function UsageLogsContent() {
 
   return (
     <>
-      <SectionPageLayout
-        fixedContent
-        // Reserve the panel's width for header, list and pager footer alike.
-        className={cn(
-          selectedLog && activeCategory === 'common' && LOG_PANEL_RESERVE_CLASS
-        )}
-      >
+      <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>

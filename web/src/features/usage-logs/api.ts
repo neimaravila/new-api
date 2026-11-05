@@ -19,6 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { api, getFreshAuthHeaders, type ApiRequestConfig } from '@/lib/api'
 import { createServerError } from '@/lib/server-error-message'
 
+import {
+  logContentSchema,
+  type LogContentView,
+} from './data/log-content-schema'
 import type { UsageLog } from './data/schema'
 import { buildQueryParams } from './lib/query-params'
 import { parseTaskArtifactsResponse } from './lib/task-artifacts'
@@ -196,4 +200,29 @@ export async function getTaskArtifacts(taskId: string) {
     taskArtifactRequestConfig
   )
   return parseTaskArtifactsResponse(response.data)
+}
+
+/**
+ * Captured content of one call. A response with success false (no such call,
+ * or not the caller's) is an error, so the panel can offer a retry.
+ */
+export async function getLogContent(
+  requestId: string,
+  isAdmin: boolean
+): Promise<LogContentView> {
+  const res = await api.get(
+    `${buildApiPath('/api/log', isAdmin)}/content/${encodeURIComponent(requestId)}`,
+    { skipErrorHandler: true }
+  )
+  const body = res.data as {
+    success?: boolean
+    message?: string
+    data?: unknown
+  }
+  if (!body?.success) {
+    throw createServerError(
+      body ?? { success: false, message: 'Log content not found' }
+    )
+  }
+  return logContentSchema.parse(body.data)
 }

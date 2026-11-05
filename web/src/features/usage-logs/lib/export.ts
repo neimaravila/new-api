@@ -109,15 +109,22 @@ export function toCsvLine(cells: string[]): string {
   return `${quoted.join(',')}\r\n`
 }
 
-/** Save CSV lines as a UTF-8 file that spreadsheet apps open correctly. */
-export function downloadCsv(filename: string, lines: string[]): void {
-  const blob = new Blob(['\uFEFF', ...lines], {
-    type: 'text/csv;charset=utf-8',
-  })
+/** Save text as a file download. */
+export function downloadText(
+  filename: string,
+  mime: string,
+  content: string
+): void {
+  const blob = new Blob([content], { type: mime })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+/** Save CSV lines as a UTF-8 file that spreadsheet apps open correctly. */
+export function downloadCsv(filename: string, lines: string[]): void {
+  downloadText(filename, 'text/csv;charset=utf-8', `\uFEFF${lines.join('')}`)
 }

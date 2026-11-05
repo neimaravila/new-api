@@ -7567,6 +7567,22 @@
     "{{requests}} requests in the last 24 hours · {{keys}} active keys": "{{requests}} запросов за последние 24 часа · {{keys}} активных ключей",
     "{{requests}} requests · {{failures}} recent failures": "{{requests}} запросов · недавних сбоев: {{failures}}",
     "{{requests}} requests · {{quota}} quota used": "{{requests}} запросов · использовано квоты: {{quota}}",
-    "Generate speech with ElevenLabs text-to-speech models": "Генерация речи с помощью моделей синтеза речи ElevenLabs"
+    "Generate speech with ElevenLabs text-to-speech models": "Генерация речи с помощью моделей синтеза речи ElevenLabs",
+    "The content of this call is still being saved.": "Содержимое этого вызова ещё сохраняется.",
+    "The content of this call was deleted after the retention period.": "Содержимое этого вызова удалено по истечении срока хранения.",
+    "Content not captured for this type of call": "Содержимое для этого типа вызовов не записывается",
+    "The content of this call is not available.": "Содержимое этого вызова недоступно.",
+    "Some content was shortened to fit the storage limit.": "Часть содержимого сокращена из-за лимита хранения.",
+    "The response did not finish, so the captured content may be incomplete.": "Ответ не был завершён, поэтому записанное содержимое может быть неполным.",
+    "Calls": "Вызовы",
+    "Copy request body": "Копировать тело запроса",
+    "Export call as JSON": "Экспортировать вызов в JSON",
+    "Previous log": "Предыдущий журнал",
+    "Next log": "Следующий журнал",
+    "Attempts": "Попытки",
+    "Conversation": "Диалог",
+    "Routing": "Маршрутизация",
+    "Sensitive data is hidden.": "Конфиденциальные данные скрыты.",
+    "Could not load the content of this call": "Не удалось загрузить содержимое этого вызова"
   }
 }

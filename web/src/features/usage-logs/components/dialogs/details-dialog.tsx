@@ -56,13 +56,6 @@ import { Dialog } from '@/components/dialog'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
@@ -102,13 +95,6 @@ import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
-
-/**
- * From `lg` up the panel is 28rem wide; the logs page reserves the same width
- * (LOG_PANEL_RESERVE_CLASS) so the list sits beside it instead of underneath.
- */
-export const LOG_PANEL_WIDTH_CLASS = 'lg:max-w-md'
-export const LOG_PANEL_RESERVE_CLASS = 'lg:pr-[28rem]'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -530,49 +516,29 @@ interface DetailsDialogProps {
   isRoot: boolean
   open: boolean
   onOpenChange: (open: boolean, eventDetails?: { reason?: string }) => void
-  /** Outer wrapper only; the details body is the same in both. */
-  presentation?: 'dialog' | 'sheet'
+  /**
+   * Outer wrapper only; the details body is the same in both. `embedded`
+   * renders the body alone, for the content panel to place.
+   */
+  presentation?: 'dialog' | 'embedded'
   /** Mask the consumption value (sensitive data hidden). */
   hideQuota?: boolean
 }
 
 type DetailsShellProps = React.ComponentProps<typeof Dialog> & {
-  presentation?: 'dialog' | 'sheet'
+  presentation?: 'dialog' | 'embedded'
 }
 
 function DetailsShell({ presentation, ...dialogProps }: DetailsShellProps) {
-  if (presentation !== 'sheet') return <Dialog {...dialogProps} />
-  return (
-    <Sheet
-      open={dialogProps.open}
-      onOpenChange={dialogProps.onOpenChange}
-      modal={false}
-    >
-      <SheetContent
-        showOverlay={false}
-        className={`w-full max-sm:max-w-full sm:max-w-lg ${LOG_PANEL_WIDTH_CLASS}`}
-      >
-        <SheetHeader className='pr-12'>
-          <SheetTitle className='flex items-center gap-2 text-base'>
-            {dialogProps.title}
-          </SheetTitle>
-          <SheetDescription className='sr-only'>
-            {dialogProps.description}
-          </SheetDescription>
-        </SheetHeader>
-        <div className='min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4'>
-          {dialogProps.children}
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
+  if (presentation === 'embedded') return dialogProps.children
+  return <Dialog {...dialogProps} />
 }
 
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const other = parseLogOther(props.log.other)
-  const isSheet = props.presentation === 'sheet'
+  const isSheet = props.presentation === 'embedded'
   const typeConfig = isSheet
     ? getLogStatusConfig(props.log.type)
     : getLogTypeConfig(props.log.type)

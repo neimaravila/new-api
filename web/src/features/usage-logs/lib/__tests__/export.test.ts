@@ -17,10 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createInstance } from 'i18next'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import type { UsageLog } from '../../data/schema'
-import { getLogCsvHeader, getLogCsvRow, toCsvLine } from '../export'
+import {
+  downloadCsv,
+  downloadText,
+  getLogCsvHeader,
+  getLogCsvRow,
+  toCsvLine,
+} from '../export'
 
 const consumeLog: UsageLog = {
   id: 1,
@@ -163,5 +169,39 @@ describe('usage log CSV export', () => {
     expect(
       toCsvLine(['=HYPERLINK("x")', '-12.5', '+cmd', 'a"b', 'two\nlines'])
     ).toBe(`"'=HYPERLINK(""x"")","-12.5","'+cmd","a""b","two\nlines"\r\n`)
+  })
+})
+
+describe('downloads', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function captureDownload() {
+    let blob: Blob | undefined
+    URL.createObjectURL = vi.fn((value: Blob | MediaSource) => {
+      blob = value as Blob
+      return 'blob:test'
+    })
+    URL.revokeObjectURL = vi.fn()
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    return { blob: () => blob, click }
+  }
+
+  test('downloadText saves the content under the name and type given', async () => {
+    const saved = captureDownload()
+    downloadText('log-1.json', 'application/json', '{"a":1}')
+    expect(saved.click).toHaveBeenCalledOnce()
+    expect(saved.blob()?.type).toBe('application/json')
+    expect(await saved.blob()?.text()).toBe('{"a":1}')
+  })
+
+  test('downloadCsv keeps the BOM and the text/csv type', async () => {
+    const saved = captureDownload()
+    downloadCsv('logs.csv', ['"a","b"\r\n'])
+    expect(saved.blob()?.type).toBe('text/csv;charset=utf-8')
+    const bytes = new Uint8Array((await saved.blob()?.arrayBuffer()) ?? [])
+    expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+    expect(new TextDecoder().decode(bytes.slice(3))).toBe('"a","b"\r\n')
   })
 })

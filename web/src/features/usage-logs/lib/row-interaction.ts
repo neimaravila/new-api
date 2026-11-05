@@ -47,6 +47,7 @@ export function getLogRowInteractionProps(
   setSelectedLog: (log: UsageLog | null, opener?: HTMLElement | null) => void
 ) {
   return {
+    'data-log-row-id': log.id,
     tabIndex: 0,
     className: LOG_ROW_FOCUS_CLASS,
     onClick: (event: MouseEvent<HTMLElement>) => {

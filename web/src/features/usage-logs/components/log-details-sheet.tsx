@@ -18,17 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect } from 'react'
 
-import { DetailsDialog } from './dialogs/details-dialog'
+import type { UsageLog } from '../data/schema'
+import { LogContentPanel } from './log-content/log-content-panel'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 /** Single side panel showing the log selected in the common logs table. */
 export function LogDetailsSheet(props: {
   isAdmin: boolean
   isRoot: boolean
+  /** The logs on screen, which the panel's arrows walk through. */
+  logs: UsageLog[]
   /** Changes when page, filters or category change; closes the panel. */
   resetKey?: string
 }) {
-  const { selectedLog, setSelectedLog, selectedLogOpener, sensitiveVisible } =
+  const { selectedLog, setSelectedLog, selectedLogOpener } =
     useUsageLogsContext()
   const { resetKey } = props
 
@@ -40,37 +43,25 @@ export function LogDetailsSheet(props: {
 
   const close = () => {
     const opener = selectedLogOpener.current
+    const id = selectedLog.id
     setSelectedLog(null)
-    // Return focus to the row that opened the panel, if it is still there.
+    // Return focus to the row now selected, if it is still there.
     setTimeout(() => {
-      if (opener?.isConnected) opener.focus()
+      const row = document.querySelector<HTMLElement>(
+        `[data-log-row-id="${id}"]`
+      )
+      const target = row?.isConnected ? row : opener
+      if (target?.isConnected) target.focus()
     }, 0)
   }
 
   return (
-    <DetailsDialog
+    <LogContentPanel
       log={selectedLog}
+      logs={props.logs}
       isAdmin={props.isAdmin}
       isRoot={props.isRoot}
-      open
-      onOpenChange={(open, eventDetails) => {
-        // The panel is non-modal so rows stay clickable: only the close
-        // button and Escape dismiss it. Outside presses and focus moves are
-        // row clicks that switch the log, not requests to close.
-        if (open) return
-        const reason = eventDetails?.reason
-        if (reason === 'close-press') {
-          close()
-        } else if (reason === 'escape-key') {
-          // Escape elsewhere (e.g. typing in a filter) must not close it.
-          const active = document.activeElement
-          const inPanel = !!active?.closest('[data-slot="sheet-content"]')
-          const inRow = !!selectedLogOpener.current?.contains(active)
-          if (inPanel || inRow) close()
-        }
-      }}
-      presentation='sheet'
-      hideQuota={!sensitiveVisible}
+      onClose={close}
     />
   )
 }

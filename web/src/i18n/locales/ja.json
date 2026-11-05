@@ -7567,6 +7567,22 @@
     "{{requests}} requests in the last 24 hours · {{keys}} active keys": "過去 24 時間のリクエスト {{requests}} 件 · アクティブキー {{keys}} 件",
     "{{requests}} requests · {{failures}} recent failures": "{{requests}} 件のリクエスト · 直近の失敗 {{failures}} 件",
     "{{requests}} requests · {{quota}} quota used": "リクエスト {{requests}} 件 · 使用クォータ {{quota}}",
-    "Generate speech with ElevenLabs text-to-speech models": "ElevenLabs の音声合成モデルで音声を生成"
+    "Generate speech with ElevenLabs text-to-speech models": "ElevenLabs の音声合成モデルで音声を生成",
+    "The content of this call is still being saved.": "この呼び出しの内容はまだ保存中です。",
+    "The content of this call was deleted after the retention period.": "この呼び出しの内容は保持期間の経過後に削除されました。",
+    "Content not captured for this type of call": "この種類の呼び出しでは内容は取得されません",
+    "The content of this call is not available.": "この呼び出しの内容は利用できません。",
+    "Some content was shortened to fit the storage limit.": "保存の上限に収めるため、一部の内容が短縮されました。",
+    "The response did not finish, so the captured content may be incomplete.": "レスポンスが完了しなかったため、取得した内容が不完全な可能性があります。",
+    "Calls": "呼び出し回数",
+    "Copy request body": "リクエスト本文をコピー",
+    "Export call as JSON": "呼び出しを JSON でエクスポート",
+    "Previous log": "前のログ",
+    "Next log": "次のログ",
+    "Attempts": "試行",
+    "Conversation": "会話",
+    "Routing": "ルーティング",
+    "Sensitive data is hidden.": "機密データは非表示です。",
+    "Could not load the content of this call": "この呼び出しの内容を読み込めませんでした"
   }
 }
