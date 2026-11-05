@@ -87,8 +87,13 @@ var defaultSecretHeaders = []string{"Authorization", "X-Api-Key", "Api-Key", "X-
 // secretQueryWords mark URL query names whose values are credentials.
 var secretQueryWords = []string{"key", "token", "secret", "auth", "sig", "password", "credential"}
 
-// secretHeaderWords mark override header names whose values are credentials.
-var secretHeaderWords = []string{"authorization", "key", "token", "secret", "password", "credential", "auth", "signature", "cookie"}
+// publicOverrideHeaders are override headers known to carry no credential;
+// every other override value is treated as one. Names are lower case.
+var publicOverrideHeaders = []string{
+	"user-agent", "content-type", "accept", "accept-encoding", "accept-language",
+	"anthropic-version", "anthropic-beta", "openai-beta", "http-referer", "referer",
+	"x-title", "origin", "cache-control", "connection",
+}
 
 // Attempt follows one provider call of a Capture.
 type Attempt struct {
@@ -281,8 +286,8 @@ func BeginAttempt(c *gin.Context, info AttemptInfo, req *http.Request) (attempt 
 
 // requestSecrets collects the credential values sent upstream in headers and
 // the URL query. They are only used for redaction; headers and URLs are
-// never stored. An override header counts only when its name looks like a
-// credential, so benign overrides such as User-Agent stay in the bodies.
+// never stored. Every override header counts except those known to be
+// public, so benign overrides such as User-Agent stay in the bodies.
 func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 	var secrets []string
 	add := func(value string) {
@@ -292,7 +297,7 @@ func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 	}
 	names := slices.Clone(defaultSecretHeaders)
 	for _, name := range overrideHeaders {
-		if isSecretName(name, secretHeaderWords) {
+		if !isPublicHeader(name) {
 			names = append(names, name)
 		}
 	}
@@ -316,6 +321,11 @@ func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 		}
 	}
 	return secrets
+}
+
+func isPublicHeader(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	return slices.Contains(publicOverrideHeaders, lower) || strings.HasPrefix(lower, "x-stainless-")
 }
 
 func isSecretName(name string, words []string) bool {

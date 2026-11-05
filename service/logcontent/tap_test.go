@@ -808,24 +808,27 @@ func TestIneligibleCallStopsCopyingClientWrites(t *testing.T) {
 	assert.Empty(t, capture.ClientCopy())
 }
 
-func TestBenignOverrideHeadersStayInBodies(t *testing.T) {
+func TestOverrideHeaderSecretsSkipOnlyPublicHeaders(t *testing.T) {
 	tokenKey := "custom-token-secret-0123456789abcd"
+	tenantKey := "tenant-credential-0123456789abcdef"
 	withCaptureEnabled(t, true)
 	p := newTestPipeline(t, true)
 	c, _ := newCaptureContext(t)
 	capture := Begin(c, types.RelayFormatOpenAI)
 	info := eligibleAttempt()
-	info.SecretHeaders = []string{"User-Agent", "anthropic-version", "Content-Type", "X-Custom-Token", "X-Short-Key"}
+	info.SecretHeaders = []string{"User-Agent", "anthropic-version", "Content-Type", "X-Stainless-Runtime-Version", "X-Custom-Token", "X-Tenant", "X-Short-Key"}
 	req, err := http.NewRequest(http.MethodPost, "https://upstream.example/v1/messages?model=claude-sonnet-4&api_key=short", strings.NewReader(`{}`))
 	require.NoError(t, err)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gateway-client/1.2.3)")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Custom-Token", tokenKey)
+	req.Header.Set("X-Tenant", tenantKey)
+	req.Header.Set("X-Stainless-Runtime-Version", "v20.11.1-node")
 	req.Header.Set("X-Short-Key", "abc123")
 	req.Header.Set("Authorization", "short")
 	attempt := BeginAttempt(c, info, req)
-	echo := `{"ua":"Mozilla/5.0 (compatible; gateway-client/1.2.3)","version":"2023-06-01","type":"application/json","model":"claude-sonnet-4","short":"abc123 short","token":"` + tokenKey + `"}`
+	echo := `{"ua":"Mozilla/5.0 (compatible; gateway-client/1.2.3)","version":"2023-06-01","type":"application/json","model":"claude-sonnet-4","short":"abc123 short","stainless":"v20.11.1-node","token":"` + tokenKey + `","tenant":"` + tenantKey + `"}`
 	resp := attempt.ObserveResponse(&http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(echo))}, nil)
 	_, _ = io.ReadAll(resp.Body)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -834,7 +837,7 @@ func TestBenignOverrideHeadersStayInBodies(t *testing.T) {
 
 	rec := takeRecord(t, p)
 	defer release(rec.reserved)
-	for _, benign := range []string{"2023-06-01", "application/json", "abc123", "short", "claude-sonnet-4"} {
+	for _, benign := range []string{"2023-06-01", "application/json", "abc123", "short", "claude-sonnet-4", "v20.11.1-node"} {
 		assert.NotContains(t, rec.Secrets, benign)
 	}
 	text := gunzipForTest(t, buildRows(rec)[1].ResponseBody)
@@ -842,6 +845,9 @@ func TestBenignOverrideHeadersStayInBodies(t *testing.T) {
 	assert.Contains(t, text, `"version":"2023-06-01"`)
 	assert.Contains(t, text, `"type":"application/json"`)
 	assert.Contains(t, text, `"short":"abc123 short"`)
+	assert.Contains(t, text, `"stainless":"v20.11.1-node"`)
 	assert.NotContains(t, text, tokenKey)
 	assert.Contains(t, text, `"token":"[REDACTED]"`)
+	assert.NotContains(t, text, tenantKey, "a credential under a header with no telling name is redacted")
+	assert.Contains(t, text, `"tenant":"[REDACTED]"`)
 }
