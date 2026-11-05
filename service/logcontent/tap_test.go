@@ -853,6 +853,28 @@ func TestOverrideHeaderSecretsSkipOnlyPublicHeaders(t *testing.T) {
 	assert.Contains(t, text, `"tenant":"[REDACTED]"`)
 }
 
+func TestOverrideHeaderCredentialWordsBeatPublicNames(t *testing.T) {
+	for _, name := range []string{
+		"X-Stainless-Api-Key", "X-Stainless-Session-Token", "X-Stainless-Auth", "Anthropic-Beta-Secret",
+		"X-Title-Password", "Accept-Jwt", "X-Stainless-Bearer", "X-Stainless-Pass", "X-Stainless-Pwd",
+		"X-Stainless-Sig", "X-Stainless-Credential", "Openai-Beta-Key",
+	} {
+		assert.False(t, isPublicHeader(name), name)
+	}
+	for _, name := range []string{"User-Agent", "anthropic-version", "X-Stainless-Runtime-Version", "X-Stainless-Os", "Content-Type"} {
+		assert.True(t, isPublicHeader(name), name)
+	}
+
+	secret := "stainless-api-key-secret-0123456789ab"
+	req, err := http.NewRequest(http.MethodPost, "https://upstream.example/v1/messages", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	req.Header.Set("X-Stainless-Api-Key", secret)
+	req.Header.Set("X-Stainless-Runtime-Version", "v20.11.1-node")
+	secrets := requestSecrets(req, []string{"X-Stainless-Api-Key", "X-Stainless-Runtime-Version"})
+	assert.Contains(t, secrets, secret)
+	assert.NotContains(t, secrets, "v20.11.1-node")
+}
+
 func TestStreamFoldReusesBlocksWithoutMixingThem(t *testing.T) {
 	frame := func(text string) []byte {
 		return []byte(`data: {"choices":[{"index":0,"delta":{"content":"` + text + `"}}]}` + "\n\n")

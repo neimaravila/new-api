@@ -87,6 +87,12 @@ var defaultSecretHeaders = []string{"Authorization", "X-Api-Key", "Api-Key", "X-
 // secretQueryWords mark URL query names whose values are credentials.
 var secretQueryWords = []string{"key", "token", "secret", "auth", "sig", "password", "credential"}
 
+// secretHeaderWords mark override header names that carry a credential, even
+// when the name is also on the public list or starts with x-stainless-.
+var secretHeaderWords = []string{
+	"key", "token", "secret", "auth", "password", "credential", "sig", "session", "jwt", "bearer", "pass", "pwd",
+}
+
 // publicOverrideHeaders are override headers known to carry no credential;
 // every other override value is treated as one. Names are lower case.
 var publicOverrideHeaders = []string{
@@ -325,6 +331,9 @@ func requestSecrets(req *http.Request, overrideHeaders []string) []string {
 
 func isPublicHeader(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
+	if isSecretName(lower, secretHeaderWords) {
+		return false
+	}
 	return slices.Contains(publicOverrideHeaders, lower) || strings.HasPrefix(lower, "x-stainless-")
 }
 
