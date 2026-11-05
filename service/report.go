@@ -185,10 +185,7 @@ type reportBucketRow struct {
 }
 
 func computeReportTrend(scope reportRoleScope, start int64, end int64, granularity dto.ReportGranularity) (dto.ReportTrend, error) {
-	intervalSeconds := int64(3600)
-	if granularity == dto.ReportGranularityDay {
-		intervalSeconds = 86400
-	}
+	intervalSeconds := reportIntervalSeconds(granularity)
 	// Align start to the bucket boundary so labels line up across DBs.
 	bucketStart := start - (start % intervalSeconds)
 
@@ -231,11 +228,7 @@ func queryReportTrendBuckets(scope reportRoleScope, start int64, end int64, inte
 	// Compute the bucket number portably in Go from created_at, then aggregate in the DB.
 	// GORM Scan into a struct works across SQLite/MySQL/PostgreSQL; for ClickHouse the
 	// same column arithmetic applies (integer division on Int64).
-	bucketExpr := fmt.Sprintf("(created_at - %d) / %d", start, intervalSeconds)
-	if common.UsingLogDatabase(common.DatabaseTypeMySQL) {
-		// MySQL's / is decimal division, so the bucket number needs an explicit floor.
-		bucketExpr = fmt.Sprintf("FLOOR((created_at - %d) / %d)", start, intervalSeconds)
-	}
+	bucketExpr := reportBucketExpr(start, intervalSeconds)
 	tx := model.LOG_DB.Table("logs").
 		Select(bucketExpr+" as bucket, "+
 			"COALESCE(sum(case when type = ? then quota else 0 end), 0) as quota, "+
@@ -459,12 +452,12 @@ func nameChannelPerformanceRows(rows []dto.ReportPerformanceRow) {
 
 // reportGroupPercentiles fetches a bounded sample of use_time for a group and computes the 50th and
 // 95th percentiles in milliseconds. Cross-DB-safe: only reads scalar use_time values; no percentile
-// SQL function is used.
+// SQL function is used. The sample is the most recent rows; values are sorted in Go.
 func reportGroupPercentiles(scope reportRoleScope, start int64, end int64, groupCol string, groupVal string, sampleLimit int) (int, int, error) {
 	tx := model.LOG_DB.Table("logs").
 		Select("use_time").
 		Where("created_at >= ? and created_at <= ? and "+groupCol+" = ? and type = ? and use_time > 0", start, end, groupVal, model.LogTypeConsume).
-		Order("use_time asc").
+		Order("created_at desc").
 		Limit(sampleLimit)
 	tx = scope.apply(tx)
 
@@ -569,6 +562,10 @@ func computeReportCostByModel(scope reportRoleScope, start int64, end int64, gra
 // ---- latency percentile series ----
 
 func computeReportLatencySeries(scope reportRoleScope, start int64, end int64, granularity dto.ReportGranularity) ([]dto.ReportLatencyPoint, error) {
+	return computeReportLatencySeriesWithLimit(scope, start, end, granularity, reportLatencySampleLimit)
+}
+
+func computeReportLatencySeriesWithLimit(scope reportRoleScope, start int64, end int64, granularity dto.ReportGranularity, sampleLimit int) ([]dto.ReportLatencyPoint, error) {
 	intervalSeconds := reportIntervalSeconds(granularity)
 	bucketStart := start - (start % intervalSeconds)
 
@@ -577,7 +574,7 @@ func computeReportLatencySeries(scope reportRoleScope, start int64, end int64, g
 		Select("created_at, use_time").
 		Where("created_at >= ? and created_at <= ? and type = ? and use_time > 0", bucketStart, end, model.LogTypeConsume).
 		Order("created_at desc").
-		Limit(reportLatencySampleLimit)
+		Limit(sampleLimit)
 	tx = scope.apply(tx)
 
 	var rawRows []struct {
@@ -598,6 +595,10 @@ func computeReportLatencySeries(scope reportRoleScope, start int64, end int64, g
 		timestamps = append(timestamps, ts)
 	}
 	sort.Slice(timestamps, func(i, j int) bool { return timestamps[i] < timestamps[j] })
+	// The sample is newest first, so a full sample means the oldest bucket may be cut short.
+	if len(rawRows) >= sampleLimit && len(timestamps) > 0 {
+		timestamps = timestamps[1:]
+	}
 
 	points := make([]dto.ReportLatencyPoint, 0, len(timestamps))
 	for _, ts := range timestamps {

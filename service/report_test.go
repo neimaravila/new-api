@@ -312,6 +312,7 @@ func TestReportPerformanceUsesMilliseconds(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 3000, rows[0].AvgLatencyMs)
+	assert.Equal(t, 4000, rows[0].P50LatencyMs)
 	assert.Equal(t, 4000, rows[0].P95LatencyMs)
 	assert.Equal(t, 10, rows[0].Throughput)
 }
@@ -423,4 +424,67 @@ func TestReportLatencySeriesOmitsEmptyBuckets(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, series, 1)
 	assert.Equal(t, 2000, series[0].P50Ms)
+}
+
+func TestReportGroupPercentilesSamplesMostRecent(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	// 6 old fast rows, then 4 recent slow rows; with limit 4 only the slow ones are sampled.
+	for i := 0; i < 6; i++ {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - 7200 + int64(i), Type: model.LogTypeConsume, ModelName: "gpt-4o", Quota: 1, UseTime: 1}).Error)
+	}
+	for i := 0; i < 4; i++ {
+		require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - 600 + int64(i), Type: model.LogTypeConsume, ModelName: "gpt-4o", Quota: 1, UseTime: 50}).Error)
+	}
+
+	p50, p95, err := reportGroupPercentiles(reportAdminScope(), now-8000, now+10, "model_name", "gpt-4o", 4)
+	require.NoError(t, err)
+	assert.Equal(t, 50000, p50)
+	assert.Equal(t, 50000, p95)
+}
+
+func TestReportLatencySeriesDropsOldestBucketWhenSampleIsFull(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	base := time.Now().Unix()
+	base -= base % 3600
+	// Hour buckets: base-3h (old), base-2h, base-1h; 2 rows each. Limit 5 cuts the oldest bucket short.
+	for h := int64(3); h >= 1; h-- {
+		for k := int64(0); k < 2; k++ {
+			require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: base - h*3600 + 10 + k, Type: model.LogTypeConsume, ModelName: "gpt-4o", Quota: 1, UseTime: int(h)}).Error)
+		}
+	}
+
+	full, err := computeReportLatencySeriesWithLimit(reportAdminScope(), base-4*3600, base, dto.ReportGranularityHour, 5)
+	require.NoError(t, err)
+	require.Len(t, full, 2)
+	assert.Equal(t, base-2*3600, full[0].BucketTimestamp)
+	assert.Equal(t, 2000, full[0].P50Ms)
+	assert.Equal(t, base-1*3600, full[1].BucketTimestamp)
+	assert.Equal(t, 1000, full[1].P50Ms)
+
+	// A limit above the row count keeps every bucket.
+	all, err := computeReportLatencySeriesWithLimit(reportAdminScope(), base-4*3600, base, dto.ReportGranularityHour, 100)
+	require.NoError(t, err)
+	assert.Len(t, all, 3)
+}
+
+func TestReportCostByModelMultiBucketSumsToTotal(t *testing.T) {
+	setupDashboardServiceTestDB(t)
+	now := time.Now().Unix()
+	for i := 0; i < 7; i++ {
+		for _, ago := range []int64{2 * 3600, 5 * 3600} {
+			require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, Username: "alice", CreatedAt: now - ago, Type: model.LogTypeConsume, ModelName: "m-" + strconv.Itoa(i), Quota: (i + 1) * 10, UseTime: 1}).Error)
+		}
+	}
+
+	summary, err := GetReportSummary(99, "admin", common.RoleAdminUser, dto.ReportRangeLast7Days, dto.ReportGranularityHour, dto.ReportFilter{})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(summary.CostByModel.Points), 2)
+	sum := 0
+	for _, p := range summary.CostByModel.Points {
+		for _, v := range p.Values {
+			sum += v
+		}
+	}
+	assert.Equal(t, summary.Trend.Totals.Quota, sum)
 }
