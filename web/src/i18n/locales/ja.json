@@ -7598,7 +7598,7 @@
     "Show {{count}} earlier messages": "以前の {{count}} 件のメッセージを表示",
     "No messages to show": "表示するメッセージがありません",
     "This call declared no tools": "この呼び出しではツールが宣言されていません",
-    "Called {{count}} times": "{{count}} 回呼び出し",
+    "Called {{calls}} times_other": "{{calls}} 回呼び出し",
     "Schema": "スキーマ",
     "B": "B",
     "KB": "KB",

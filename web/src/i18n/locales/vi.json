@@ -7598,7 +7598,7 @@
     "Show {{count}} earlier messages": "Hiện {{count}} tin nhắn cũ hơn",
     "No messages to show": "Không có tin nhắn để hiển thị",
     "This call declared no tools": "Lệnh gọi này không khai báo công cụ",
-    "Called {{count}} times": "Đã gọi {{count}} lần",
+    "Called {{calls}} times_other": "Đã gọi {{calls}} lần",
     "Schema": "Lược đồ",
     "B": "B",
     "KB": "KB",

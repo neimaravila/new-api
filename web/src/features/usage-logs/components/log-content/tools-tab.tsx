@@ -46,8 +46,9 @@ function ToolCard(props: { tool: LogContentTool }) {
           {tool.name}
         </span>
         <Badge variant='secondary'>
-          {t('Called {{count}} times', {
-            count: formatNumber(tool.called, locale),
+          {t('Called {{calls}} times', {
+            count: tool.called,
+            calls: formatNumber(tool.called, locale),
           })}
         </Badge>
       </header>

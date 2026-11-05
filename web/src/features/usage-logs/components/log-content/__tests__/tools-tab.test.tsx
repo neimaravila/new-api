@@ -118,3 +118,31 @@ it('formats the call count in the interface language', async () => {
     await i18n.changeLanguage(before)
   }
 })
+
+it('uses the plural form of each language for the call count', async () => {
+  const { default: i18n } = await import('i18next')
+  const { default: en } = await import('@/i18n/locales/en.json')
+  const { default: ru } = await import('@/i18n/locales/ru.json')
+  const before = i18n.language
+  i18n.addResourceBundle('en', 'translation', en.translation, true, true)
+  i18n.addResourceBundle('ru', 'translation', ru.translation, true, true)
+  try {
+    const tools = [
+      { name: 'once', called: 1 },
+      { name: 'twice', called: 2 },
+    ]
+    const { unmount } = render(<ToolsTab view={view({ tools })} />)
+    expect(screen.getByText('Called 1 time')).toBeVisible()
+    expect(screen.getByText('Called 2 times')).toBeVisible()
+    unmount()
+    await i18n.changeLanguage('ru')
+    render(<ToolsTab view={view({ tools })} />)
+    expect(screen.getByText('Вызван 1 раз')).toBeVisible()
+    expect(screen.getByText('Вызван 2 раза')).toBeVisible()
+  } finally {
+    await i18n.changeLanguage(before)
+    i18n.removeResourceBundle('en', 'translation')
+    i18n.addResourceBundle('en', 'translation', {})
+    i18n.removeResourceBundle('ru', 'translation')
+  }
+})
