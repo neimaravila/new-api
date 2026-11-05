@@ -42,16 +42,23 @@ import {
   LOG_TYPE_ALL_VALUE,
   LOG_TYPE_ENUM,
 } from '../constants'
+import type { UsageLog } from '../data/schema'
 import { shouldShowBillingSource } from '../lib/billing-source'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
+import { getLogRowInteractionProps } from '../lib/row-interaction'
 import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { CommonLogsSummary } from './common-logs-summary'
+import { LogDetailsSheet } from './log-details-sheet'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
-import { useLogsViewScope, type LogsViewAccess } from './usage-logs-provider'
+import {
+  useLogsViewScope,
+  useUsageLogsContext,
+  type LogsViewAccess,
+} from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
@@ -96,6 +103,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     isRootView: isRoot,
     viewAccess,
   } = useLogsViewScope()
+  const { setSelectedLog } = useUsageLogsContext()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
   const userId = useAuthStore((state) => state.auth.user?.id)
@@ -256,6 +264,8 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
           <>
             <CommonLogsSummary />
             <CommonLogsFilterBar table={table} />
+            {/* Portal-based panel: one instance for the whole table. */}
+            <LogDetailsSheet isAdmin={isAdmin} isRoot={isRoot} />
           </>
         ) : (
           <TaskLogsFilterBar table={table} logCategory={logCategory} />
@@ -283,6 +293,12 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
             className={cn('transition-colors', tintClass)}
             getColumnClassName={getColumnClassName}
             cellRenderColumns={table.options.columns}
+            {...(isCommon
+              ? getLogRowInteractionProps(
+                  row.original as unknown as UsageLog,
+                  setSelectedLog
+                )
+              : {})}
           />
         )
       }}

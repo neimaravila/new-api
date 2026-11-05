@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
 import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
@@ -69,11 +69,11 @@ import {
 import {
   isDisplayableLogType,
   isTimingLogType,
+  getLogStatusConfig,
   getLogTypeConfig,
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
-import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
@@ -357,6 +357,25 @@ export function useCommonLogsColumns(
   const currency = useSystemConfigStore((state) => state.config.currency)
   return useMemo(() => {
     const columns: ColumnDef<UsageLog>[] = [
+      {
+        id: 'status',
+        header: t('Status'),
+        accessorFn: (row) => row.type,
+        cell: ({ row }) => {
+          const config = getLogStatusConfig(row.original.type)
+          return (
+            <StatusBadge
+              label={t(config.label)}
+              variant={config.color as StatusBadgeProps['variant']}
+              size='sm'
+              showDot
+              copyable={false}
+            />
+          )
+        },
+        enableSorting: false,
+        size: 90,
+      },
       {
         accessorKey: 'created_at',
         header: t('Time'),
@@ -818,7 +837,7 @@ export function useCommonLogsColumns(
         header: t('Details'),
         cell: function DetailsCell({ row }) {
           const { t, i18n } = useTranslation()
-          const [dialogOpen, setDialogOpen] = useState(false)
+          const { setSelectedLog } = useUsageLogsContext()
           const log = row.original
           const other = parseLogOther(log.other)
 
@@ -877,23 +896,14 @@ export function useCommonLogsColumns(
           }
 
           return (
-            <>
-              <button
-                type='button'
-                className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
-                onClick={() => setDialogOpen(true)}
-                title={t('Click to view full details')}
-              >
-                {detailPreview}
-              </button>
-              <DetailsDialog
-                log={log}
-                isAdmin={isAdmin}
-                isRoot={isRoot}
-                open={dialogOpen}
-                onOpenChange={setDialogOpen}
-              />
-            </>
+            <button
+              type='button'
+              className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+              onClick={() => setSelectedLog(log)}
+              title={t('Click to view full details')}
+            >
+              {detailPreview}
+            </button>
           )
         },
         size: 180,

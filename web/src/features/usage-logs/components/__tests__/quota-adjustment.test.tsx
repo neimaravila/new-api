@@ -47,6 +47,7 @@ import { renderAuditContent } from '../../lib/format'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
 import { DetailsDialog } from '../dialogs/details-dialog'
+import { UsageLogsProvider } from '../usage-logs-provider'
 
 // Provider icons are unused by quota logs; their browser-only dependencies
 // cannot be loaded by Vitest's Node ESM resolver.
@@ -75,7 +76,7 @@ function QuotaLogPreview(props: { log: UsageLog }) {
   if (!cell) throw new Error('The quota log must have a content column')
 
   return (
-    <>
+    <UsageLogsProvider>
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
       <DetailsDialog
         log={props.log}
@@ -84,7 +85,7 @@ function QuotaLogPreview(props: { log: UsageLog }) {
         open
         onOpenChange={() => undefined}
       />
-    </>
+    </UsageLogsProvider>
   )
 }
 

@@ -56,6 +56,13 @@ import { Dialog } from '@/components/dialog'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
@@ -86,6 +93,7 @@ import {
 } from '../../lib/format'
 import { buildQuotaAuditOperation } from '../../lib/quota-audit-operation'
 import {
+  getLogStatusConfig,
   getLogTypeConfig,
   isPerCallBilling,
   isTimingLogType,
@@ -514,14 +522,53 @@ interface DetailsDialogProps {
   isAdmin: boolean
   isRoot: boolean
   open: boolean
-  onOpenChange: (open: boolean) => void
+  onOpenChange: (open: boolean, eventDetails?: { reason?: string }) => void
+  /** Outer wrapper only; the details body is the same in both. */
+  presentation?: 'dialog' | 'sheet'
+  /** Mask the consumption value (sensitive data hidden). */
+  hideQuota?: boolean
+}
+
+type DetailsShellProps = React.ComponentProps<typeof Dialog> & {
+  presentation?: 'dialog' | 'sheet'
+}
+
+function DetailsShell({ presentation, ...dialogProps }: DetailsShellProps) {
+  if (presentation !== 'sheet') return <Dialog {...dialogProps} />
+  return (
+    <Sheet
+      open={dialogProps.open}
+      onOpenChange={dialogProps.onOpenChange}
+      modal={false}
+    >
+      <SheetContent
+        showOverlay={false}
+        className='w-full max-sm:max-w-full sm:max-w-lg'
+      >
+        <SheetHeader className='pr-12'>
+          <SheetTitle className='flex items-center gap-2 text-base'>
+            {dialogProps.title}
+          </SheetTitle>
+          <SheetDescription className='sr-only'>
+            {dialogProps.description}
+          </SheetDescription>
+        </SheetHeader>
+        <div className='min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4'>
+          {dialogProps.children}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
 }
 
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const other = parseLogOther(props.log.other)
-  const typeConfig = getLogTypeConfig(props.log.type)
+  const isSheet = props.presentation === 'sheet'
+  const typeConfig = isSheet
+    ? getLogStatusConfig(props.log.type)
+    : getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
@@ -667,8 +714,38 @@ export function DetailsDialog(props: DetailsDialogProps) {
     other?.reasoning_effort
   )
 
+  // In the side panel, an error's message sits right after the timing rows;
+  // in the dialog it keeps its place at the end.
+  const contentAfterTiming = isSheet && props.log.type === 5
+
+  const contentSection = details ? (
+    <div className='space-y-1.5'>
+      <Label className='text-xs font-semibold'>{t('Content')}</Label>
+      <div className='bg-muted/30 relative min-w-0 overflow-hidden rounded-md border p-2.5'>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='absolute top-1.5 right-1.5 h-5 w-5 p-0'
+          onClick={() => copyToClipboard(details)}
+          title={t('Copy to clipboard')}
+          aria-label={t('Copy to clipboard')}
+        >
+          {copiedText === details ? (
+            <Check className='size-3 text-green-600' />
+          ) : (
+            <Copy className='size-3' />
+          )}
+        </Button>
+        <p className='min-w-0 pr-6 text-xs leading-relaxed break-all whitespace-pre-wrap sm:wrap-break-word'>
+          {details}
+        </p>
+      </div>
+    </div>
+  ) : null
+
   return (
-    <Dialog
+    <DetailsShell
+      presentation={props.presentation}
       open={props.open}
       onOpenChange={props.onOpenChange}
       title={
@@ -763,6 +840,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
+          {isSheet && isConsume && (
+            <DetailRow
+              label={t('Consumption')}
+              value={props.hideQuota ? '••••' : formatLogQuota(props.log.quota)}
+              mono
+            />
+          )}
+
           {showTiming && props.log.use_time > 0 && (
             <DetailRow
               label={t('Response Time')}
@@ -799,6 +884,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
         </div>
+
+        {contentAfterTiming && contentSection}
 
         {/* Request conversion (admin only, not for refund) */}
         {showConversion && (
@@ -1382,34 +1469,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
             })}
           </DetailSection>
         )}
-
-        {/* Content */}
-        {details && (
-          <div className='space-y-1.5'>
-            <Label className='text-xs font-semibold'>{t('Content')}</Label>
-            <div className='bg-muted/30 relative min-w-0 overflow-hidden rounded-md border p-2.5'>
-              <Button
-                variant='ghost'
-                size='sm'
-                className='absolute top-1.5 right-1.5 h-5 w-5 p-0'
-                onClick={() => copyToClipboard(details)}
-                title={t('Copy to clipboard')}
-                aria-label={t('Copy to clipboard')}
-              >
-                {copiedText === details ? (
-                  <Check className='size-3 text-green-600' />
-                ) : (
-                  <Copy className='size-3' />
-                )}
-              </Button>
-              <p className='min-w-0 pr-6 text-xs leading-relaxed break-all whitespace-pre-wrap sm:wrap-break-word'>
-                {details}
-              </p>
-            </div>
-          </div>
-        )}
+        {!contentAfterTiming && contentSection}
       </div>
-    </Dialog>
+    </DetailsShell>
   )
 }
 

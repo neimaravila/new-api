@@ -37,6 +37,8 @@ import {
 import type { UsageLog } from '../../data/schema'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
+import { LogDetailsSheet } from '../log-details-sheet'
+import { UsageLogsProvider } from '../usage-logs-provider'
 
 vi.mock('@lobehub/icons', () => ({}))
 vi.hoisted(() => {
@@ -91,7 +93,12 @@ function DetailPreview(props: {
     .rows[0].getAllCells()
     .find((item) => item.column.id === 'content')
   if (!cell) throw new Error('The log must have a content column')
-  return flexRender(cell.column.columnDef.cell, cell.getContext())
+  return (
+    <UsageLogsProvider>
+      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+      <LogDetailsSheet isAdmin={props.isAdmin} isRoot={false} />
+    </UsageLogsProvider>
+  )
 }
 const plugin = {
   key: 'incho',

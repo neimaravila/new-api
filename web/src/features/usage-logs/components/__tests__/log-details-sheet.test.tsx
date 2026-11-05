@@ -1,0 +1,246 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+} from '@tanstack/react-table'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, expect, it, vi } from 'vitest'
+
+import { DataTableRow } from '@/components/data-table'
+
+import { usageLogSchema, type UsageLog } from '../../data/schema'
+import { getLogRowInteractionProps } from '../../lib/row-interaction'
+import { useCommonLogsColumns } from '../columns/common-logs-columns'
+import { LogDetailsSheet } from '../log-details-sheet'
+import { UsageLogsProvider, useUsageLogsContext } from '../usage-logs-provider'
+
+function makeLog(overrides: Partial<UsageLog> = {}): UsageLog {
+  return usageLogSchema.parse({
+    id: 1,
+    user_id: 2,
+    created_at: 1788840000,
+    type: 2,
+    content: '',
+    model_name: 'gpt-test',
+    username: 'alice',
+    channel: 372,
+    channel_name: 'primary-channel',
+    token_name: 'tok',
+    group: 'default',
+    quota: 500000,
+    use_time: 2,
+    prompt_tokens: 10,
+    completion_tokens: 20,
+    ip: '10.1.2.3',
+    request_id: 'req-one',
+    other: JSON.stringify({ model_ratio: 1, completion_ratio: 1 }),
+    ...overrides,
+  })
+}
+
+function Harness(props: { logs: UsageLog[]; admin?: boolean }) {
+  const columns = useCommonLogsColumns(props.admin ?? true, false)
+  const extra: ColumnDef<UsageLog> = {
+    id: 'extra',
+    cell: () => (
+      <span>
+        <button type='button'>inner-button</button>
+        <a href='#x'>inner-link</a>
+        <input aria-label='inner-input' />
+        <span data-no-row-click>inner-marked</span>
+      </span>
+    ),
+  }
+  const table = useReactTable({
+    data: props.logs,
+    columns: [...columns, extra],
+    getCoreRowModel: getCoreRowModel(),
+  })
+  const ctx = useUsageLogsContext()
+  return (
+    <>
+      <button type='button' onClick={() => ctx.setSensitiveVisible(false)}>
+        hide-sensitive
+      </button>
+      <table>
+        <tbody>
+          {table.getRowModel().rows.map((row) => (
+            <DataTableRow
+              key={row.id}
+              row={row}
+              data-testid={`row-${row.original.id}`}
+              {...getLogRowInteractionProps(row.original, ctx.setSelectedLog)}
+            />
+          ))}
+        </tbody>
+      </table>
+      <LogDetailsSheet isAdmin={props.admin ?? true} isRoot={false} />
+    </>
+  )
+}
+
+function renderHarness(props: Parameters<typeof Harness>[0]) {
+  return render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <UsageLogsProvider>
+        <Harness {...props} />
+      </UsageLogsProvider>
+    </QueryClientProvider>
+  )
+}
+
+function before(a: HTMLElement, b: HTMLElement): boolean {
+  return !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+it('shows OK, Error and the type label in the status column', () => {
+  renderHarness({
+    logs: [
+      makeLog({ id: 1, type: 2 }),
+      makeLog({ id: 2, type: 5 }),
+      makeLog({ id: 3, type: 6 }),
+    ],
+  })
+  const status = (id: number) =>
+    screen
+      .getByTestId(`row-${id}`)
+      .querySelector('[data-column-id="status"]') as HTMLElement
+  expect(status(1)).toHaveTextContent('OK')
+  expect(status(2)).toHaveTextContent('Error')
+  expect(status(3)).toHaveTextContent('Refund')
+  expect(screen.getByTestId('row-1').querySelector('td:first-child')).toBe(
+    status(1)
+  )
+})
+
+it('opens the panel on row click with sections in the required order', async () => {
+  const user = userEvent.setup()
+  renderHarness({
+    logs: [
+      makeLog({ id: 1, type: 2 }),
+      makeLog({
+        id: 2,
+        type: 5,
+        request_id: 'req-err',
+        content: 'upstream exploded',
+      }),
+    ],
+  })
+  await user.click(screen.getByTestId('row-1'))
+  const dialog = await screen.findByRole('dialog')
+  const q = within(dialog)
+  const ids = q.getByText('Request ID')
+  const channel = q.getByText('Channel')
+  const consumption = q.getByText('Consumption')
+  const timing = q.getByText('Response Time')
+  const billing = q.getByText('Billing Details')
+  expect(q.getByText('OK')).toBeVisible()
+  expect(before(q.getByText('OK'), ids)).toBe(true)
+  expect(before(ids, channel)).toBe(true)
+  expect(before(channel, consumption)).toBe(true)
+  expect(before(consumption, timing)).toBe(true)
+  expect(before(timing, billing)).toBe(true)
+
+  // Switching rows updates the open panel instead of closing it.
+  await user.click(screen.getByTestId('row-2'))
+  const same = screen.getByRole('dialog')
+  expect(same).toBe(dialog)
+  expect(within(same).getByText('req-err')).toBeVisible()
+  const error = within(same).getByText('upstream exploded')
+  expect(before(within(same).getByText('Response Time'), error)).toBe(true)
+  expect(within(same).getAllByText('upstream exploded')).toHaveLength(1)
+})
+
+it('opens on Enter only when the row is focused', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()] })
+  const row = screen.getByTestId('row-1')
+  expect(row).toHaveAttribute('tabindex', '0')
+  row.focus()
+  await user.keyboard('{Enter}')
+  expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+it('ignores clicks on interactive children and text selection', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()] })
+  await user.click(screen.getByText('inner-button'))
+  await user.click(screen.getByText('inner-link'))
+  await user.click(screen.getByLabelText('inner-input'))
+  await user.click(screen.getByText('inner-marked'))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  vi.spyOn(window, 'getSelection').mockReturnValue({
+    isCollapsed: false,
+    toString: () => 'abc',
+  } as unknown as Selection)
+  fireEvent.click(screen.getByTestId('row-1'))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('opens the same panel from the Details column button', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog({ content: 'hello' })] })
+  await user.click(screen.getByTitle('Click to view full details'))
+  expect(await screen.findByRole('dialog')).toBeVisible()
+  expect(screen.getAllByRole('dialog')).toHaveLength(1)
+})
+
+it('hides channel for regular users and consumption when sensitive data is hidden', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()], admin: false })
+  await user.click(screen.getByTestId('row-1'))
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).queryByText('Channel')).not.toBeInTheDocument()
+  expect(within(dialog).queryByText('primary-channel')).toBeNull()
+  expect(within(dialog).getByText('Consumption')).toBeVisible()
+  expect(within(dialog).queryByText('••••')).not.toBeInTheDocument()
+
+  await user.click(screen.getByText('hide-sensitive'))
+  expect(within(screen.getByRole('dialog')).getByText('••••')).toBeVisible()
+})
+
+it('closes the panel with Escape', async () => {
+  const user = userEvent.setup()
+  renderHarness({ logs: [makeLog()] })
+  await user.click(screen.getByTestId('row-1'))
+  await screen.findByRole('dialog')
+  await user.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+})

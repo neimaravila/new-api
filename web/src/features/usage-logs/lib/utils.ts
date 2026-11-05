@@ -68,6 +68,16 @@ export function getLogTypeConfig(type: number) {
 }
 
 /**
+ * Status shown in the common-logs status column and details panel:
+ * consume -> OK, error -> Error, other types keep their type label.
+ */
+export function getLogStatusConfig(type: number) {
+  if (type === 2) return { label: 'OK', color: 'green' } as const
+  if (type === 5) return { label: 'Error', color: 'red' } as const
+  return getLogTypeConfig(type)
+}
+
+/**
  * Check if log uses per-call billing
  */
 export function isPerCallBilling(modelPrice?: number): boolean {
