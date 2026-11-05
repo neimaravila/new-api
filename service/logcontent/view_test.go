@@ -418,3 +418,10 @@ func TestViewNotCapturedAndEmpty(t *testing.T) {
 	assert.False(t, BuildContentView(nil, true, nil).Available)
 	assert.Equal(t, "unavailable", BuildContentView([]*model.LogContent{attemptRow(t, 1, "{}")}, true, nil).Reason)
 }
+
+func TestViewNoAttemptIsUnavailable(t *testing.T) {
+	row := &model.LogContent{RequestId: "req-1", CaptureStatus: model.LogContentStatusNoAttempt}
+	view := BuildContentView([]*model.LogContent{row}, true, nil)
+	assert.False(t, view.Available)
+	assert.Equal(t, "unavailable", view.Reason)
+}

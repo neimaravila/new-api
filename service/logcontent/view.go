@@ -407,6 +407,10 @@ func BuildContentView(rows []*model.LogContent, includeAttempts bool, channelNam
 		view.Reason = reasonNotCaptured
 		return view
 	}
+	if client.CaptureStatus == model.LogContentStatusNoAttempt {
+		view.Reason = reasonUnavailable
+		return view
+	}
 	view.Available = true
 	view.Client = ClientView{
 		Request:  decodeStoredBody(client.RequestBody, meta.Request),
