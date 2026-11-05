@@ -7181,6 +7181,7 @@
     "View your topup transaction records and payment history": "Xem lịch sử giao dịch nạp tiền và lịch sử thanh toán của bạn",
     "View your usage logs, statistics, tasks, and audit logs.": "Xem nhật ký sử dụng, thống kê, tác vụ và nhật ký kiểm toán của bạn.",
     "Viewed channel key {{name}} (ID: {{id}})": "Đã xem khóa kênh {{name}} (ID: {{id}})",
+    "Viewed the content of request {{request_id}}": "Đã xem nội dung của yêu cầu {{request_id}}",
     "Violation Code": "Mã vi phạm",
     "Violation deduction amount": "Số tiền trừ vi phạm",
     "Violation Fee": "Phí vi phạm",

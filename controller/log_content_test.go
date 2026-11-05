@@ -291,6 +291,31 @@ func TestAdminReadWritesAuditLog(t *testing.T) {
 	assert.Len(t, logContentAuditRows(t, env), 2)
 }
 
+func TestAdminAuditOnlyForAvailableContent(t *testing.T) {
+	env := newLogContentEnv(t)
+	// A fresh log row with no content yet is pending; an older one is unavailable.
+	env.addLogRow(t, "pending-call", env.alice.Id, time.Now().Unix(), "/v1/chat/completions")
+	env.addLogRow(t, "lost-call", env.alice.Id, time.Now().Unix()-60, "/v1/chat/completions")
+	env.addLogRow(t, "marker-call", env.alice.Id, time.Now().Unix()-60, "/v1/chat/completions")
+	marker := &model.LogContent{RequestId: "marker-call", UserId: env.alice.Id, CreatedAt: time.Now().Unix(), CaptureStatus: model.LogContentStatusNotCaptured, Meta: "{}"}
+	require.NoError(t, model.InsertLogContents(context.Background(), []*model.LogContent{marker}))
+
+	for requestID, reason := range map[string]string{"pending-call": "pending", "lost-call": "unavailable", "marker-call": "not_captured"} {
+		data := contentData(t, env.get("/api/log/content/"+requestID, env.admin))
+		assert.Equal(t, false, data["available"], requestID)
+		assert.Equal(t, reason, data["reason"], requestID)
+	}
+	assert.Empty(t, logContentAuditRows(t, env), "reads without content are not audited")
+
+	env.addCall(t, "alice-call", env.alice.Id, "alice text")
+	require.Equal(t, http.StatusOK, env.get("/api/log/content/alice-call", env.admin).Code)
+	rows := logContentAuditRows(t, env)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "Viewed the content of request alice-call", rows[0].Content)
+	assert.Equal(t, auditContentEN("log_content.view", map[string]any{"request_id": "alice-call"}), rows[0].Content)
+	assert.Contains(t, auditContentTemplates, "log_content.view")
+}
+
 func TestSelfRouteReadsOnlyTheClientLevel(t *testing.T) {
 	env := newLogContentEnv(t)
 	env.addLogRow(t, "attempts-only", env.alice.Id, time.Now().Unix()-60, "/v1/chat/completions")

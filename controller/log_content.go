@@ -92,11 +92,10 @@ func logContent(c *gin.Context, admin bool) {
 		view.Reason = logContentReason(logs, time.Now().Unix())
 	}
 
-	if admin {
-		params := map[string]any{"request_id": requestID, "owner_user_id": logs[0].UserId}
-		model.RecordOperationAuditLog(c.GetInt("id"), c.GetInt("role"), "Viewed the content of request "+requestID, c.ClientIP(),
-			"log_content.view", params, auditOperatorInfo(c), nil, c)
-		markAuditLogged(c)
+	// Only a read that returns content is audited: pending polls and calls
+	// without content show nothing to audit.
+	if admin && view.Available {
+		recordManageAudit(c, "log_content.view", map[string]any{"request_id": requestID, "owner_user_id": logs[0].UserId})
 	}
 	common.ApiSuccess(c, view)
 }

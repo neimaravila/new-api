@@ -7181,6 +7181,7 @@
     "View your topup transaction records and payment history": "Просмотреть записи о пополнении счета и историю платежей",
     "View your usage logs, statistics, tasks, and audit logs.": "Просмотр ваших журналов использования, статистики, задач и журнала аудита.",
     "Viewed channel key {{name}} (ID: {{id}})": "Просмотрен ключ канала {{name}} (ID: {{id}})",
+    "Viewed the content of request {{request_id}}": "Просмотрено содержимое запроса {{request_id}}",
     "Violation Code": "Код нарушения",
     "Violation deduction amount": "Сумма вычета за нарушение",
     "Violation Fee": "Штраф за нарушение",

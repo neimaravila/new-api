@@ -7165,6 +7165,7 @@
     "View your topup transaction records and payment history": "Veja seus registros de recarga e histórico de pagamentos",
     "View your usage logs, statistics, tasks, and audit logs.": "Ver seus logs de uso, estatísticas, tarefas e logs de auditoria.",
     "Viewed channel key {{name}} (ID: {{id}})": "Chave de canal {{name}} visualizada (ID: {{id}})",
+    "Viewed the content of request {{request_id}}": "Conteúdo da requisição {{request_id}} visualizado",
     "Violation Code": "Código de Violação",
     "Violation deduction amount": "Valor de dedução de violação",
     "Violation Fee": "Taxa de Violação",

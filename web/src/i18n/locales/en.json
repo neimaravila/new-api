@@ -7181,6 +7181,7 @@
     "View your topup transaction records and payment history": "View your topup transaction records and payment history",
     "View your usage logs, statistics, tasks, and audit logs.": "View your usage logs, statistics, tasks, and audit logs.",
     "Viewed channel key {{name}} (ID: {{id}})": "Viewed channel key {{name}} (ID: {{id}})",
+    "Viewed the content of request {{request_id}}": "Viewed the content of request {{request_id}}",
     "Violation Code": "Violation Code",
     "Violation deduction amount": "Violation deduction amount",
     "Violation Fee": "Violation Fee",

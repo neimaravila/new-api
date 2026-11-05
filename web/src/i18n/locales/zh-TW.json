@@ -7181,6 +7181,7 @@
     "View your topup transaction records and payment history": "查看您的儲值交易記錄和付款歷史",
     "View your usage logs, statistics, tasks, and audit logs.": "檢視你的使用日誌、統計、任務和稽核日誌。",
     "Viewed channel key {{name}} (ID: {{id}})": "查看渠道金鑰 {{name}}（ID: {{id}}）",
+    "Viewed the content of request {{request_id}}": "查看了請求 {{request_id}} 的內容",
     "Violation Code": "違規代碼",
     "Violation deduction amount": "違規扣費金額",
     "Violation Fee": "違規扣費",
