@@ -92,9 +92,9 @@ func logContent(c *gin.Context, admin bool) {
 		view.Reason = logContentReason(logs, time.Now().Unix())
 	}
 
-	// Only a read that returns content is audited: pending polls and calls
-	// without content show nothing to audit.
-	if admin && view.Available {
+	// Only a read that returns content, client level or provider attempts,
+	// is audited: pending polls and calls without content show nothing.
+	if admin && (view.Available || len(view.Attempts) > 0) {
 		recordManageAudit(c, "log_content.view", map[string]any{"request_id": requestID, "owner_user_id": logs[0].UserId})
 	}
 	common.ApiSuccess(c, view)

@@ -316,6 +316,26 @@ func TestAdminAuditOnlyForAvailableContent(t *testing.T) {
 	assert.Contains(t, auditContentTemplates, "log_content.view")
 }
 
+func TestAdminAuditForAttemptsWithoutClientContent(t *testing.T) {
+	env := newLogContentEnv(t)
+	env.addLogRow(t, "attempts-call", env.alice.Id, time.Now().Unix()-60, "/v1/chat/completions")
+	meta, err := model.NewLogContentMeta(model.LogContentMeta{RelayFormat: "openai", HttpStatus: 502, ChannelId: 7, MultiKeyIndex: -1})
+	require.NoError(t, err)
+	row := &model.LogContent{
+		RequestId: "attempts-call", Attempt: 1, UserId: env.alice.Id, CreatedAt: time.Now().Unix(), CaptureStatus: model.LogContentStatusCaptured, Meta: meta,
+		ResponseBody: gzipText(t, `{"id":"`+logContentProviderSentinel+`"}`),
+	}
+	require.NoError(t, model.InsertLogContents(context.Background(), []*model.LogContent{row}))
+
+	response := env.get("/api/log/content/attempts-call", env.admin)
+	data := contentData(t, response)
+	assert.Equal(t, false, data["available"])
+	require.Contains(t, response.Body.String(), logContentProviderSentinel, "the admin gets the attempt body")
+	rows := logContentAuditRows(t, env)
+	require.Len(t, rows, 1, "returning provider bodies is audited")
+	assert.Equal(t, "Viewed the content of request attempts-call", rows[0].Content)
+}
+
 func TestSelfRouteReadsOnlyTheClientLevel(t *testing.T) {
 	env := newLogContentEnv(t)
 	env.addLogRow(t, "attempts-only", env.alice.Id, time.Now().Unix()-60, "/v1/chat/completions")
