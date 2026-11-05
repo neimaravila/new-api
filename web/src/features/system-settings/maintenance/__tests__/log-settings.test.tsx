@@ -214,6 +214,17 @@ test('the content capture module shows the received switch and days', async () =
   expect(retentionField()).toHaveValue(45)
 })
 
+test('the capture switch says that turning it off keeps stored content until it expires', async () => {
+  await renderSettings({ LogContentCaptureEnabled: true })
+
+  const group = screen.getByRole('group', { name: 'Call content capture' })
+  expect(
+    within(group).getByText(
+      /Turning capture off keeps the content already stored until it expires\./
+    )
+  ).toBeVisible()
+})
+
 test('saving sends only the content capture settings that changed', async () => {
   const user = userEvent.setup()
   await renderSettings()

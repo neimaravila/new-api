@@ -184,7 +184,7 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
                       <FormLabel>{t('Capture call content')}</FormLabel>
                       <FormDescription>
                         {t(
-                          'Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.'
+                          'Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.'
                         )}
                       </FormDescription>
                       {stats && (

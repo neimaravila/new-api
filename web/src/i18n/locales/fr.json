@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Pour les canaux personnalisés avancés, ceci ne s’applique qu’aux routes /v1/responses sans conversion de protocole.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Pour les déploiements privés, format : https://fastgpt.run/api/openapi",
@@ -7617,13 +7617,14 @@
     "Original size: {{size}}": "Taille d'origine : {{size}}",
     "Call content capture": "Capture du contenu des appels",
     "Capture call content": "Capturer le contenu des appels",
-    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "Conserve la requête et la réponse de chaque appel pour que les administrateurs et les utilisateurs puissent les consulter dans les journaux d'utilisation. Les clés et les en-têtes ne sont jamais stockés.",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.": "Conserve la requête et la réponse de chaque appel pour que les administrateurs et les utilisateurs puissent les consulter dans les journaux d'utilisation. Les clés et les en-têtes ne sont jamais stockés. Désactiver la capture conserve le contenu déjà stocké jusqu'à son expiration.",
     "Call content retention (days)": "Conservation du contenu des appels (jours)",
     "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "Le contenu capturé plus ancien que cette durée est supprimé automatiquement. Entre 1 et 3650 jours.",
     "Enqueued: {{count}}": "En file : {{count}}",
     "Written: {{count}}": "Écrits : {{count}}",
     "Dropped: {{count}}": "Abandonnés : {{count}}",
     "Write errors: {{count}}": "Erreurs d'écriture : {{count}}",
-    "Log content retention days must be an integer between 1 and 3650": "Le nombre de jours de conservation du contenu doit être un entier entre 1 et 3650"
+    "Log content retention days must be an integer between 1 and 3650": "Le nombre de jours de conservation du contenu doit être un entier entre 1 et 3650",
+    "Log content not found": "Contenu de l'appel introuvable"
   }
 }

@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Для расширенных пользовательских каналов это действует только для маршрутов /v1/responses без преобразования протокола.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Для частных развертываний, формат: https://fastgpt.run/api/openapi",
@@ -7617,13 +7617,14 @@
     "Original size: {{size}}": "Исходный размер: {{size}}",
     "Call content capture": "Сохранение содержимого вызовов",
     "Capture call content": "Сохранять содержимое вызовов",
-    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "Сохраняет запрос и ответ каждого вызова, чтобы администраторы и пользователи могли просматривать их в журналах использования. Ключи и заголовки не сохраняются.",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.": "Сохраняет запрос и ответ каждого вызова, чтобы администраторы и пользователи могли просматривать их в журналах использования. Ключи и заголовки не сохраняются. После отключения захвата уже сохранённое содержимое хранится до истечения срока.",
     "Call content retention (days)": "Срок хранения содержимого вызовов (дни)",
     "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "Сохранённое содержимое старше этого срока удаляется автоматически. От 1 до 3650 дней.",
     "Enqueued: {{count}}": "В очереди: {{count}}",
     "Written: {{count}}": "Записано: {{count}}",
     "Dropped: {{count}}": "Отброшено: {{count}}",
     "Write errors: {{count}}": "Ошибки записи: {{count}}",
-    "Log content retention days must be an integer between 1 and 3650": "Срок хранения содержимого должен быть целым числом от 1 до 3650 дней"
+    "Log content retention days must be an integer between 1 and 3650": "Срок хранения содержимого должен быть целым числом от 1 до 3650 дней",
+    "Log content not found": "Содержимое вызова не найдено"
   }
 }

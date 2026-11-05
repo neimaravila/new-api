@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
@@ -7617,13 +7617,14 @@
     "Original size: {{size}}": "Original size: {{size}}",
     "Call content capture": "Call content capture",
     "Capture call content": "Capture call content",
-    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.": "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.",
     "Call content retention (days)": "Call content retention (days)",
     "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "Captured call content older than this is deleted automatically. Between 1 and 3650 days.",
     "Enqueued: {{count}}": "Enqueued: {{count}}",
     "Written: {{count}}": "Written: {{count}}",
     "Dropped: {{count}}": "Dropped: {{count}}",
     "Write errors: {{count}}": "Write errors: {{count}}",
-    "Log content retention days must be an integer between 1 and 3650": "Log content retention days must be an integer between 1 and 3650"
+    "Log content retention days must be an integer between 1 and 3650": "Log content retention days must be an integer between 1 and 3650",
+    "Log content not found": "Log content not found"
   }
 }

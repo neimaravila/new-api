@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "高级自定义渠道仅对 /v1/responses 且不做协议转换的路由生效。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
@@ -7617,13 +7617,14 @@
     "Original size: {{size}}": "原始大小：{{size}}",
     "Call content capture": "调用内容捕获",
     "Capture call content": "捕获调用内容",
-    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "保存每次调用的请求和响应，供管理员和用户在使用日志中查看。密钥和请求头不会被保存。",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.": "保存每次调用的请求和响应，供管理员和用户在使用日志中查看。密钥和请求头不会被保存。关闭捕获后，已保存的内容会保留到过期为止。",
     "Call content retention (days)": "调用内容保留天数",
     "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "超过此期限的已捕获内容将被自动删除。范围 1 至 3650 天。",
     "Enqueued: {{count}}": "已入队：{{count}}",
     "Written: {{count}}": "已写入：{{count}}",
     "Dropped: {{count}}": "已丢弃：{{count}}",
     "Write errors: {{count}}": "写入错误：{{count}}",
-    "Log content retention days must be an integer between 1 and 3650": "内容保留天数必须是 1 到 3650 之间的整数"
+    "Log content retention days must be an integer between 1 and 3650": "内容保留天数必须是 1 到 3650 之间的整数",
+    "Log content not found": "未找到调用内容"
   }
 }

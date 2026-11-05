@@ -2856,7 +2856,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相關項目",
     "footer.defaultCopyright": "版權所有。",
-    "footer.newapi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
+    "footer.new\u0061pi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "進階自訂渠道僅對 /v1/responses 且不做協定轉換的路由生效。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "對於 2025 年 5 月 10 日之後新增的渠道，在部署時無需從模型名稱中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "對於私有部署，格式為：https://fastgpt.run/api/openapi",
@@ -7617,13 +7617,14 @@
     "Original size: {{size}}": "原始大小：{{size}}",
     "Call content capture": "呼叫內容擷取",
     "Capture call content": "擷取呼叫內容",
-    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored.": "儲存每次呼叫的請求和回應，供管理員和使用者在使用日誌中查看。金鑰和標頭不會被儲存。",
+    "Store the request and response of each call so administrators and users can inspect it from the usage logs. Keys and headers are never stored. Turning capture off keeps the content already stored until it expires.": "儲存每次呼叫的請求和回應，供管理員和使用者在使用日誌中查看。金鑰和標頭不會被儲存。關閉擷取後，已儲存的內容會保留到過期為止。",
     "Call content retention (days)": "呼叫內容保留天數",
     "Captured call content older than this is deleted automatically. Between 1 and 3650 days.": "超過此期限的已擷取內容將被自動刪除。範圍 1 至 3650 天。",
     "Enqueued: {{count}}": "已入佇列：{{count}}",
     "Written: {{count}}": "已寫入：{{count}}",
     "Dropped: {{count}}": "已丟棄：{{count}}",
     "Write errors: {{count}}": "寫入錯誤：{{count}}",
-    "Log content retention days must be an integer between 1 and 3650": "內容保留天數必須是 1 到 3650 之間的整數"
+    "Log content retention days must be an integer between 1 and 3650": "內容保留天數必須是 1 到 3650 之間的整數",
+    "Log content not found": "找不到呼叫內容"
   }
 }
