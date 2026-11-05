@@ -43,9 +43,9 @@ func setupReportControllerTestDB(t *testing.T) {
 	common.LogConsumeEnabled = true
 	now := time.Now().Unix()
 	logs := []model.Log{
-		{UserId: 1, Username: "alice", CreatedAt: now - 3600, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 100, PromptTokens: 50, CompletionTokens: 30, UseTime: 500, IsStream: true},
+		{UserId: 1, Username: "alice", CreatedAt: now - 3600, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 100, PromptTokens: 50, CompletionTokens: 30, UseTime: 1, IsStream: true},
 		{UserId: 1, Username: "alice", CreatedAt: now - 3600, Type: model.LogTypeError, ModelName: "gpt-4o", ChannelId: 10},
-		{UserId: 2, Username: "bob", CreatedAt: now - 3600, Type: model.LogTypeConsume, ModelName: "claude", ChannelId: 11, Quota: 9999, UseTime: 200, IsStream: false},
+		{UserId: 2, Username: "bob", CreatedAt: now - 3600, Type: model.LogTypeConsume, ModelName: "claude", ChannelId: 11, Quota: 9999, UseTime: 1, IsStream: false},
 	}
 	for i := range logs {
 		require.NoError(t, model.LOG_DB.Create(&logs[i]).Error)

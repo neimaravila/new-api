@@ -52,17 +52,17 @@ func seedReportFixture(t *testing.T) (start int64, end int64) {
 
 	logs := []model.Log{
 		// alice: gpt-4o consume, stream, fast
-		{UserId: 1, Username: "alice", CreatedAt: twoHoursAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 100, PromptTokens: 50, CompletionTokens: 30, CacheTokens: 20, UseTime: 500, IsStream: true},
-		{UserId: 1, Username: "alice", CreatedAt: twoHoursAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 200, PromptTokens: 60, CompletionTokens: 40, CacheTokens: 0, UseTime: 700, IsStream: true},
+		{UserId: 1, Username: "alice", CreatedAt: twoHoursAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 100, PromptTokens: 50, CompletionTokens: 30, CacheTokens: 20, UseTime: 1, IsStream: true},
+		{UserId: 1, Username: "alice", CreatedAt: twoHoursAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 200, PromptTokens: 60, CompletionTokens: 40, CacheTokens: 0, UseTime: 2, IsStream: true},
 		// alice: one error on gpt-4o
 		{UserId: 1, Username: "alice", CreatedAt: twoHoursAgo, Type: model.LogTypeError, ModelName: "gpt-4o", ChannelId: 10, Quota: 0},
 		// alice: claude consume, non-stream, slower
-		{UserId: 1, Username: "alice", CreatedAt: threeHoursAgo, Type: model.LogTypeConsume, ModelName: "claude", ChannelId: 11, Quota: 500, PromptTokens: 100, CompletionTokens: 200, CacheTokens: 50, UseTime: 3000, IsStream: false},
+		{UserId: 1, Username: "alice", CreatedAt: threeHoursAgo, Type: model.LogTypeConsume, ModelName: "claude", ChannelId: 11, Quota: 500, PromptTokens: 100, CompletionTokens: 200, CacheTokens: 50, UseTime: 3, IsStream: false},
 		// bob: gpt-4o consume (must NOT appear for alice), plus errors
-		{UserId: 2, Username: "bob", CreatedAt: twoHoursAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 9999, PromptTokens: 1, CompletionTokens: 1, CacheTokens: 1, UseTime: 100, IsStream: false},
+		{UserId: 2, Username: "bob", CreatedAt: twoHoursAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 9999, PromptTokens: 1, CompletionTokens: 1, CacheTokens: 1, UseTime: 1, IsStream: false},
 		{UserId: 2, Username: "bob", CreatedAt: twoHoursAgo, Type: model.LogTypeError, ModelName: "claude", ChannelId: 11, Quota: 0},
 		// older than 24h bucket to verify day granularity grouping
-		{UserId: 1, Username: "alice", CreatedAt: dayAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 50, PromptTokens: 10, CompletionTokens: 5, CacheTokens: 0, UseTime: 400, IsStream: true},
+		{UserId: 1, Username: "alice", CreatedAt: dayAgo, Type: model.LogTypeConsume, ModelName: "gpt-4o", ChannelId: 10, Quota: 50, PromptTokens: 10, CompletionTokens: 5, CacheTokens: 0, UseTime: 1, IsStream: true},
 	}
 	for i := range logs {
 		require.NoError(t, model.LOG_DB.Create(&logs[i]).Error)
