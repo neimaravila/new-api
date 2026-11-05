@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { downloadCsv } from '@/features/usage-logs/lib/export'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -68,18 +69,6 @@ const TAB_DIMENSIONS: Record<Exclude<ReportTab, 'overview'>, ReportDimension> = 
   users: 'user',
   tokens: 'token',
   groups: 'group',
-}
-
-function downloadCsv(csv: string, name: string): void {
-  // The BOM keeps spreadsheet apps from misreading UTF-8 names.
-  const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = name
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
 }
 
 interface FilterOptions {
@@ -209,7 +198,7 @@ export function ReportsSection(): React.JSX.Element {
             size='sm'
             variant='outline'
             disabled={!rankingCsv}
-            onClick={() => rankingCsv && downloadCsv(rankingCsv, `report-${activeTab}-${range}.csv`)}
+            onClick={() => rankingCsv && downloadCsv(`report-${activeTab}-${range}.csv`, [rankingCsv])}
           >
             <Download data-icon='inline-start' />
             {t('Export CSV')}

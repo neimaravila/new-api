@@ -140,12 +140,14 @@ describe('ReportRankingTab', () => {
     await waitFor(() => expect(onCsvChange.mock.calls.some(([csv]) => typeof csv === 'string')).toBe(true))
     const csv = onCsvChange.mock.calls.map(([c]) => c).filter(Boolean).pop() as string
     const lines = csv.split('\r\n')
-    expect(lines[0]).toBe('Name,Requests,Tokens,Cost,Error rate,Avg latency,P50 latency,P95 latency')
-    expect(lines[1].startsWith('ok,5,10,')).toBe(true)
-    expect(lines[1]).toContain(formatQuota(500000).includes(',') ? `"${formatQuota(500000)}"` : formatQuota(500000))
-    expect(lines[2].startsWith("'=evil,")).toBe(true)
+    expect(lines[0]).toBe(
+      '"Name","Requests","Tokens","Cost","Error rate","Avg latency","P50 latency","P95 latency"'
+    )
+    expect(lines[1].startsWith('"ok","5","10",')).toBe(true)
+    expect(lines[1]).toContain(`"${formatQuota(500000)}"`)
+    expect(lines[2].startsWith('"\'=evil",')).toBe(true)
     // Zero latency means no sample: an empty cell, not "'-".
-    expect(lines[1].endsWith(',1.5 s,,800 ms')).toBe(true)
+    expect(lines[1].endsWith('"1.5 s","","800 ms"')).toBe(true)
     expect(csv).not.toContain("'-")
   })
 })

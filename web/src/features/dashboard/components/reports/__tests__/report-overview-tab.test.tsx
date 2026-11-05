@@ -366,7 +366,7 @@ describe('ReportsSection ranking tabs', () => {
     await waitFor(() => expect((getByRole('button', { name: 'Export CSV' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(getByRole('button', { name: 'Export CSV' }))
     expect(blobs).toHaveLength(1)
-    expect(await blobs[0].text()).toContain('gpt-4o,3,7,')
+    expect(await blobs[0].text()).toContain('"gpt-4o","3","7",')
 
     fireEvent.click(getByRole('tab', { name: 'Users' }))
     await waitFor(() => expect(getReportRanking).toHaveBeenCalledWith('user', expect.anything()))

@@ -65,13 +65,18 @@ describe('sortRankingRows latency without samples', () => {
 })
 
 describe('rankingRowsToCsv', () => {
-  it('escapes quotes, commas and line breaks', () => {
+  it('quotes every cell and doubles quotes, keeping commas and line breaks inside', () => {
     const csv = rankingRowsToCsv([['a "q", b\nc', 1]], ['Name', 'N'])
-    expect(csv).toBe('Name,N\r\n"a ""q"", b\nc",1')
+    expect(csv).toBe('"Name","N"\r\n"a ""q"", b\nc","1"\r\n')
   })
 
-  it('prefixes formula-like cells with an apostrophe', () => {
-    const csv = rankingRowsToCsv([['=1+1', '+x'], ['-y', '@z']], ['A', 'B'])
-    expect(csv).toBe("A,B\r\n'=1+1,'+x\r\n'-y,'@z")
+  it.each(['=1+1', '+x', '-y', '@z', '\tx', '\rx'])('neutralizes the formula-like cell %j', (cell) => {
+    expect(rankingRowsToCsv([[cell]], ['A'])).toBe(`"A"\r\n"'${cell}"\r\n`)
+  })
+
+  it('leaves ordinary text, numbers, negative numbers and empty cells alone', () => {
+    expect(rankingRowsToCsv([['x;=1+1;', 12, -5, '']], ['A', 'B', 'C', 'D'])).toBe(
+      '"A","B","C","D"\r\n"x;=1+1;","12","-5",""\r\n'
+    )
   })
 })

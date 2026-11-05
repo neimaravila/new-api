@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { toCsvLine } from '@/features/usage-logs/lib/export'
+
 import type { ReportRankingRow, ReportRankingSortKey, ReportSortDirection } from '../types'
 
 const LATENCY_KEYS = new Set<ReportRankingSortKey>(['avg_latency_ms', 'p50_latency_ms', 'p95_latency_ms'])
@@ -36,14 +38,7 @@ export function sortRankingRows(
   })
 }
 
-function escapeCell(value: string | number): string {
-  let text = String(value)
-  // Spreadsheets run cells starting with these characters as formulas.
-  if (/^[=+\-@]/.test(text)) text = `'${text}`
-  if (/[",\r\n]/.test(text)) text = `"${text.replaceAll('"', '""')}"`
-  return text
-}
-
+/** CSV text of the displayed table; escaping lives in the usage-logs helper. */
 export function rankingRowsToCsv(rows: (string | number)[][], headers: string[]): string {
-  return [headers, ...rows].map((line) => line.map(escapeCell).join(',')).join('\r\n')
+  return [headers, ...rows].map((line) => toCsvLine(line.map(String))).join('')
 }
