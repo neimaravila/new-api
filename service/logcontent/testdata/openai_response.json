@@ -1,0 +1,1 @@
+{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"The tool said 21.","content":"A cat on a sofa. It is 21 degrees in Lisbon."},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}

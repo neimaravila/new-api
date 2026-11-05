@@ -1,0 +1,1 @@
+{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"The tool said 21.","signature":"abc"},{"type":"text","text":"A cat on a sofa. It is 21 degrees in Lisbon."}],"stop_reason":"end_turn"}

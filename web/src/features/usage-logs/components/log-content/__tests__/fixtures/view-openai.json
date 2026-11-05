@@ -1,0 +1,112 @@
+{
+  "request_id": "req-1",
+  "available": true,
+  "reason": "",
+  "format": "openai",
+  "is_stream": false,
+  "incomplete": false,
+  "http_status": 200,
+  "conversation": {
+    "available": true,
+    "response_available": true,
+    "messages": [
+      {
+        "role": "system",
+        "source": "request",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "You are a helpful assistant."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "source": "request",
+        "blocks": [
+          {
+            "type": "text",
+            "text": "What is in this picture, and what is the weather in Lisbon?"
+          },
+          {
+            "type": "media",
+            "media_type": "image/png",
+            "size_bytes": 2048
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "source": "request",
+        "blocks": [
+          {
+            "type": "tool_call",
+            "id": "call_1",
+            "name": "get_weather",
+            "arguments": "{\"city\":\"Lisbon\"}"
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "source": "request",
+        "blocks": [
+          {
+            "type": "tool_result",
+            "text": "{\"temp\":21}",
+            "id": "call_1"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "source": "response",
+        "blocks": [
+          {
+            "type": "thinking",
+            "text": "The tool said 21."
+          },
+          {
+            "type": "text",
+            "text": "A cat on a sofa. It is 21 degrees in Lisbon."
+          }
+        ]
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get the weather of a city",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        }
+      },
+      "called": 0
+    }
+  ],
+  "tools_available": 1,
+  "tool_calls": 0,
+  "client": {
+    "request": {
+      "text": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"system\",\"content\":\"You are a helpful assistant.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"What is in this picture, and what is the weather in Lisbon?\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"[base64 image/png 2048 bytes omitted]\"}}]},{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Lisbon\\\"}\"}}]},{\"role\":\"tool\",\"tool_call_id\":\"call_1\",\"content\":\"{\\\"temp\\\":21}\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"description\":\"Get the weather of a city\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}}}]}",
+      "original_bytes": 682,
+      "truncated": false,
+      "head_only": false,
+      "undecodable": false,
+      "media_omitted": 0
+    },
+    "response": {
+      "text": "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"reasoning_content\":\"The tool said 21.\",\"content\":\"A cat on a sofa. It is 21 degrees in Lisbon.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
+      "original_bytes": 290,
+      "truncated": false,
+      "head_only": false,
+      "undecodable": false,
+      "media_omitted": 0
+    }
+  }
+}
