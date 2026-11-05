@@ -47,8 +47,10 @@ import { shouldShowBillingSource } from '../lib/billing-source'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import {
+  LOG_ROW_SELECTED_CLASS,
   buildSelectedLogResetKey,
   getLogRowInteractionProps,
+  isLogRowSelected,
 } from '../lib/row-interaction'
 import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
@@ -106,7 +108,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     isRootView: isRoot,
     viewAccess,
   } = useLogsViewScope()
-  const { setSelectedLog } = useUsageLogsContext()
+  const { selectedLog, setSelectedLog } = useUsageLogsContext()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
   const userId = useAuthStore((state) => state.auth.user?.id)
@@ -317,7 +319,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
             className={cn(
               'transition-colors',
               tintClass,
-              rowInteraction?.className
+              rowInteraction?.className,
+              isCommon &&
+                isLogRowSelected(row.original as unknown as UsageLog, selectedLog) &&
+                LOG_ROW_SELECTED_CLASS
             )}
             getColumnClassName={getColumnClassName}
             cellRenderColumns={table.options.columns}

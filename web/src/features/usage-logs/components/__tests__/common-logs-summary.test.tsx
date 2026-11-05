@@ -84,8 +84,10 @@ function HideToggle() {
   return <button type='button' onClick={() => setSensitiveVisible(false)}>hide</button>
 }
 
+let queryClient: QueryClient
+
 function renderSummary(search = 'startTime=1000000&endTime=1010000&type=%5B2%5D') {
-  const queryClient = new QueryClient({
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const root = createRootRoute()
@@ -230,4 +232,56 @@ it('paints the failures series with the theme destructive color', async () => {
   // The tooltip names the series by this label.
   expect(spec.data[0].values.map((v) => v.series)).toContain('Failures')
   expect(screen.getByText('Failures')).toBeVisible()
+})
+
+it('refetches when the usage-logs-stats queries are invalidated', async () => {
+  vi.mocked(api.getLogSummary).mockResolvedValue({ success: true, data: summary })
+  renderSummary()
+
+  await screen.findByText('1,200')
+  expect(api.getLogSummary).toHaveBeenCalledTimes(1)
+  await queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
+  await waitFor(() => expect(api.getLogSummary).toHaveBeenCalledTimes(2))
+})
+
+it('does not refetch when only the page changes', async () => {
+  vi.mocked(api.getLogSummary).mockResolvedValue({ success: true, data: summary })
+  renderSummary('startTime=1000000&endTime=1010000&page=1')
+
+  await screen.findByText('1,200')
+  const keys = queryClient
+    .getQueryCache()
+    .getAll()
+    .map((q) => q.queryKey)
+  expect(keys).toHaveLength(1)
+  const key = keys[0] as [string, string, boolean, Record<string, unknown>]
+  expect(key.slice(0, 2)).toEqual(['usage-logs-stats', 'summary'])
+  expect(key[3]).not.toHaveProperty('page')
+  expect(key[3]).not.toHaveProperty('pageSize')
+})
+
+it('labels day buckets by their UTC date whatever the viewer timezone', async () => {
+  const previousTz = process.env.TZ
+  process.env.TZ = 'America/Sao_Paulo'
+  try {
+    // 2026-01-02T00:00:00Z is still Jan 1st in UTC-3.
+    const ts = Date.UTC(2026, 0, 2) / 1000
+    vi.mocked(api.getLogSummary).mockResolvedValue({
+      success: true,
+      data: {
+        ...summary,
+        bucket_seconds: 86400,
+        buckets: [{ timestamp: ts, requests: 5, failures: 1 }],
+      },
+    })
+    renderSummary(`startTime=${ts * 1000}&endTime=${(ts + 3600) * 1000}`)
+
+    const chart = await screen.findByTestId('chart-spec')
+    expect(chartSpecs.length).toBeGreaterThan(0)
+    expect(JSON.stringify(chartSpecs.at(-1))).toContain('01-02')
+    expect(chart).toBeInTheDocument()
+  } finally {
+    if (previousTz === undefined) delete process.env.TZ
+    else process.env.TZ = previousTz
+  }
 })

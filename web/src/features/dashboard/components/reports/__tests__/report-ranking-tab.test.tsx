@@ -166,4 +166,36 @@ describe('ReportRankingTab', () => {
     expect(lines[1].endsWith('"1.5 s","","800 ms"')).toBe(true)
     expect(csv).not.toContain("'-")
   })
+
+  it('offers no CSV while the shown rows are placeholder data of the previous filters', async () => {
+    getReportRanking.mockResolvedValueOnce({ success: true, data: [row('first')] })
+    const onCsvChange = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (modelName?: string) => (
+      <QueryClientProvider client={client}>
+        <I18nextProvider i18n={i18n}>
+          <ReportRankingTab
+            dimension='model'
+            title='Models'
+            enabled
+            filters={{ ...filters, modelName }}
+            onCsvChange={onCsvChange}
+          />
+        </I18nextProvider>
+      </QueryClientProvider>
+    )
+    const view = render(tree())
+    await view.findByText('first')
+    expect(typeof onCsvChange.mock.calls.at(-1)?.[0]).toBe('string')
+
+    let resolve!: (value: unknown) => void
+    getReportRanking.mockReturnValueOnce(new Promise((r) => (resolve = r)))
+    view.rerender(tree('gpt-4o'))
+    await waitFor(() => expect(onCsvChange.mock.calls.at(-1)?.[0]).toBeNull())
+    // The old rows stay on screen but cannot be exported.
+    expect(view.queryByText('first')).not.toBeNull()
+    resolve({ success: true, data: [row('second')] })
+    await view.findByText('second')
+    await waitFor(() => expect(typeof onCsvChange.mock.calls.at(-1)?.[0]).toBe('string'))
+  })
 })

@@ -47,10 +47,14 @@ const route = getRouteApi('/_authenticated/usage-logs/$section')
 
 const CHART_HEIGHT = 120
 
+// Day buckets are aligned to UTC midnight by the server, so they are labelled
+// in UTC like the dashboard report; a local label could show the previous day.
+// Shorter buckets are instants and read best in the viewer's local time.
 function bucketLabel(timestamp: number, bucketSeconds: number): string {
-  return dayjs
-    .unix(timestamp)
-    .format(bucketSeconds >= 86400 ? 'MM-DD' : 'MM-DD HH:mm')
+  if (bucketSeconds >= 86400) {
+    return new Date(timestamp * 1000).toISOString().slice(5, 10)
+  }
+  return dayjs.unix(timestamp).format('MM-DD HH:mm')
 }
 
 function SummaryStat(props: {
@@ -78,8 +82,11 @@ export function CommonLogsSummary() {
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
 
+  // Paging does not change the totals. The key sits under 'usage-logs-stats' so
+  // the filter bar's invalidation of that prefix also refreshes the summary.
+  const { page: _page, pageSize: _pageSize, ...filters } = searchParams
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['usage-logs-summary', isAdmin, searchParams],
+    queryKey: ['usage-logs-stats', 'summary', isAdmin, filters],
     queryFn: async () => {
       const { p: _page, page_size: _pageSize, ...params } = buildApiParams({
         page: 1,

@@ -142,8 +142,10 @@ export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Elemen
     },
   ]
 
+  const isPlaceholder = query.isPlaceholderData
   const csv = useMemo(() => {
-    if (rows.length === 0) return null
+    // Placeholder rows belong to the previous filters, so they must not be exported.
+    if (rows.length === 0 || isPlaceholder) return null
     return rankingRowsToCsv(
       rows.map((row) => [
         row.name,
@@ -166,7 +168,7 @@ export function ReportRankingTab(props: ReportRankingTabProps): React.JSX.Elemen
         t('P95 latency'),
       ]
     )
-  }, [rows, t, formatErrorRate])
+  }, [rows, isPlaceholder, t, formatErrorRate])
 
   useEffect(() => {
     if (!enabled) return

@@ -104,6 +104,11 @@ export function ReportsSection(): React.JSX.Element {
   }
   const isFiltered = Boolean(filters.modelName || filters.channelId)
 
+  // Only Overview and Channels read the summary. Elsewhere it still loads when
+  // the filter option lists do not yet belong to the selected range.
+  const summaryNeeded =
+    activeTab === 'overview' || activeTab === 'channels' || options?.range !== range
+
   const summaryQuery = useQuery({
     queryKey: ['dashboard', 'reports', range, granularity, modelName ?? '', filters.channelId ?? 0],
     queryFn: async () => {
@@ -113,6 +118,7 @@ export function ReportsSection(): React.JSX.Element {
       }
       return result.data
     },
+    enabled: summaryNeeded,
     staleTime: 60 * 1000,
     // Keep the previous data on screen while a filter refetches, so the tab
     // content (and its bar/line choice) is not unmounted.

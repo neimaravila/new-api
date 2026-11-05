@@ -27,6 +27,17 @@ const INTERACTIVE_SELECTOR =
 export const LOG_ROW_FOCUS_CLASS =
   'cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset'
 
+/** Theme token highlight for the row currently shown in the details panel. */
+export const LOG_ROW_SELECTED_CLASS = 'bg-accent'
+
+/** Whether `log` is the one the details panel shows (ids are unique per log). */
+export function isLogRowSelected(
+  log: UsageLog,
+  selected: UsageLog | null | undefined
+): boolean {
+  return selected != null && selected.id === log.id
+}
+
 /**
  * Row props that open the details panel on click, Enter or Space. Clicks on
  * interactive children and text selections are ignored.
