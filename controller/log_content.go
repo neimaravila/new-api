@@ -64,7 +64,15 @@ func logContent(c *gin.Context, admin bool) {
 		common.ApiErrorT(c, "Log content not found")
 		return
 	}
-	rows, err := model.GetLogContents(ctx, requestID, userID)
+	// The admin reads the content of the call's owner: a request_id repeated
+	// by another user never mixes in. The self route reads only the client
+	// level, so provider bodies never leave the backend for it.
+	var rows []*model.LogContent
+	if admin {
+		rows, err = model.GetLogContents(ctx, requestID, logs[0].UserId)
+	} else {
+		rows, err = model.GetClientLogContent(ctx, requestID, userID)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

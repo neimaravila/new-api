@@ -291,6 +291,61 @@ func TestAdminReadWritesAuditLog(t *testing.T) {
 	assert.Len(t, logContentAuditRows(t, env), 2)
 }
 
+func TestSelfRouteReadsOnlyTheClientLevel(t *testing.T) {
+	env := newLogContentEnv(t)
+	env.addLogRow(t, "attempts-only", env.alice.Id, time.Now().Unix()-60, "/v1/chat/completions")
+	meta, err := model.NewLogContentMeta(model.LogContentMeta{RelayFormat: "openai", HttpStatus: 200, ChannelId: 7, MultiKeyIndex: -1})
+	require.NoError(t, err)
+	row := &model.LogContent{
+		RequestId: "attempts-only", Attempt: 1, UserId: env.alice.Id, CreatedAt: time.Now().Unix(), CaptureStatus: model.LogContentStatusCaptured, Meta: meta,
+		RequestBody: gzipText(t, `{"note":"`+logContentProviderSentinel+`"}`), ResponseBody: gzipText(t, `{"id":"`+logContentProviderSentinel+`"}`),
+	}
+	require.NoError(t, model.InsertLogContents(context.Background(), []*model.LogContent{row}))
+
+	var queries []string
+	const name = "test:record_log_contents"
+	require.NoError(t, model.LOG_DB.Callback().Query().After("gorm:query").Register(name, func(tx *gorm.DB) {
+		if tx.Statement.Table == "log_contents" {
+			queries = append(queries, tx.Statement.SQL.String())
+		}
+	}))
+	t.Cleanup(func() { _ = model.LOG_DB.Callback().Query().Remove(name) })
+
+	response := env.get("/api/log/self/content/attempts-only", env.alice)
+	require.Len(t, queries, 1)
+	assert.Contains(t, queries[0], "attempt = ", "the self route never reads provider attempts")
+	data := contentData(t, response)
+	assert.Equal(t, false, data["available"])
+	assert.Equal(t, "unavailable", data["reason"], "provider attempts alone are no content for the caller")
+	assert.NotContains(t, response.Body.String(), logContentProviderSentinel)
+}
+
+func TestAdminRouteReadsContentOfTheLogOwner(t *testing.T) {
+	env := newLogContentEnv(t)
+	// alice's log row comes first; only bob has content under the same id.
+	env.addLogRow(t, "shared-call", env.alice.Id, time.Now().Unix()-120, "/v1/chat/completions")
+	env.addCall(t, "shared-call", env.bob.Id, "bob private text")
+
+	response := env.get("/api/log/content/shared-call", env.admin)
+	data := contentData(t, response)
+	assert.Equal(t, false, data["available"])
+	assert.NotContains(t, response.Body.String(), "bob private text")
+	assert.NotContains(t, response.Body.String(), logContentProviderSentinel)
+
+}
+
+func TestRegularUserLogReadTokenCannotReachAdminRoute(t *testing.T) {
+	env := newLogContentEnv(t)
+	env.addCall(t, "alice-call", env.alice.Id, "alice own text")
+	token, _ := createScopedAccessToken(t, env.alice.Id, 0, "log:read")
+
+	response := env.getWithToken("/api/log/content/alice-call", token)
+	assert.NotEqual(t, http.StatusOK, response.Code)
+	assert.NotContains(t, response.Body.String(), "alice own text")
+	assert.NotContains(t, response.Body.String(), logContentProviderSentinel)
+	assert.Empty(t, logContentAuditRows(t, env))
+}
+
 func TestContentNeedsLogRow(t *testing.T) {
 	env := newLogContentEnv(t)
 	env.addContent(t, "orphan-call", env.alice.Id, "orphan text")

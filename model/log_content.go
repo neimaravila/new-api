@@ -154,6 +154,19 @@ func GetLogContents(ctx context.Context, requestID string, userID int) ([]*LogCo
 	return rows, nil
 }
 
+// GetClientLogContent returns the client level (attempt 0) of one user's
+// call, never the provider attempts.
+func GetClientLogContent(ctx context.Context, requestID string, userID int) ([]*LogContent, error) {
+	var rows []*LogContent
+	err := LOG_DB.WithContext(ctx).
+		Where("request_id = ? AND attempt = ? AND user_id = ?", requestID, 0, userID).
+		Limit(1).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // GetLogRowsForContent returns the consume and error log rows of a call.
 // userID 0 means every user.
 func GetLogRowsForContent(ctx context.Context, requestID string, userID int) ([]*Log, error) {
