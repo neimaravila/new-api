@@ -167,7 +167,7 @@ it('shows loading, then the tabs of a captured call', async () => {
   const { within: q } = await openRow(1, { logs: [makeLog()] })
   expect(q.getByText('Loading...')).toBeVisible()
   resolve(makeView())
-  expect(await q.findByRole('tab', { name: 'Conversation' })).toBeVisible()
+  expect(await q.findByRole('tab', { name: /^Conversation/ })).toBeVisible()
   expect(q.getByRole('tab', { name: 'Raw JSON' })).toBeVisible()
   expect(q.queryByText('Loading...')).toBeNull()
 })
@@ -183,7 +183,7 @@ it('looks up a pending call again and then shows the content', async () => {
   expect(
     await q.findByRole(
       'tab',
-      { name: 'Conversation' },
+      { name: /^Conversation/ },
       { timeout: LOG_CONTENT_PENDING_REFETCH_MS + 3000 }
     )
   ).toBeVisible()
@@ -216,7 +216,7 @@ it('shows a network error with Retry', async () => {
     await q.findByText('Could not load the content of this call')
   ).toBeVisible()
   await user.click(q.getByRole('button', { name: 'Retry' }))
-  expect(await q.findByRole('tab', { name: 'Conversation' })).toBeVisible()
+  expect(await q.findByRole('tab', { name: /^Conversation/ })).toBeVisible()
 })
 
 it('warns about truncated and incomplete content', async () => {
@@ -261,17 +261,17 @@ it('shows the badges, the channel only to admins and attempts only when several'
 it('hides channel and attempts from regular users, and a single attempt strip', async () => {
   getContent.mockResolvedValue(makeView({ attempts: [twoAttempts[0]] }))
   const { within: q } = await openRow(1, { logs: [makeLog()], admin: false })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   expect(q.queryByText('#372 primary-channel')).toBeNull()
   expect(q.queryByRole('group', { name: 'Attempts' })).toBeNull()
-  expect(q.queryByRole('tab', { name: 'Routing' })).toBeNull()
+  expect(q.queryByRole('tab', { name: /^Routing/ })).toBeNull()
 })
 
 it('shows the Routing and Raw JSON tabs to admins and Raw JSON only to users', async () => {
   getContent.mockResolvedValue(makeView({ attempts: twoAttempts }))
   const admin = await openRow(1, { logs: [makeLog()] })
   await admin.user.click(
-    await admin.within.findByRole('tab', { name: 'Routing' })
+    await admin.within.findByRole('tab', { name: /^Routing/ })
   )
   expect(await screen.findByTestId('log-content-tab-routing')).toBeVisible()
   await admin.user.click(admin.within.getByRole('tab', { name: 'Raw JSON' }))
@@ -285,7 +285,7 @@ it('shows only the client bodies in Raw JSON to a regular user', async () => {
     admin: false,
   })
   await user.click(await q.findByRole('tab', { name: 'Raw JSON' }))
-  expect(q.queryByRole('tab', { name: 'Routing' })).toBeNull()
+  expect(q.queryByRole('tab', { name: /^Routing/ })).toBeNull()
   const headings = within(await screen.findByTestId('log-content-tab-raw'))
     .getAllByRole('heading')
     .map((h) => h.textContent)
@@ -323,7 +323,7 @@ it('shows - and never 0 when the tools offered are unknown', async () => {
 
 it('keeps Details closed until opened, with the current body', async () => {
   const { within: q, user } = await openRow(1, { logs: [makeLog()] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   expect(q.queryByText('Billing Details')).toBeNull()
   await user.click(q.getByRole('button', { name: 'Details' }))
   expect(q.getByText('Billing Details')).toBeVisible()
@@ -399,7 +399,7 @@ it('copies the request body and exports the call as JSON', async () => {
   })
   getContent.mockResolvedValue(view)
   const { user, within: q } = await openRow(1, { logs: [makeLog()] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   await user.click(q.getByRole('button', { name: 'More actions' }))
   await user.click(
     await screen.findByRole('menuitem', { name: 'Copy request body' })
@@ -435,7 +435,7 @@ it('disables the menu actions without content and while sensitive data is hidden
 
 it('disables the menu actions when sensitive data is hidden', async () => {
   const { user, within: q } = await openRow(1, { logs: [makeLog()] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   await user.click(screen.getByText('hide-sensitive'))
   await user.click(q.getByRole('button', { name: 'More actions' }))
   expect(
@@ -455,9 +455,9 @@ it('warns in the content tabs and masks the channel in sensitive mode', async ()
     })
   )
   const { user, within: q } = await openRow(1, { logs: [makeLog()] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   await user.click(screen.getByText('hide-sensitive'))
-  for (const name of ['Conversation', 'Tools', 'Raw JSON']) {
+  for (const name of [/^Conversation/, /^Tools/, /^Raw JSON/]) {
     await user.click(q.getByRole('tab', { name }))
     expect(q.getByText('Sensitive data is hidden.')).toBeVisible()
   }
@@ -468,14 +468,14 @@ it('warns in the content tabs and masks the channel in sensitive mode', async ()
 
 it('looks up once on open, by the role-specific route, and never for a top-up row', async () => {
   const admin = await openRow(1, { logs: [makeLog()] })
-  await admin.within.findByRole('tab', { name: 'Conversation' })
+  await admin.within.findByRole('tab', { name: /^Conversation/ })
   expect(getContent).toHaveBeenCalledTimes(1)
   expect(getContent).toHaveBeenCalledWith('req-1', true)
   admin.view.unmount()
 
   getContent.mockClear()
   const self = await openRow(1, { logs: [makeLog()], admin: false })
-  await self.within.findByRole('tab', { name: 'Conversation' })
+  await self.within.findByRole('tab', { name: /^Conversation/ })
   expect(getContent).toHaveBeenCalledTimes(1)
   expect(getContent).toHaveBeenCalledWith('req-1', false)
   self.view.unmount()
@@ -574,7 +574,7 @@ it('offers Retry once the pending lookups run out', async () => {
     expect(getContent).toHaveBeenCalledTimes(LOG_CONTENT_PENDING_REFETCH_LIMIT)
     getContent.mockResolvedValue(makeView())
     await user.click(retry)
-    expect(await q.findByRole('tab', { name: 'Conversation' })).toBeVisible()
+    expect(await q.findByRole('tab', { name: /^Conversation/ })).toBeVisible()
   } finally {
     vi.useRealTimers()
   }
@@ -634,7 +634,7 @@ it('labels the request id and offers to copy it', async () => {
 
 it('shows the five figures in one strip', async () => {
   const { within: q } = await openRow(1, { logs: [makeLog()] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   const strip = screen.getByTestId('log-content-stats')
   expect(strip).toHaveAttribute('data-slot', 'metric-strip')
   expect(strip.querySelectorAll('[data-slot=metric-cell]')).toHaveLength(5)
@@ -646,7 +646,7 @@ it('leaves cache lines out of the strip when there is no cache', async () => {
     other: JSON.stringify({ model_ratio: 1, completion_ratio: 1 }),
   })
   const { within: q } = await openRow(1, { logs: [log] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   const strip = screen.getByTestId('log-content-stats')
   expect(strip).not.toHaveTextContent('Cache Read')
   expect(strip).not.toHaveTextContent('Cache Write')
@@ -654,7 +654,7 @@ it('leaves cache lines out of the strip when there is no cache', async () => {
 
 it('keeps the cost masked in the strip when sensitive data is hidden', async () => {
   const { user, within: q } = await openRow(1, { logs: [makeLog()] })
-  await q.findByRole('tab', { name: 'Conversation' })
+  await q.findByRole('tab', { name: /^Conversation/ })
   await user.click(screen.getByText('hide-sensitive'))
   const cells = screen
     .getByTestId('log-content-stats')
@@ -678,13 +678,13 @@ it('shows message, tool and attempt counts on the tabs', async () => {
     })
   )
   const { within: q } = await openRow(1, { logs: [makeLog()] })
-  const conversation = await q.findByRole('tab', { name: 'Conversation' })
+  const conversation = await q.findByRole('tab', { name: /^Conversation/ })
   expect(within(conversation).getByText('5')).toBeVisible()
   expect(
-    within(q.getByRole('tab', { name: 'Tools' })).getByText('2')
+    within(q.getByRole('tab', { name: /^Tools/ })).getByText('2')
   ).toBeVisible()
   expect(
-    within(q.getByRole('tab', { name: 'Routing' })).getByText('2')
+    within(q.getByRole('tab', { name: /^Routing/ })).getByText('2')
   ).toBeVisible()
   expect(
     q
@@ -723,11 +723,35 @@ it('puts an arrow between attempts and colors only the failed code', async () =>
 it('renders the retry banner once for admins with several attempts, never for users', async () => {
   getContent.mockResolvedValue(makeView({ attempts: twoAttempts }))
   const admin = await openRow(1, { logs: [makeLog()] })
-  await admin.within.findByRole('tab', { name: 'Conversation' })
+  await admin.within.findByRole('tab', { name: /^Conversation/ })
   expect(screen.getAllByTestId('log-content-retry-banner')).toHaveLength(1)
   admin.view.unmount()
 
   const self = await openRow(1, { logs: [makeLog()], admin: false })
-  await self.within.findByRole('tab', { name: 'Conversation' })
+  await self.within.findByRole('tab', { name: /^Conversation/ })
   expect(screen.queryByTestId('log-content-retry-banner')).toBeNull()
+})
+
+it('lets the tab strip scroll inside the panel instead of widening it', async () => {
+  const { within: q } = await openRow(1, { logs: [makeLog()] })
+  const tablist = await q.findByRole('tablist')
+  expect(tablist).toHaveClass('max-w-full', 'min-w-0', 'overflow-x-auto')
+})
+
+it('announces the count of a tab to screen readers', async () => {
+  const { within: q } = await openRow(1, { logs: [makeLog()] })
+  const tab = await q.findByRole('tab', { name: /^Conversation/ })
+  const count = tab.querySelector('[data-slot=tab-count]')?.textContent ?? ''
+  expect(count).not.toBe('')
+  expect(tab).toHaveAccessibleName(`Conversation, ${count}`)
+})
+
+it('scrolls Raw JSON inside its own block without widening the panel', async () => {
+  const { user, within: q } = await openRow(1, { logs: [makeLog()] })
+  await user.click(await q.findByRole('tab', { name: /^Raw JSON/ }))
+  const block = (await q.findByTestId('log-content-tab-raw')).querySelector(
+    '.overflow-auto'
+  )
+  expect(block).not.toBeNull()
+  expect(block).toHaveClass('max-w-full', 'min-w-0')
 })

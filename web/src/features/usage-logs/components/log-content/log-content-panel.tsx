@@ -234,7 +234,10 @@ export function LogContentPanel(props: {
           <LogContentWarnings view={view} />
           {isAdmin && <RetryBanner attempts={attempts} />}
           <Tabs value={activeTab} onValueChange={(v) => setTab(v as TabId)}>
-            <TabsList variant='line'>
+            <TabsList
+              variant='line'
+              className='max-w-full min-w-0 overflow-x-auto'
+            >
               {tabs.map((item) => (
                 <TabsTrigger
                   key={item.id}
@@ -243,13 +246,16 @@ export function LogContentPanel(props: {
                 >
                   {item.label}
                   {item.count != null && (
-                    <span
-                      data-slot='tab-count'
-                      aria-hidden='true'
-                      className='bg-muted ml-1.5 rounded-(--vf-radius-badge) px-1.5 text-[11px] font-medium tabular-nums'
-                    >
-                      {item.count}
-                    </span>
+                    <>
+                      <span className='sr-only'>{`, ${item.count}`}</span>
+                      <span
+                        data-slot='tab-count'
+                        aria-hidden='true'
+                        className='bg-muted ml-1.5 rounded-(--vf-radius-badge) px-1.5 text-[11px] font-medium tabular-nums'
+                      >
+                        {item.count}
+                      </span>
+                    </>
                   )}
                 </TabsTrigger>
               ))}
@@ -259,6 +265,7 @@ export function LogContentPanel(props: {
                 key={item.id}
                 value={item.id}
                 data-log-content-scroll=''
+                className='min-w-0'
               >
                 {tabBody(item.id, view)}
               </TabsContent>

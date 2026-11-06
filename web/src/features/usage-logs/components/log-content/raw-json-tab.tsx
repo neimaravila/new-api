@@ -90,7 +90,7 @@ function BodyView(props: { title: string; body: LogContentBody }) {
           {body.text === '' ? (
             <p className='text-muted-foreground text-sm'>{t('Empty')}</p>
           ) : (
-            <div className='bg-muted/30 max-h-96 overflow-auto rounded-(--vf-radius-control)'>
+            <div className='bg-muted/30 max-h-96 max-w-full min-w-0 overflow-auto rounded-(--vf-radius-control)'>
               {highlight ? (
                 <JsonView text={shown} collapsedLines={12} />
               ) : (
