@@ -1,0 +1,151 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/*
+ * Visual finish — scoped tokens and the few shared-component rules.
+ *
+ * Every rule starts with `[data-visual-finish` (or `.dark [data-visual-finish`),
+ * so nothing here can reach a screen that does not carry the attribute. The
+ * file lives outside any @layer on purpose: the shared-component rules must
+ * win over Tailwind utilities without `!important`. Colors come from existing
+ * theme tokens only, mixed with `color-mix`.
+ */
+
+[data-visual-finish] {
+  --vf-radius-inner: min(var(--radius), 0.625rem);
+  --vf-radius-control: min(var(--radius), 0.5rem);
+  --vf-radius-badge: min(var(--radius), 0.375rem);
+  --vf-surface: var(--card);
+  --vf-divider: var(--border);
+
+  --vf-tint-fill: 6%;
+  --vf-tint-edge: 25%;
+  --vf-badge-fill: 10%;
+  --vf-badge-edge: 30%;
+
+  --vf-success: var(--success);
+  --vf-danger: var(--destructive);
+  --vf-warning: var(--warning);
+  --vf-info: var(--info);
+  --vf-primary: var(--primary);
+  --vf-neutral: var(--muted-foreground);
+
+  --vf-success-fill: color-mix(in oklab, var(--vf-success) var(--vf-badge-fill), transparent);
+  --vf-success-edge: color-mix(in oklab, var(--vf-success) var(--vf-badge-edge), transparent);
+  --vf-success-text: color-mix(in oklch, var(--vf-success) 60%, var(--foreground));
+  --vf-danger-fill: color-mix(in oklab, var(--vf-danger) var(--vf-badge-fill), transparent);
+  --vf-danger-edge: color-mix(in oklab, var(--vf-danger) var(--vf-badge-edge), transparent);
+  --vf-danger-text: color-mix(in oklch, var(--vf-danger) 60%, var(--foreground));
+  --vf-warning-fill: color-mix(in oklab, var(--vf-warning) var(--vf-badge-fill), transparent);
+  --vf-warning-edge: color-mix(in oklab, var(--vf-warning) var(--vf-badge-edge), transparent);
+  --vf-warning-text: color-mix(in oklch, var(--vf-warning) 60%, var(--foreground));
+  --vf-info-fill: color-mix(in oklab, var(--vf-info) var(--vf-badge-fill), transparent);
+  --vf-info-edge: color-mix(in oklab, var(--vf-info) var(--vf-badge-edge), transparent);
+  --vf-info-text: color-mix(in oklch, var(--vf-info) 60%, var(--foreground));
+  --vf-primary-fill: color-mix(in oklab, var(--vf-primary) var(--vf-badge-fill), transparent);
+  --vf-primary-edge: color-mix(in oklab, var(--vf-primary) var(--vf-badge-edge), transparent);
+  --vf-primary-text: color-mix(in oklch, var(--vf-primary) 60%, var(--foreground));
+  --vf-neutral-fill: color-mix(in oklab, var(--vf-neutral) var(--vf-badge-fill), transparent);
+  --vf-neutral-edge: color-mix(in oklab, var(--vf-neutral) var(--vf-badge-edge), transparent);
+  --vf-neutral-text: color-mix(in oklch, var(--vf-neutral) 60%, var(--foreground));
+
+  --vf-role-user-bg: color-mix(in oklab, var(--primary) var(--vf-tint-fill), transparent);
+  --vf-role-user-border: color-mix(in oklab, var(--primary) var(--vf-tint-edge), transparent);
+  --vf-role-user-dot: var(--primary);
+  --vf-role-tool-bg: color-mix(in oklab, var(--warning) var(--vf-tint-fill), transparent);
+  --vf-role-tool-border: color-mix(in oklab, var(--warning) var(--vf-tint-edge), transparent);
+  --vf-role-tool-dot: var(--warning);
+  --vf-role-system-bg: color-mix(in oklab, var(--muted) 50%, transparent);
+  --vf-role-system-border: var(--border);
+  --vf-role-system-dot: var(--muted-foreground);
+  --vf-role-assistant-bg: transparent;
+  --vf-role-assistant-border: var(--border);
+  --vf-role-assistant-dot: var(--chart-3);
+  --vf-role-error-bg: color-mix(in oklab, var(--destructive) var(--vf-tint-fill), transparent);
+  --vf-role-error-border: color-mix(in oklab, var(--destructive) var(--vf-tint-edge), transparent);
+  --vf-role-error-dot: var(--destructive);
+
+  --vf-json-key: color-mix(in oklch, var(--chart-1) 55%, var(--foreground));
+  --vf-json-string: color-mix(in oklch, var(--chart-5) 55%, var(--foreground));
+  --vf-json-number: color-mix(in oklch, var(--chart-4) 55%, var(--foreground));
+  --vf-json-literal: color-mix(in oklch, var(--chart-3) 55%, var(--foreground));
+  --vf-json-punct: var(--muted-foreground);
+}
+
+.dark [data-visual-finish] {
+  --vf-tint-fill: 16%;
+  --vf-tint-edge: 40%;
+  --vf-badge-fill: 18%;
+  --vf-badge-edge: 40%;
+}
+
+/* Logs: controls */
+[data-visual-finish='logs'] [data-slot='input'],
+[data-visual-finish='logs'] [data-slot='select-trigger'],
+[data-visual-finish='logs'] [data-slot='button'] {
+  border-radius: var(--vf-radius-control);
+}
+
+[data-visual-finish='logs'] [data-slot='input'],
+[data-visual-finish='logs'] [data-slot='select-trigger'] {
+  font-size: 13px;
+}
+
+[data-visual-finish='logs'] [data-action='reset'] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Logs: table cells */
+[data-visual-finish='logs'] tbody td {
+  font-weight: 400;
+}
+
+[data-visual-finish='logs'] td[data-column-id='model_name'] [data-slot='status-badge'],
+[data-visual-finish='logs'] td[data-column-id='token_name'] [data-slot='status-badge'] {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 0;
+}
+
+[data-visual-finish='logs'] td[data-column-id='model_name'] [data-slot='status-badge'] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+[data-visual-finish='logs'] td[data-column-id='created_at'] [data-slot='status-badge'] {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+[data-visual-finish='logs'] [data-slot='stream-label'] {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in oklab, currentColor var(--vf-badge-edge), transparent);
+  border-radius: var(--vf-radius-badge);
+  background: color-mix(in oklab, currentColor var(--vf-badge-fill), transparent);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Reports: controls */
+[data-visual-finish='reports'] [data-slot='button'],
+[data-visual-finish='reports'] [data-slot='select-trigger'],
+[data-visual-finish='reports'] [data-slot='input'] {
+  border-radius: var(--vf-radius-control);
+}
