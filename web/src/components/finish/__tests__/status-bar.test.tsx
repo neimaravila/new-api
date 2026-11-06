@@ -30,4 +30,12 @@ describe('StatusBar', () => {
     )
     expect(screen.queryByText('Error')).toBeNull()
   })
+
+  it('shows its label as a hover title', () => {
+    render(<StatusBar tone='success' label='OK' />)
+    expect(screen.getByRole('img', { name: 'OK' })).toHaveAttribute(
+      'title',
+      'OK'
+    )
+  })
 })

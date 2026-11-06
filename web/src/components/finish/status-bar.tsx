@@ -25,6 +25,7 @@ export function StatusBar(props: { tone: TintTone; label: string }) {
     <span
       role='img'
       aria-label={props.label}
+      title={props.label}
       data-slot='status-bar'
       data-tone={props.tone}
       className={cn(

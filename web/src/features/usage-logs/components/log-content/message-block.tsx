@@ -283,7 +283,8 @@ export function MessageBlock(props: { message: LogContentMessage }) {
   const blocks = message.blocks.map((block, position) => ({ block, position }))
   const hasError = message.blocks.some((b) => b.type === 'error')
   const visual = visualRole(message.role, hasError)
-  const lines = messageText(message).split('\n').length
+  const text = useMemo(() => messageText(message), [message])
+  const lines = text.split('\n').length
   return (
     <div className='relative'>
       <span
@@ -311,7 +312,7 @@ export function MessageBlock(props: { message: LogContentMessage }) {
         )}
       >
         <IconCopyButton
-          value={messageText(message)}
+          value={text}
           aria-label={t('Copy')}
           className='absolute top-2 right-2 size-5 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
           iconClassName='size-3.5'
