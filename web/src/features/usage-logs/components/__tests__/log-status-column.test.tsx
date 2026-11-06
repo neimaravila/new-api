@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { flexRender } from '@tanstack/react-table'
 import { cleanup, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
 
@@ -54,9 +53,6 @@ it('shows a status bar named Error for an error log', () => {
   )
 })
 
-it('keeps a visually hidden Status header', () => {
-  const header = statusColumn().header as () => React.ReactNode
-  render(<>{flexRender(header, {} as never)}</>)
-  const label = screen.getByText('Status')
-  expect(label).toHaveClass('sr-only')
+it('keeps a plain string Status header for assistive tech', () => {
+  expect(statusColumn().header).toBe('Status')
 })

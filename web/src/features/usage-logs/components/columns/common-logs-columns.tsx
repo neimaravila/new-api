@@ -360,7 +360,7 @@ export function useCommonLogsColumns(
     const columns: ColumnDef<UsageLog>[] = [
       {
         id: 'status',
-        header: () => <span className='sr-only'>{t('Status')}</span>,
+        header: t('Status'),
         accessorFn: (row) => row.type,
         cell: ({ row }) => {
           const config = getLogStatusConfig(row.original.type)

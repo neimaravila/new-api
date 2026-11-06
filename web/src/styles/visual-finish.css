@@ -134,6 +134,20 @@ For commercial licensing, please contact support@quantumnous.com
   color: var(--muted-foreground);
 }
 
+/* The Status header keeps its text for assistive tech; the 28px column only shows the bar. */
+[data-visual-finish='logs'] th[data-column-id='status'] > :not([role='separator']) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 [data-visual-finish='logs'] [data-slot='stream-label'] {
   padding: 1px 6px;
   border: 1px solid color-mix(in oklab, currentColor var(--vf-badge-edge), transparent);
