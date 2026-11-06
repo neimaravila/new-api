@@ -202,7 +202,7 @@ function ToolCallBox(props: { block: LogContentBlock }) {
           </span>
         )}
         <IconCopyButton
-          value={pretty}
+          value={block.arguments}
           aria-label={t('Copy')}
           className='ml-auto size-5 p-0'
           iconClassName='size-3.5'

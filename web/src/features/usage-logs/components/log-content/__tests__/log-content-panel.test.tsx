@@ -719,3 +719,15 @@ it('puts an arrow between attempts and colors only the failed code', async () =>
   expect(group.getByText('200')).toHaveClass('text-(--vf-success-text)')
   expect(group.getByText('first-ch')).not.toHaveClass('text-(--vf-danger-text)')
 })
+
+it('renders the retry banner once for admins with several attempts, never for users', async () => {
+  getContent.mockResolvedValue(makeView({ attempts: twoAttempts }))
+  const admin = await openRow(1, { logs: [makeLog()] })
+  await admin.within.findByRole('tab', { name: 'Conversation' })
+  expect(screen.getAllByTestId('log-content-retry-banner')).toHaveLength(1)
+  admin.view.unmount()
+
+  const self = await openRow(1, { logs: [makeLog()], admin: false })
+  await self.within.findByRole('tab', { name: 'Conversation' })
+  expect(screen.queryByTestId('log-content-retry-banner')).toBeNull()
+})

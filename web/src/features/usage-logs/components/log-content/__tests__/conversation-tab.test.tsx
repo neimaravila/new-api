@@ -434,3 +434,24 @@ it('wraps a long unbroken token inside the box', () => {
     '[overflow-wrap:anywhere]'
   )
 })
+
+it('copies the original tool call arguments, not the re-indented text', async () => {
+  const user = userEvent.setup()
+  const args = '{"a":1,"b":[1,2]}'
+  render(
+    <ConversationTab
+      view={makeView(openaiFixture, {
+        conversation: conversation([
+          {
+            role: 'assistant',
+            source: 'request',
+            blocks: [{ type: 'tool_call', name: 'fn', arguments: args }],
+          },
+        ]),
+      })}
+    />
+  )
+  const box = within(screen.getByTestId('log-content-tool-call'))
+  await user.click(box.getByRole('button', { name: 'Copy' }))
+  expect(copyMock).toHaveBeenCalledWith(args)
+})
