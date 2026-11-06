@@ -22,3 +22,10 @@ export { TintBadge } from './tint-badge'
 export { splitUnit } from './split-unit'
 export { MetricStrip, type MetricItem } from './metric-strip'
 export { StatusBar } from './status-bar'
+export {
+  JSON_HIGHLIGHT_MAX_CHARS,
+  tokenizeJson,
+  type JsonToken,
+  type JsonTokenKind,
+} from './json-tokens'
+export { JsonView } from './json-view'
