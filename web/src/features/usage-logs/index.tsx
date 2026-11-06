@@ -20,6 +20,7 @@ import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { FINISH_ATTR } from '@/components/finish'
 import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -34,6 +35,7 @@ import {
   useUsageLogsContext,
 } from './components/usage-logs-provider'
 import { UsageLogsTable } from './components/usage-logs-table'
+import { logsFinishScope } from './lib/visual-finish'
 import {
   isUsageLogsSectionId,
   USAGE_LOGS_DEFAULT_SECTION,
@@ -151,7 +153,10 @@ function UsageLogsContent() {
                 </TabsList>
               </Tabs>
             )}
-            <div className='min-h-0 flex-1'>
+            <div
+              className='min-h-0 flex-1'
+              {...{ [FINISH_ATTR]: logsFinishScope(activeCategory) }}
+            >
               <UsageLogsTable logCategory={activeCategory} />
             </div>
           </div>

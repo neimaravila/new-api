@@ -22,13 +22,14 @@ import dayjs from 'dayjs'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { MetricStrip } from '@/components/finish'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useTheme } from '@/context/theme-provider'
 import { ReportChart } from '@/features/dashboard/components/reports/report-chart'
 import { getDashboardChartColors } from '@/features/dashboard/lib/charts'
 import { withFailureColor } from '@/features/dashboard/lib/failure-color'
 import { buildVolumeSpec } from '@/features/dashboard/lib/report-charts'
 import type { ReportTrendPoint } from '@/features/dashboard/types'
-import { useTheme } from '@/context/theme-provider'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   formatLogQuota,
   formatNumber,
@@ -41,6 +42,7 @@ import { getLogSummary } from '../api'
 import { fillSummaryBuckets } from '../lib/summary-buckets'
 import { buildApiParams } from '../lib/utils'
 import type { LogSummary } from '../types'
+import { CommonLogsStats } from './common-logs-stats'
 import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
@@ -57,24 +59,6 @@ function bucketLabel(timestamp: number, bucketSeconds: number): string {
   return dayjs.unix(timestamp).format('MM-DD HH:mm')
 }
 
-function SummaryStat(props: {
-  label: string
-  value: string
-  testId?: string
-}) {
-  return (
-    <div className='min-w-0'>
-      <div className='text-muted-foreground text-xs'>{props.label}</div>
-      <div
-        data-testid={props.testId}
-        className='text-foreground/90 font-mono text-sm font-semibold tabular-nums'
-      >
-        {props.value}
-      </div>
-    </div>
-  )
-}
-
 export function CommonLogsSummary() {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
@@ -88,7 +72,11 @@ export function CommonLogsSummary() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['usage-logs-stats', 'summary', isAdmin, filters],
     queryFn: async () => {
-      const { p: _page, page_size: _pageSize, ...params } = buildApiParams({
+      const {
+        p: _page,
+        page_size: _pageSize,
+        ...params
+      } = buildApiParams({
         page: 1,
         pageSize: 1,
         searchParams,
@@ -155,32 +143,42 @@ export function CommonLogsSummary() {
     summary.requests > 0 ? (summary.successes / summary.requests) * 100 : null
 
   return (
-    <section className='border-border/60 bg-card/50 space-y-2 rounded-lg border p-3'>
-      <div className='grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5'>
-        <SummaryStat
-          label={t('Requests')}
-          value={formatNumber(summary.requests)}
-        />
-        <SummaryStat
-          label={t('Success rate')}
-          value={successRate == null ? '—' : formatPercent(successRate)}
-          testId='success-rate'
-        />
-        <SummaryStat
-          label={t('Tokens')}
-          value={formatNumber(summary.tokens)}
-          testId='summary-tokens'
-        />
-        <SummaryStat
-          label={t('Cost')}
-          value={sensitiveVisible ? formatLogQuota(summary.quota) : '••••'}
-          testId='summary-cost'
-        />
-        <SummaryStat
-          label={t('Avg latency')}
-          value={formatUseTime(summary.avg_use_time_seconds)}
-        />
-      </div>
+    <section className='border-border/60 space-y-2 rounded-(--vf-radius-inner) border p-3'>
+      <MetricStrip
+        size='lg'
+        columnsClassName='grid-cols-2 sm:grid-cols-5'
+        items={[
+          {
+            key: 'requests',
+            label: t('Requests'),
+            value: formatNumber(summary.requests),
+          },
+          {
+            key: 'success-rate',
+            label: t('Success rate'),
+            value: successRate == null ? '—' : formatPercent(successRate),
+            testId: 'success-rate',
+          },
+          {
+            key: 'tokens',
+            label: t('Tokens'),
+            value: formatNumber(summary.tokens),
+            testId: 'summary-tokens',
+          },
+          {
+            key: 'cost',
+            label: t('Cost'),
+            value: sensitiveVisible ? formatLogQuota(summary.quota) : '••••',
+            testId: 'summary-cost',
+          },
+          {
+            key: 'latency',
+            label: t('Avg latency'),
+            value: formatUseTime(summary.avg_use_time_seconds),
+          },
+        ]}
+      />
+      <CommonLogsStats />
       {!summary.error_log_enabled && (
         <p className='text-muted-foreground text-xs'>
           {t(

@@ -21,6 +21,7 @@ import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { StatusBar, toneFromStatusVariant } from '@/components/finish'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -359,22 +360,22 @@ export function useCommonLogsColumns(
     const columns: ColumnDef<UsageLog>[] = [
       {
         id: 'status',
-        header: t('Status'),
+        header: () => <span className='sr-only'>{t('Status')}</span>,
         accessorFn: (row) => row.type,
         cell: ({ row }) => {
           const config = getLogStatusConfig(row.original.type)
           return (
-            <StatusBadge
+            <StatusBar
+              tone={toneFromStatusVariant(
+                config.color as StatusBadgeProps['variant']
+              )}
               label={t(config.label)}
-              variant={config.color as StatusBadgeProps['variant']}
-              size='sm'
-              showDot
-              copyable={false}
             />
           )
         },
         enableSorting: false,
-        size: 90,
+        meta: { label: t('Status') },
+        size: 28,
       },
       {
         accessorKey: 'created_at',

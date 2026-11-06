@@ -169,9 +169,11 @@ it('shows OK, Error and the type label in the status column', () => {
     screen
       .getByTestId(`row-${id}`)
       .querySelector('[data-column-id="status"]') as HTMLElement
-  expect(status(1)).toHaveTextContent('OK')
-  expect(status(2)).toHaveTextContent('Error')
-  expect(status(3)).toHaveTextContent('Refund')
+  const bar = (id: number) =>
+    status(id).querySelector('[data-slot="status-bar"]')
+  expect(bar(1)).toHaveAttribute('aria-label', 'OK')
+  expect(bar(2)).toHaveAttribute('aria-label', 'Error')
+  expect(bar(3)).toHaveAttribute('aria-label', 'Refund')
   expect(screen.getByTestId('row-1').querySelector('td:first-child')).toBe(
     status(1)
   )

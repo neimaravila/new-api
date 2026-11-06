@@ -273,6 +273,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
           <Button
             type='button'
             variant='outline'
+            data-action='reset'
             onClick={props.onReset}
             disabled={!props.hasActiveFilters}
           >

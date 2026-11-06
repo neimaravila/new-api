@@ -24,7 +24,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -46,7 +46,11 @@ vi.mock('@visactor/react-vchart', () => ({
   },
 }))
 
-vi.mock('../../api', () => ({ getLogSummary: vi.fn() }))
+vi.mock('../../api', () => ({
+  getLogSummary: vi.fn(),
+  getLogStats: vi.fn(),
+  getUserLogStats: vi.fn(),
+}))
 
 const summary = {
   requests: 1200,
@@ -61,6 +65,10 @@ const summary = {
 }
 
 beforeEach(() => {
+  vi.mocked(api.getUserLogStats).mockResolvedValue({
+    success: true,
+    data: { quota: 0, rpm: 3, tpm: 40 },
+  })
   useAuthStore.setState((state) => ({
     auth: {
       ...state.auth,
@@ -124,7 +132,7 @@ it('shows requests, success rate, tokens, cost and latency', async () => {
   renderSummary()
 
   expect(await screen.findByText('1,200')).toBeVisible()
-  expect(screen.getByText('91.67%')).toBeVisible()
+  expect(screen.getByTestId('success-rate')).toHaveTextContent('91.67%')
   expect(screen.getByText('Success rate')).toBeVisible()
   expect(screen.getByText('Tokens')).toBeVisible()
   expect(screen.getByText('Cost')).toBeVisible()
@@ -132,7 +140,30 @@ it('shows requests, success rate, tokens, cost and latency', async () => {
   expect(screen.getByTestId('summary-cost')).toHaveTextContent(
     formatLogQuota(500000)
   )
-  expect(screen.getByText('2.5s')).toBeVisible()
+  expect(screen.getByText('2.5')).toBeVisible()
+  expect(screen.getByText('s')).toBeVisible()
+})
+
+it('shows the totals as a metric strip', async () => {
+  vi.mocked(api.getLogSummary).mockResolvedValue({ success: true, data: summary })
+  renderSummary()
+
+  const rate = await screen.findByTestId('success-rate')
+  expect(rate.closest('[data-slot=metric-strip]')).not.toBeNull()
+  expect(
+    document.querySelectorAll('[data-slot=metric-cell]')
+  ).toHaveLength(5)
+})
+
+it('shows the usage chips next to the totals', async () => {
+  vi.mocked(api.getLogSummary).mockResolvedValue({ success: true, data: summary })
+  renderSummary()
+
+  const section = (await screen.findByTestId('success-rate')).closest('section')
+  expect(section).not.toBeNull()
+  const within_ = within(section as HTMLElement)
+  expect(await within_.findByText('RPM')).toBeVisible()
+  expect(within_.getByText('TPM')).toBeVisible()
 })
 
 it('requests the summary with the table filters and no paging', async () => {
@@ -253,6 +284,7 @@ it('does not refetch when only the page changes', async () => {
     .getQueryCache()
     .getAll()
     .map((q) => q.queryKey)
+    .filter((key) => key[1] === 'summary')
   expect(keys).toHaveLength(1)
   const key = keys[0] as [string, string, boolean, Record<string, unknown>]
   expect(key.slice(0, 2)).toEqual(['usage-logs-stats', 'summary'])
