@@ -27,6 +27,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
+import { FINISH_ATTR } from '@/components/finish'
 import { LoadingState } from '@/components/loading-state'
 import {
   Collapsible,
@@ -134,10 +135,24 @@ export function LogContentPanel(props: {
   const [tab, setTab] = useState<TabId>('conversation')
   const showTools = !!view && (view.tools.length > 0 || !!view.tools_available)
   const showRouting = isAdmin && attempts.length > 0
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'conversation', label: t('Conversation') },
-    ...(showTools ? [{ id: 'tools' as const, label: t('Tools') }] : []),
-    ...(showRouting ? [{ id: 'routing' as const, label: t('Routing') }] : []),
+  const tabs: { id: TabId; label: string; count?: number }[] = [
+    {
+      id: 'conversation',
+      label: t('Conversation'),
+      count: view?.conversation.messages.length,
+    },
+    ...(showTools
+      ? [{ id: 'tools' as const, label: t('Tools'), count: view?.tools.length }]
+      : []),
+    ...(showRouting
+      ? [
+          {
+            id: 'routing' as const,
+            label: t('Routing'),
+            count: attempts.length,
+          },
+        ]
+      : []),
     { id: 'raw', label: t('Raw JSON') },
   ]
   const activeTab = tabs.some((item) => item.id === tab) ? tab : 'conversation'
@@ -220,8 +235,21 @@ export function LogContentPanel(props: {
           <Tabs value={activeTab} onValueChange={(v) => setTab(v as TabId)}>
             <TabsList variant='line'>
               {tabs.map((item) => (
-                <TabsTrigger key={item.id} value={item.id}>
+                <TabsTrigger
+                  key={item.id}
+                  value={item.id}
+                  className='text-muted-foreground data-active:text-foreground'
+                >
                   {item.label}
+                  {item.count != null && (
+                    <span
+                      data-slot='tab-count'
+                      aria-hidden='true'
+                      className='bg-muted ml-1.5 rounded-(--vf-radius-badge) px-1.5 text-[11px] font-medium tabular-nums'
+                    >
+                      {item.count}
+                    </span>
+                  )}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -244,7 +272,8 @@ export function LogContentPanel(props: {
     <Sheet open onOpenChange={handleOpenChange} modal={false}>
       <SheetContent
         showOverlay={false}
-        className={`w-full max-sm:max-w-full sm:max-w-lg ${LOG_PANEL_WIDTH_CLASS}`}
+        {...{ [FINISH_ATTR]: 'log-detail' }}
+        className={`w-full bg-(--vf-surface) max-sm:max-w-full sm:max-w-lg ${LOG_PANEL_WIDTH_CLASS}`}
       >
         <SheetDescription className='sr-only'>
           {t('View the complete details for this log entry')}
@@ -271,10 +300,17 @@ export function LogContentPanel(props: {
               sensitiveVisible={sensitiveVisible}
             />
           )}
-          <Collapsible defaultOpen={!hasContent} key={log.id}>
+          <Collapsible
+            defaultOpen={!hasContent}
+            key={log.id}
+            className='rounded-(--vf-radius-control) border px-4 py-2.5'
+          >
             <CollapsibleTrigger className='text-muted-foreground hover:text-foreground group flex w-full items-center gap-1.5 text-sm font-medium'>
               <ChevronDown className='size-4 transition-transform group-data-[panel-open]:rotate-180' />
               {t('Details')}
+              <span aria-hidden='true' className='ml-auto text-xs font-normal'>
+                {t('Timing, request and billing details')}
+              </span>
             </CollapsibleTrigger>
             <CollapsibleContent className='pt-2'>
               <DetailsDialog

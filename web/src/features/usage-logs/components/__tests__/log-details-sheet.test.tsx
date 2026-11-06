@@ -193,7 +193,8 @@ it('opens the panel on row click with sections in the required order', async () 
   await user.click(screen.getByTestId('row-1'))
   const dialog = await openDetails(user)
   const q = within(dialog)
-  const ids = q.getByText('Request ID')
+  // The header labels it too; the Details one is the last.
+  const ids = q.getAllByText('Request ID').at(-1) as HTMLElement
   const channel = q.getByText('Channel')
   const consumption = q.getByText('Consumption')
   const timing = q.getByText('Response Time')

@@ -17,9 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { CopyButton } from '@/components/copy-button'
+import {
+  TintBadge,
+  toneFromStatusVariant,
+  type TintTone,
+} from '@/components/finish'
+import type { StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
@@ -66,50 +73,29 @@ export function LogContentHeader(props: {
     : ''
   const httpStatus = view?.http_status ?? 0
   const isStream = view ? view.is_stream : log.is_stream
+  const statusLabel = t(status.label)
+  const statusTone: TintTone =
+    httpStatus >= 400
+      ? toneFromStatusVariant(httpVariant(httpStatus))
+      : toneFromStatusVariant(status.color as StatusBadgeProps['variant'])
 
   return (
     <div className='min-w-0 space-y-2 pr-12' data-testid='log-content-header'>
       <div className='flex flex-wrap items-center gap-1.5'>
-        <SheetTitle className='mr-1 text-base font-semibold'>
+        <SheetTitle className='mr-1 text-[13px] font-medium'>
           {t('Log Details')}
         </SheetTitle>
-        <StatusBadge
-          label={t(status.label)}
-          variant={status.color as StatusBadgeProps['variant']}
-          size='sm'
-          copyable={false}
-        />
+        <TintBadge tone={statusTone} strong dot>
+          {httpStatus > 0 ? `${statusLabel} · ${httpStatus}` : statusLabel}
+        </TintBadge>
         {view && FORMAT_LABELS[view.format] && (
-          <StatusBadge
-            label={FORMAT_LABELS[view.format]}
-            variant='neutral'
-            size='sm'
-            copyable={false}
-          />
+          <TintBadge tone='neutral'>{FORMAT_LABELS[view.format]}</TintBadge>
         )}
-        {httpStatus > 0 && (
-          <StatusBadge
-            label={`HTTP ${httpStatus}`}
-            variant={httpVariant(httpStatus)}
-            size='sm'
-            copyable={false}
-          />
-        )}
-        {isStream && (
-          <StatusBadge
-            label={t('Stream')}
-            variant='info'
-            size='sm'
-            copyable={false}
-          />
-        )}
+        {isStream && <TintBadge tone='info'>{t('Stream')}</TintBadge>}
         {props.isAdmin && channel && (
-          <StatusBadge
-            label={props.sensitiveVisible ? channel : '••••'}
-            variant='neutral'
-            size='sm'
-            copyable={false}
-          />
+          <TintBadge tone='neutral'>
+            {props.sensitiveVisible ? channel : '••••'}
+          </TintBadge>
         )}
         <div className='ml-auto flex items-center gap-0.5'>
           <Button
@@ -140,35 +126,63 @@ export function LogContentHeader(props: {
         </div>
       </div>
       {log.request_id && (
-        <p className='text-muted-foreground truncate font-mono text-xs'>
-          {log.request_id}
-        </p>
+        <div className='flex min-w-0 items-center gap-2'>
+          <span className='text-muted-foreground text-[11px] font-semibold tracking-[0.05em] uppercase'>
+            {t('Request ID')}
+          </span>
+          <span className='text-foreground truncate font-mono text-[13px]'>
+            {log.request_id}
+          </span>
+          <CopyButton
+            value={log.request_id}
+            aria-label={t('Copy')}
+            className='size-4 p-0'
+            iconClassName='size-3.5'
+          />
+        </div>
       )}
       {props.isAdmin && attempts.length > 1 && (
         <div
-          className='flex flex-wrap gap-1.5'
+          className='flex flex-wrap items-center gap-1.5'
           role='group'
           aria-label={t('Attempts')}
         >
-          {attempts.map((attempt) => {
+          {attempts.map((attempt, position) => {
             const selected = attempt.attempt === props.selectedAttempt
+            const failed = (attempt.status_code ?? 0) >= 400
             return (
-              <Button
-                key={attempt.attempt}
-                variant={selected ? 'secondary' : 'outline'}
-                size='sm'
-                className={cn('h-7 gap-1.5 px-2 text-xs')}
-                aria-pressed={selected}
-                onClick={() => props.onSelectAttempt(attempt.attempt)}
-              >
-                <span>#{attempt.attempt}</span>
-                <span className='font-mono'>
-                  {props.sensitiveVisible
-                    ? attempt.channel_name || `#${attempt.channel_id}`
-                    : '••••'}
-                </span>
-                <span className='font-mono'>{attempt.status_code || '-'}</span>
-              </Button>
+              <Fragment key={attempt.attempt}>
+                {position > 0 && (
+                  <span aria-hidden='true' className='text-muted-foreground'>
+                    →
+                  </span>
+                )}
+                <Button
+                  variant={selected ? 'secondary' : 'outline'}
+                  size='sm'
+                  className='h-7 gap-1.5 px-2 text-xs'
+                  aria-pressed={selected}
+                  onClick={() => props.onSelectAttempt(attempt.attempt)}
+                >
+                  <span>#{attempt.attempt}</span>
+                  <span className='font-mono'>
+                    {props.sensitiveVisible
+                      ? attempt.channel_name || `#${attempt.channel_id}`
+                      : '••••'}
+                  </span>
+                  <span
+                    className={cn(
+                      'font-mono',
+                      attempt.status_code &&
+                        (failed
+                          ? 'text-(--vf-danger-text)'
+                          : 'text-(--vf-success-text)')
+                    )}
+                  >
+                    {attempt.status_code || '-'}
+                  </span>
+                </Button>
+              </Fragment>
             )
           })}
         </div>

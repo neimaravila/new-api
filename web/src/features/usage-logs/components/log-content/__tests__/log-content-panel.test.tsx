@@ -247,8 +247,7 @@ it('shows the badges, the channel only to admins and attempts only when several'
   const { within: q, user } = await openRow(1, { logs: [makeLog()] })
   const header = within(await screen.findByTestId('log-content-header'))
   expect(await header.findByText('OpenAI Chat')).toBeVisible()
-  expect(header.getByText('OK')).toBeVisible()
-  expect(header.getByText('HTTP 200')).toBeVisible()
+  expect(header.getByText('OK · 200')).toBeVisible()
   expect(header.getByText('Stream')).toBeVisible()
   expect(header.getByText('#372 primary-channel')).toBeVisible()
   const first = q.getByRole('button', { name: /#1/ })
@@ -297,14 +296,14 @@ it('shows the five figures with cache tokens, cost and tools', async () => {
   getContent.mockResolvedValue(makeView({ tools_available: 4, tool_calls: 2 }))
   await openRow(1, { logs: [makeLog()] })
   const stats = within(await screen.findByTestId('log-content-stats'))
-  expect(stats.getByText('3.0s')).toBeVisible()
+  expect(screen.getByTestId('log-content-stats')).toHaveTextContent('3.0s')
   expect(stats.getByText('First token: 1.5 s')).toBeVisible()
   expect(stats.getByText('gpt-test')).toBeVisible()
   expect(stats.getByText('Group: vip')).toBeVisible()
   expect(stats.getByText('111')).toBeVisible()
-  expect(stats.getByText('Output Tokens: 222')).toBeVisible()
-  expect(stats.getByText('Cache Read: 333')).toBeVisible()
-  expect(stats.getByText('Cache Write: 444')).toBeVisible()
+  expect(
+    stats.getByText('Output Tokens: 222 · Cache Read: 333 · Cache Write: 444')
+  ).toBeVisible()
   expect(stats.getByText(formatLogQuota(500000))).toBeVisible()
   await waitFor(() => expect(stats.getByText('Calls: 2')).toBeVisible())
   expect(stats.getByText('4')).toBeVisible()
@@ -483,7 +482,7 @@ it('looks up once on open, by the role-specific route, and never for a top-up ro
 
   getContent.mockClear()
   const topup = await openRow(1, { logs: [makeLog({ type: 1 })] })
-  expect(topup.within.getByText('Request ID')).toBeVisible()
+  expect(topup.within.getAllByText('Request ID')[0]).toBeVisible()
   expect(getContent).not.toHaveBeenCalled()
 })
 
@@ -598,4 +597,125 @@ it('shows the last attempt of a newly selected log at once', async () => {
     'aria-pressed',
     'true'
   )
+})
+
+it('marks the panel with the log-detail finish scope', async () => {
+  await openRow(1, { logs: [makeLog()] })
+  expect(document.querySelector('[data-slot=sheet-content]')).toHaveAttribute(
+    'data-visual-finish',
+    'log-detail'
+  )
+})
+
+it('shows status and HTTP code in one tinted badge', async () => {
+  getContent.mockResolvedValue(makeView({ http_status: 200 }))
+  const ok = await openRow(1, { logs: [makeLog()] })
+  const badge = (await ok.within.findByText('OK · 200')).closest(
+    '[data-slot=tint-badge]'
+  )
+  expect(badge).toHaveAttribute('data-tone', 'success')
+  ok.view.unmount()
+
+  getContent.mockResolvedValue(makeView({ http_status: 500 }))
+  const err = await openRow(1, { logs: [makeLog({ type: 5 })] })
+  const bad = (await err.within.findByText('Error · 500')).closest(
+    '[data-slot=tint-badge]'
+  )
+  expect(bad).toHaveAttribute('data-tone', 'danger')
+})
+
+it('labels the request id and offers to copy it', async () => {
+  await openRow(1, { logs: [makeLog()] })
+  const header = within(await screen.findByTestId('log-content-header'))
+  expect(header.getByText('Request ID')).toBeVisible()
+  expect(header.getByText('req-1')).toBeVisible()
+  expect(header.getByRole('button', { name: 'Copy' })).toBeVisible()
+})
+
+it('shows the five figures in one strip', async () => {
+  const { within: q } = await openRow(1, { logs: [makeLog()] })
+  await q.findByRole('tab', { name: 'Conversation' })
+  const strip = screen.getByTestId('log-content-stats')
+  expect(strip).toHaveAttribute('data-slot', 'metric-strip')
+  expect(strip.querySelectorAll('[data-slot=metric-cell]')).toHaveLength(5)
+  expect(strip).toHaveTextContent('Cache Read: 333')
+})
+
+it('leaves cache lines out of the strip when there is no cache', async () => {
+  const log = makeLog({
+    other: JSON.stringify({ model_ratio: 1, completion_ratio: 1 }),
+  })
+  const { within: q } = await openRow(1, { logs: [log] })
+  await q.findByRole('tab', { name: 'Conversation' })
+  const strip = screen.getByTestId('log-content-stats')
+  expect(strip).not.toHaveTextContent('Cache Read')
+  expect(strip).not.toHaveTextContent('Cache Write')
+})
+
+it('keeps the cost masked in the strip when sensitive data is hidden', async () => {
+  const { user, within: q } = await openRow(1, { logs: [makeLog()] })
+  await q.findByRole('tab', { name: 'Conversation' })
+  await user.click(screen.getByText('hide-sensitive'))
+  const cells = screen
+    .getByTestId('log-content-stats')
+    .querySelectorAll('[data-slot=metric-cell]')
+  const cost = [...cells].find((c) => c.textContent?.includes('Cost'))
+  expect(cost).toHaveTextContent('••••')
+  expect(cost?.querySelector('[data-slot=metric-unit]')).toBeNull()
+})
+
+it('shows message, tool and attempt counts on the tabs', async () => {
+  const tool = {
+    name: 'get_time',
+    description: 'Get the time',
+    schema: { type: 'object', properties: {} },
+    called: 0,
+  }
+  getContent.mockResolvedValue(
+    makeView({
+      attempts: twoAttempts,
+      tools: [...makeView().tools, tool],
+    })
+  )
+  const { within: q } = await openRow(1, { logs: [makeLog()] })
+  const conversation = await q.findByRole('tab', { name: 'Conversation' })
+  expect(within(conversation).getByText('5')).toBeVisible()
+  expect(
+    within(q.getByRole('tab', { name: 'Tools' })).getByText('2')
+  ).toBeVisible()
+  expect(
+    within(q.getByRole('tab', { name: 'Routing' })).getByText('2')
+  ).toBeVisible()
+  expect(
+    q
+      .getByRole('tab', { name: 'Raw JSON' })
+      .querySelector('[data-slot=tab-count]')
+  ).toBeNull()
+})
+
+it('puts an arrow between attempts and colors only the failed code', async () => {
+  getContent.mockResolvedValue(
+    makeView({
+      attempts: [
+        {
+          attempt: 1,
+          channel_id: 5,
+          channel_name: 'first-ch',
+          status_code: 500,
+        },
+        {
+          attempt: 2,
+          channel_id: 6,
+          channel_name: 'second-ch',
+          status_code: 200,
+        },
+      ],
+    })
+  )
+  const { within: q } = await openRow(1, { logs: [makeLog()] })
+  const group = within(await q.findByRole('group', { name: 'Attempts' }))
+  expect(group.getAllByText('→')).toHaveLength(1)
+  expect(group.getByText('500')).toHaveClass('text-(--vf-danger-text)')
+  expect(group.getByText('200')).toHaveClass('text-(--vf-success-text)')
+  expect(group.getByText('first-ch')).not.toHaveClass('text-(--vf-danger-text)')
 })
