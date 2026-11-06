@@ -17,11 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen, within } from '@testing-library/react'
-import { expect, it } from 'vitest'
+import { beforeAll, expect, it } from 'vitest'
 
 import { logContentSchema } from '../../../data/log-content-schema'
 import { usageLogSchema } from '../../../data/schema'
-import { RoutingTab } from '../routing-tab'
+import { RetryBanner, RoutingTab } from '../routing-tab'
 import openaiFixture from './fixtures/view-openai.json'
 
 const log = usageLogSchema.parse({
@@ -99,4 +99,70 @@ it('masks channel names and key indexes when sensitive data is hidden', () => {
   expect(screen.queryByText('Key 0')).toBeNull()
   expect(screen.getByText('Key ••••')).toBeVisible()
   expect(screen.getAllByText('••••')).toHaveLength(7)
+})
+
+it('lists attempts with a tinted status and the duration aligned right', () => {
+  render(<RoutingTab view={view} log={log} sensitiveVisible />)
+  expect(
+    screen.getByText('502').closest('[data-slot=tint-badge]')
+  ).toHaveAttribute('data-tone', 'danger')
+  expect(
+    screen.getByText('200').closest('[data-slot=tint-badge]')
+  ).toHaveAttribute('data-tone', 'success')
+  expect(screen.getByText('80 ms')).toHaveClass('font-mono', 'ml-auto')
+})
+
+it('shows the failure reason in muted text', () => {
+  render(<RoutingTab view={view} log={log} sensitiveVisible />)
+  const reason = screen.getByText(/bad gateway/).closest('p')
+  expect(reason).not.toHaveClass('text-destructive')
+  expect(reason).toHaveClass('text-muted-foreground')
+  expect(within(reason as HTMLElement).getByText(/Reason/)).toBeVisible()
+})
+
+beforeAll(async () => {
+  const { default: i18n } = await import('i18next')
+  const { default: en } = await import('@/i18n/locales/en.json')
+  i18n.addResourceBundle('en', 'translation', en.translation, true, true)
+})
+
+const attemptsOf = (codes: number[]) =>
+  codes.map((status_code, i) => ({
+    attempt: i + 1,
+    channel_id: i + 1,
+    multi_key_index: -1,
+    status_code,
+    duration_ms: 10,
+  }))
+const withCodes = (codes: number[]) =>
+  logContentSchema.parse({ ...openaiFixture, attempts: attemptsOf(codes) })
+    .attempts
+
+it('summarizes a retry that ended well', () => {
+  render(<RetryBanner attempts={withCodes([500, 200])} />)
+  const text = screen.getByText('Final attempt succeeded after 1 failure')
+  expect(text.closest('[data-slot=tint-badge]')).toHaveAttribute(
+    'data-tone',
+    'success'
+  )
+})
+
+it('summarizes a call where every attempt failed', () => {
+  render(<RetryBanner attempts={withCodes([500, 502])} />)
+  const text = screen.getByText('All 2 attempts failed')
+  expect(text.closest('[data-slot=tint-badge]')).toHaveAttribute(
+    'data-tone',
+    'danger'
+  )
+})
+
+it('renders no banner for a single attempt', () => {
+  const { container } = render(<RetryBanner attempts={withCodes([200])} />)
+  expect(container).toBeEmptyDOMElement()
+})
+
+it('keeps routing details masked when sensitive data is hidden', () => {
+  render(<RoutingTab view={view} log={log} sensitiveVisible={false} />)
+  expect(screen.queryByText(/bad gateway|first-ch/)).toBeNull()
+  expect(screen.getAllByText('••••').length).toBeGreaterThanOrEqual(7)
 })

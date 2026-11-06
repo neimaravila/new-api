@@ -20,13 +20,18 @@ import { Info } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { JsonView } from '@/components/finish'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 import type {
   LogContentBody,
   LogContentView,
 } from '../../data/log-content-schema'
-import { prettyJsonText, useFormatBytes } from './content-format'
+import {
+  PRETTY_MAX_CHARS,
+  prettyJsonText,
+  useFormatBytes,
+} from './content-format'
 import { CopyButton } from './message-block'
 
 function Notice(props: { children: string }) {
@@ -48,13 +53,16 @@ function BodyView(props: { title: string; body: LogContentBody }) {
     () => (body.undecodable || cut ? body.text : prettyJsonText(body.text)),
     [body.text, body.undecodable, cut]
   )
+  // A formatted body is highlighted; so are SSE and cut ones (the lexer
+  // tolerates them). Above the pretty-print limit the raw text stays plain.
+  const highlight = body.text.length <= PRETTY_MAX_CHARS
   return (
     <section
       data-testid='log-content-raw-body'
-      className='space-y-2 rounded-lg border p-3'
+      className='space-y-2 rounded-(--vf-radius-inner) border p-3'
     >
       <header className='flex items-center justify-between gap-2'>
-        <h3 className='text-sm font-medium'>{props.title}</h3>
+        <h3 className='text-[13px] font-medium'>{props.title}</h3>
         <div className='flex items-center gap-2'>
           {body.original_bytes > 0 && (
             <span className='text-muted-foreground text-xs'>
@@ -82,9 +90,19 @@ function BodyView(props: { title: string; body: LogContentBody }) {
           {body.text === '' ? (
             <p className='text-muted-foreground text-sm'>{t('Empty')}</p>
           ) : (
-            <pre className='bg-muted/30 max-h-96 overflow-auto rounded-md p-2 font-mono text-xs break-all whitespace-pre-wrap'>
-              {shown}
-            </pre>
+            <div className='bg-muted/30 max-h-96 overflow-auto rounded-(--vf-radius-control)'>
+              {highlight ? (
+                <JsonView text={shown} collapsedLines={12} />
+              ) : (
+                <pre
+                  data-text-style='json'
+                  data-highlighted='false'
+                  className='overflow-x-auto p-3 font-mono text-[12.5px] leading-[1.5] whitespace-pre'
+                >
+                  {shown}
+                </pre>
+              )}
+            </div>
           )}
         </>
       )}

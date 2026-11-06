@@ -117,10 +117,10 @@ it('shows the selected attempt and a notice when its request is unavailable', ()
   const { rerender } = render(
     <RawJsonTab view={view({}, attempts)} isAdmin selectedAttempt={1} />
   )
-  expect(screen.getByText(/"one": 1/)).toBeVisible()
+  expect(document.body).toHaveTextContent('"one": 1')
   rerender(<RawJsonTab view={view({}, attempts)} isAdmin selectedAttempt={2} />)
-  expect(screen.queryByText(/"one": 1/)).toBeNull()
-  expect(screen.getByText(/"r2": 2/)).toBeVisible()
+  expect(document.body).not.toHaveTextContent('"one": 1')
+  expect(document.body).toHaveTextContent('"r2": 2')
   expect(
     screen.getByText(
       'The request sent to the provider was not captured for this attempt.'
@@ -184,4 +184,49 @@ it('copies the original text, not the formatted one', async () => {
     )
   )
   expect(copyMock).toHaveBeenCalledWith('{"a":1}')
+})
+
+it('highlights a formatted body and folds it after 12 lines', () => {
+  const text = JSON.stringify({
+    items: Array.from({ length: 30 }, (_, i) => i),
+  })
+  const { container } = render(
+    <RawJsonTab
+      view={view({ request: { text } })}
+      isAdmin
+      selectedAttempt={null}
+    />
+  )
+  expect(container.querySelector('[data-highlighted=true]')).not.toBeNull()
+  expect(screen.getByRole('button', { name: 'Show more' })).toBeVisible()
+})
+
+it('does not highlight a body above 256 KiB', () => {
+  const text = 'x'.repeat(PRETTY_MAX_CHARS + 1)
+  const { container } = render(
+    <RawJsonTab
+      view={view({ request: { text } })}
+      isAdmin
+      selectedAttempt={null}
+    />
+  )
+  expect(container.querySelector('[data-highlighted=false]')).not.toBeNull()
+  expect(container.querySelector('[data-highlighted=true]')).toBeNull()
+})
+
+it('shows a cut SSE body without breaking words', () => {
+  const { container } = render(
+    <RawJsonTab
+      view={view({
+        response: { text: 'data: {"a":1}\n\ndata: {"b"', head_only: true },
+      })}
+      isAdmin
+      selectedAttempt={null}
+    />
+  )
+  const pre = container.querySelector('pre') as HTMLElement
+  expect(pre.className).not.toContain('break-all')
+  expect(
+    screen.getByText('Some content was shortened to fit the storage limit.')
+  ).toBeVisible()
 })

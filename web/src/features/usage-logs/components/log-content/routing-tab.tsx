@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge } from '@/components/status-badge'
+import { TintBadge } from '@/components/finish'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
@@ -34,8 +34,37 @@ const MASK = '••••'
 function Fact(props: { label: string; value: string }) {
   return (
     <div className='min-w-0'>
-      <dt className='text-muted-foreground text-xs'>{props.label}</dt>
+      <dt className='text-muted-foreground text-[11px] font-medium tracking-[0.04em] uppercase'>
+        {props.label}
+      </dt>
       <dd className='font-mono text-sm break-all'>{props.value}</dd>
+    </div>
+  )
+}
+
+function isFailed(attempt: LogContentAttempt): boolean {
+  return attempt.status_code >= 400 || !!attempt.error_message
+}
+
+/** One line on how the call ended; only for a call with more than one attempt. */
+export function RetryBanner(props: { attempts: LogContentAttempt[] }) {
+  const { t } = useTranslation()
+  const ordered = [...props.attempts].sort((a, b) => a.attempt - b.attempt)
+  const last = ordered.at(-1)
+  if (ordered.length < 2 || !last) return null
+  const succeeded = last.status_code < 400 && !last.error_message
+  return (
+    <div
+      data-testid='log-content-retry-banner'
+      className='flex items-center gap-2 text-[13px]'
+    >
+      <TintBadge tone={succeeded ? 'success' : 'danger'} dot>
+        {succeeded
+          ? t('Final attempt succeeded after {{count}} failures', {
+              count: ordered.length - 1,
+            })
+          : t('All {{count}} attempts failed', { count: ordered.length })}
+      </TintBadge>
     </div>
   )
 }
@@ -50,15 +79,14 @@ function AttemptRow(props: {
   const channel = attempt.channel_name
     ? `#${attempt.channel_id} ${attempt.channel_name}`
     : `#${attempt.channel_id}`
-  const failed = attempt.status_code >= 400 || !!attempt.error_message
   return (
-    <li
-      data-testid='log-content-attempt'
-      className='space-y-1.5 rounded-lg border p-3'
-    >
+    <li data-testid='log-content-attempt' className='space-y-1.5 p-3'>
       <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-sm font-medium'>
-          {t('Attempt {{attempt}}', { attempt: attempt.attempt })}
+        <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[11px] font-medium tabular-nums'>
+          <span className='sr-only'>
+            {t('Attempt {{attempt}}', { attempt: attempt.attempt })}
+          </span>
+          <span aria-hidden='true'>{attempt.attempt}</span>
         </span>
         <span className='font-mono text-sm'>
           {sensitiveVisible ? channel : MASK}
@@ -72,18 +100,15 @@ function AttemptRow(props: {
             })}
           </span>
         )}
-        <StatusBadge
-          label={attempt.status_code ? String(attempt.status_code) : '-'}
-          variant={failed ? 'danger' : 'success'}
-          size='sm'
-          copyable={false}
-        />
-        <span className='text-muted-foreground ml-auto text-xs'>
-          {t('Duration')}: {formatNumber(attempt.duration_ms, locale)} ms
+        <TintBadge tone={isFailed(attempt) ? 'danger' : 'success'} strong>
+          {attempt.status_code ? String(attempt.status_code) : '-'}
+        </TintBadge>
+        <span className='ml-auto font-mono text-xs tabular-nums'>
+          {formatNumber(attempt.duration_ms, locale)} ms
         </span>
       </div>
       {attempt.error_message && (
-        <p className='text-destructive text-sm break-words whitespace-pre-wrap'>
+        <p className='text-muted-foreground text-[13px] break-words whitespace-pre-wrap'>
           <span className='font-medium'>{t('Reason')}: </span>
           {sensitiveVisible ? attempt.error_message : MASK}
         </p>
@@ -134,7 +159,7 @@ export function RoutingTab(props: {
           ))}
         </dl>
       )}
-      <ol className='space-y-2'>
+      <ol className='divide-y rounded-(--vf-radius-inner) border'>
         {attempts.map((attempt) => (
           <AttemptRow
             key={attempt.attempt}

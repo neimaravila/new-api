@@ -7601,6 +7601,8 @@
     "No messages to show": "Không có tin nhắn để hiển thị",
     "This call declared no tools": "Lệnh gọi này không khai báo công cụ",
     "Called {{calls}} times_other": "Đã gọi {{calls}} lần",
+    "Final attempt succeeded after {{count}} failures_other": "Lần thử cuối thành công sau {{count}} lần lỗi",
+    "All {{count}} attempts failed_other": "Cả {{count}} lần thử đều thất bại",
     "Schema": "Lược đồ",
     "B": "B",
     "KB": "KB",

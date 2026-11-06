@@ -7601,6 +7601,8 @@
     "No messages to show": "表示するメッセージがありません",
     "This call declared no tools": "この呼び出しではツールが宣言されていません",
     "Called {{calls}} times_other": "{{calls}} 回呼び出し",
+    "Final attempt succeeded after {{count}} failures_other": "{{count}} 回失敗後、最後の試行が成功",
+    "All {{count}} attempts failed_other": "{{count}} 回の試行がすべて失敗",
     "Schema": "スキーマ",
     "B": "B",
     "KB": "KB",

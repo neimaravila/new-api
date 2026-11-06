@@ -16,10 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ChevronDown, Wrench } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
+import { JsonView, TintBadge } from '@/components/finish'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
@@ -36,24 +42,38 @@ function ToolCard(props: { tool: LogContentTool }) {
   const { tool } = props
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const schema = useMemo(() => prettyValue(tool.schema), [tool.schema])
+  const calls = t('Called {{calls}} times', {
+    count: tool.called,
+    calls: formatNumber(tool.called, locale),
+  })
   return (
     <section
       data-testid='log-content-tool'
-      className='space-y-2 rounded-lg border p-3'
+      className='min-w-0 space-y-2 rounded-(--vf-radius-inner) border p-3'
     >
-      <header className='flex items-center justify-between gap-2'>
-        <span className='font-mono text-sm font-medium break-all'>
+      <header className='flex items-start gap-2.5'>
+        <span className='flex size-7 shrink-0 items-center justify-center rounded-(--vf-radius-control) bg-(--vf-warning-fill) text-(--vf-warning-text)'>
+          <Wrench aria-hidden='true' className='size-3.5' />
+        </span>
+        <span className='min-w-0 flex-1 pt-1 font-mono text-[13px] font-medium break-all'>
           {tool.name}
         </span>
-        <Badge variant='secondary'>
-          {t('Called {{calls}} times', {
-            count: tool.called,
-            calls: formatNumber(tool.called, locale),
-          })}
-        </Badge>
+        {tool.called === 0 ? (
+          <span className='text-muted-foreground shrink-0 pt-1 text-[11px]'>
+            {calls}
+          </span>
+        ) : (
+          <TintBadge tone='info' className='shrink-0'>
+            {calls}
+          </TintBadge>
+        )}
       </header>
       {tool.description && (
-        <LongText text={tool.description} className='font-sans' />
+        <LongText
+          text={tool.description}
+          variant='prose'
+          className='text-muted-foreground text-xs'
+        />
       )}
       {schema === null && (
         <p className='text-muted-foreground text-sm'>
@@ -61,13 +81,28 @@ function ToolCard(props: { tool: LogContentTool }) {
         </p>
       )}
       {schema && (
-        <div className='bg-muted/30 rounded-md border px-3 py-2'>
-          <div className='mb-1 flex items-center justify-between'>
-            <span className='text-xs font-medium'>{t('Schema')}</span>
-            <CopyButton text={schema} />
+        <Collapsible>
+          <div className='flex items-center justify-between gap-2'>
+            <CollapsibleTrigger
+              aria-label={tool.name}
+              className='text-muted-foreground hover:text-foreground group flex items-center gap-1 text-xs font-medium'
+            >
+              <ChevronDown
+                aria-hidden='true'
+                className='size-3.5 transition-transform group-data-[panel-open]:rotate-180'
+              />
+              {t('Schema')}
+            </CollapsibleTrigger>
           </div>
-          <LongText text={schema} />
-        </div>
+          <CollapsibleContent className='pt-2'>
+            <div className='bg-muted/30 rounded-(--vf-radius-control) border'>
+              <div className='flex justify-end px-2 pt-1'>
+                <CopyButton text={schema} />
+              </div>
+              <JsonView text={schema} collapsedLines={24} />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </section>
   )
@@ -87,7 +122,7 @@ export function ToolsTab(props: { view: LogContentView }) {
   }
   const tools = view.tools.map((tool, position) => ({ tool, position }))
   return (
-    <div className='space-y-3'>
+    <div className='grid gap-2 sm:grid-cols-2'>
       {tools.map((entry) => (
         <ToolCard key={entry.position} tool={entry.tool} />
       ))}

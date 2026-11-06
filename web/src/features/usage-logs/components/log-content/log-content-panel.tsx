@@ -46,7 +46,7 @@ import { LogContentHeader } from './log-content-header'
 import { LogContentNotice, LogContentWarnings } from './log-content-notice'
 import { LogContentStats } from './log-content-stats'
 import { RawJsonTab } from './raw-json-tab'
-import { RoutingTab } from './routing-tab'
+import { RetryBanner, RoutingTab } from './routing-tab'
 import { ToolsTab } from './tools-tab'
 import { logHasContent, useLogContent } from './use-log-content'
 
@@ -232,6 +232,7 @@ export function LogContentPanel(props: {
       body = (
         <>
           <LogContentWarnings view={view} />
+          {isAdmin && <RetryBanner attempts={attempts} />}
           <Tabs value={activeTab} onValueChange={(v) => setTab(v as TabId)}>
             <TabsList variant='line'>
               {tabs.map((item) => (

@@ -54,7 +54,8 @@ it('lists name, description, schema and call count, and copies the schema', asyn
   expect(screen.getByText('get_weather')).toBeVisible()
   expect(screen.getByText('Get the weather of a city')).toBeVisible()
   expect(screen.getByText('Called 3 times')).toBeVisible()
-  expect(screen.getByText(/"city": \{/)).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'get_weather' }))
+  expect(screen.getByText(/"city"/)).toBeVisible()
   await user.click(screen.getByRole('button', { name: 'Copy' }))
   expect(copyMock).toHaveBeenCalledWith(
     JSON.stringify(
@@ -63,6 +64,48 @@ it('lists name, description, schema and call count, and copies the schema', asyn
       2
     )
   )
+})
+
+it('starts with schemas folded and opens one on demand', async () => {
+  const user = userEvent.setup()
+  const { container } = render(
+    <ToolsTab
+      view={view({
+        tools: [
+          {
+            name: 'consultar_pedido',
+            schema: { type: 'object' },
+            called: 1,
+          },
+        ],
+      })}
+    />
+  )
+  expect(screen.queryByText(/"type"/)).toBeNull()
+  await user.click(screen.getByRole('button', { name: 'consultar_pedido' }))
+  expect(container.querySelector('[data-text-style=json]')).toHaveTextContent(
+    '"type"'
+  )
+})
+
+it("shows an unused tool's call count as muted text", () => {
+  const { container } = render(
+    <ToolsTab
+      view={view({
+        tools: [
+          { name: 'idle', called: 0 },
+          { name: 'busy', called: 2 },
+        ],
+      })}
+    />
+  )
+  const idle = screen.getByText('Called 0 times')
+  expect(idle.closest('[data-slot=tint-badge]')).toBeNull()
+  const busy = screen
+    .getByText('Called 2 times')
+    .closest('[data-slot=tint-badge]')
+  expect(busy).toHaveAttribute('data-tone', 'info')
+  expect(container.querySelectorAll('[data-slot=tint-badge]')).toHaveLength(1)
 })
 
 it('shows an empty state for an empty list', () => {
@@ -77,9 +120,10 @@ it('points to the raw JSON when the tools are unknown', () => {
   ).toBeVisible()
 })
 
-it('copes with a huge and a deeply nested schema and a long description', () => {
+it('copes with a huge and a deeply nested schema and a long description', async () => {
   let deep: unknown = 'leaf'
   for (let i = 0; i < 50000; i++) deep = [deep]
+  const user = userEvent.setup()
   render(
     <ToolsTab
       view={view({
@@ -96,6 +140,7 @@ it('copes with a huge and a deeply nested schema and a long description', () => 
   )
   expect(screen.getByText('huge')).toBeVisible()
   expect(screen.getByText('deep')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'huge' }))
   expect(screen.getAllByRole('button', { name: 'Show more' })[0]).toBeVisible()
 })
 
