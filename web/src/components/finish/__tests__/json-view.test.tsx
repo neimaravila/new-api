@@ -71,11 +71,11 @@ describe('JsonView', () => {
     expect(text.length).toBeGreaterThan(4000)
     const { container } = render(<JsonView text={text} />)
     expect(container.textContent).not.toContain('TAIL')
-    expect(container.querySelector('pre')!.textContent!.length).toBeLessThan(
+    expect((container.querySelector('pre')?.textContent ?? '').length).toBeLessThan(
       4100
     )
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
-    expect(container.querySelector('pre')!.textContent).toBe(text)
+    expect(container.querySelector('pre')?.textContent).toBe(text)
     expect(screen.getByRole('button', { name: 'Show less' })).toBeTruthy()
   })
 
@@ -86,7 +86,7 @@ describe('JsonView', () => {
     )
     const text = `{\n${lines.join('\n')}\n}`
     const { container } = render(<JsonView text={text} />)
-    const shown = container.querySelector('pre')!.textContent!
+    const shown = (container.querySelector('pre')?.textContent ?? '')
     expect(shown.length).toBeLessThanOrEqual(4001)
     expect(text.startsWith(shown.replace(/…$/, ''))).toBe(true)
     expect(shown.replace(/…$/, '').endsWith(',')).toBe(true)
@@ -97,7 +97,7 @@ describe('JsonView', () => {
     const { container } = render(<JsonView text={text} />)
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
     expect(container.querySelectorAll('*').length).toBeLessThan(25000)
-    expect(container.querySelector('pre')!.textContent).toBe(text)
+    expect(container.querySelector('pre')?.textContent).toBe(text)
   })
 
   it('merges adjacent punctuation and whitespace into one span', () => {
@@ -105,10 +105,10 @@ describe('JsonView', () => {
     const spans = [...container.querySelectorAll('[data-token]')]
     for (let i = 1; i < spans.length; i++) {
       const glue = (e: Element) =>
-        ['punct', 'space'].includes(e.getAttribute('data-token')!)
+        ['punct', 'space'].includes(e.getAttribute('data-token') ?? '')
       expect(glue(spans[i - 1]) && glue(spans[i])).toBe(false)
     }
-    expect(container.querySelector('pre')!.textContent).toBe('{ "a": [ 1 ] }')
+    expect(container.querySelector('pre')?.textContent).toBe('{ "a": [ 1 ] }')
   })
 
   it('renders the remainder as plain text above the token cap', () => {
@@ -118,6 +118,6 @@ describe('JsonView', () => {
     expect(
       container.querySelectorAll('[data-token]').length
     ).toBeLessThanOrEqual(20000)
-    expect(container.querySelector('pre')!.textContent).toBe(text)
+    expect(container.querySelector('pre')?.textContent).toBe(text)
   })
 })
