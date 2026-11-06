@@ -124,8 +124,11 @@ export function CommonLogsSummary() {
 
   if (isError && !summary) {
     return (
-      <div className='text-muted-foreground text-xs'>
-        {t('Summary unavailable')}
+      <div className='space-y-2'>
+        <div className='text-muted-foreground text-xs'>
+          {t('Summary unavailable')}
+        </div>
+        <CommonLogsStats />
       </div>
     )
   }
@@ -134,6 +137,7 @@ export function CommonLogsSummary() {
     return (
       <div className='space-y-2'>
         <Skeleton className='h-9 w-full rounded-md' />
+        <CommonLogsStats />
         <Skeleton className='h-[120px] w-full rounded-md' />
       </div>
     )

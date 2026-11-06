@@ -259,6 +259,7 @@ it('collapses only the date while keeping the right-hand quick actions visible',
     screen
       .getByRole('button', { name: /^\d{4}-\d{2}/ })
       .getAttribute('aria-label') ?? ''
+  expect(screen.queryByText('Usage')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Collapse' }))
   expect(screen.getByRole('button', { name: 'Expand' })).toHaveAttribute(
     'aria-expanded',

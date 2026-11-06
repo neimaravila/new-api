@@ -166,6 +166,22 @@ it('shows the usage chips next to the totals', async () => {
   expect(within_.getByText('TPM')).toBeVisible()
 })
 
+it('keeps the usage chips while the summary loads', async () => {
+  vi.mocked(api.getLogSummary).mockReturnValue(new Promise(() => {}))
+  renderSummary()
+
+  expect(await screen.findByText('RPM')).toBeVisible()
+  expect(screen.queryByTestId('success-rate')).toBeNull()
+})
+
+it('keeps the usage chips when the summary fails', async () => {
+  vi.mocked(api.getLogSummary).mockRejectedValue(new Error('boom'))
+  renderSummary()
+
+  expect(await screen.findByText('Summary unavailable')).toBeVisible()
+  expect(await screen.findByText('RPM')).toBeVisible()
+})
+
 it('requests the summary with the table filters and no paging', async () => {
   vi.mocked(api.getLogSummary).mockResolvedValue({ success: true, data: summary })
   renderSummary()
