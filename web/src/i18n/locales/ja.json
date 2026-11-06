@@ -1938,7 +1938,7 @@
     "Detailed request logs for investigations.": "調査のための詳細なリクエストログ。",
     "Details": "詳細",
     "Timing, request and billing details": "所要時間、リクエスト、請求の詳細",
-    "{{count}} lines": "{{count}} 行",
+    "{{count}} lines_other": "{{count}} 行",
     "Detect All Upstream Updates": "すべてのアップストリーム更新を検出",
     "Detect model updates": "モデル更新を検出",
     "Detected database": "検出されたデータベース",
