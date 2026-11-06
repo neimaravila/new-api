@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { MetricStrip } from '@/components/finish'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 
 import { PanelShell } from './report-primitives'
@@ -62,19 +63,16 @@ export function ReportTotalsPanel(props: ReportTotalsPanelProps): React.JSX.Elem
       isEmpty={props.loading}
       emptyText={t('Loading…')}
     >
-      <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
-        {tiles.map((tile) => (
-          <div key={tile.key} className='bg-muted/40 rounded-xl border p-3'>
-            <div className='text-muted-foreground text-xs font-medium'>{tile.label}</div>
-            <div className='mt-1 font-mono text-lg font-semibold tabular-nums sm:text-xl'>
-              {tile.value}
-            </div>
-            {tile.sublabel && (
-              <div className='text-muted-foreground mt-0.5 text-xs'>{tile.sublabel}</div>
-            )}
-          </div>
-        ))}
-      </div>
+      <MetricStrip
+        size='lg'
+        columnsClassName='grid-cols-2 sm:grid-cols-4'
+        items={tiles.map((tile) => ({
+          key: tile.key,
+          label: tile.label,
+          value: tile.value,
+          sub: tile.sublabel,
+        }))}
+      />
     </PanelShell>
   )
 }

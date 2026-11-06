@@ -37,6 +37,7 @@ const { ReportModelPanel } = await import('../report-model-panel')
 const { ReportErrorsPanel } = await import('../report-errors-panel')
 const { ReportChannelPanel } = await import('../report-channel-panel')
 const { ReportTokenAnatomyPanel } = await import('../report-token-anatomy-panel')
+const { ReportTotalsPanel } = await import('../report-totals-panel')
 const { ReportTrendPanel, TREND_TABLE_MAX_ROWS } = await import('../report-trend-panel')
 
 const i18n = createInstance()
@@ -166,5 +167,41 @@ describe('report sub-panels', () => {
     expect(queryByText('100')).not.toBeNull()
     expect(queryByText('200')).not.toBeNull()
     expect(queryByText('50')).not.toBeNull()
+  })
+
+  it('shows the report totals as a metric strip', () => {
+    const { container } = renderNode(
+      <ReportTotalsPanel
+        loading={false}
+        summary={
+          {
+            trend: {
+              totals: { quota: 500, requests: 10, tokens: 2000, failures: 1, consumers: 1, avg_latency_ms: 5 },
+            },
+          } as never
+        }
+      />
+    )
+    const strip = container.querySelector('[data-slot=metric-strip]')
+    expect(strip).not.toBeNull()
+    expect(strip?.querySelectorAll('[data-slot=metric-cell]')).toHaveLength(4)
+  })
+
+  it('marks a degraded channel with a tinted badge', () => {
+    const { container, getByText } = renderNode(
+      <ReportChannelPanel
+        loading={false}
+        channels={[
+          { channel_id: 1, channel_name: 'Bad', quota: 1, requests: 10, failures: 5, error_rate: 0.5, avg_latency_ms: 1 },
+          { channel_id: 2, channel_name: 'Good', quota: 1, requests: 10, failures: 0, error_rate: 0, avg_latency_ms: 1 },
+        ]}
+      />
+    )
+    const badges = container.querySelectorAll('[data-slot=tint-badge][data-tone=danger]')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].textContent).toContain('Degraded')
+    expect(getByText('Degraded')).not.toBeNull()
+    const rows = container.querySelectorAll('tbody tr')
+    expect(rows[1].querySelector('[data-slot=tint-badge]')).toBeNull()
   })
 })

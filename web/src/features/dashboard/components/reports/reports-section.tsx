@@ -21,6 +21,7 @@ import { Download } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { FINISH_ATTR } from '@/components/finish'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { downloadCsv } from '@/features/usage-logs/lib/export'
@@ -158,8 +159,8 @@ export function ReportsSection(): React.JSX.Element {
   const loading = summaryQuery.isLoading
 
   return (
-    <div className='space-y-4'>
-      <div className='bg-card flex flex-wrap items-center justify-between gap-2 rounded-2xl border p-3 shadow-xs'>
+    <div {...{ [FINISH_ATTR]: 'reports' }} className='space-y-4'>
+      <div className='bg-card flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 shadow-xs'>
         <div className='flex flex-wrap items-center gap-2'>
           <div className='flex flex-wrap gap-1'>
             {RANGE_OPTIONS.map((opt) => (
@@ -216,7 +217,7 @@ export function ReportsSection(): React.JSX.Element {
       </div>
 
       {summaryQuery.isError && (
-        <div className='bg-card text-muted-foreground rounded-2xl border border-dashed p-4 text-sm shadow-xs'>
+        <div className='bg-card text-muted-foreground rounded-lg border border-dashed p-4 text-sm shadow-xs'>
           {t('The reports data is temporarily unavailable.')}
         </div>
       )}

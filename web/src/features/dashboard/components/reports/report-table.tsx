@@ -53,8 +53,8 @@ function sortArrow(active: boolean, direction?: 'asc' | 'desc'): string {
 
 export function ReportTable<T>(props: ReportTableProps<T>): React.JSX.Element {
   return (
-    <div className='mt-3 overflow-x-auto'>
-      <table className='w-full text-xs'>
+    <div className='mt-3 overflow-x-auto rounded-(--vf-radius-inner) border'>
+      <table className='w-full text-[13px]'>
         <caption className='sr-only'>{props.caption}</caption>
         <thead>
           <tr className='text-muted-foreground border-b'>
@@ -67,7 +67,7 @@ export function ReportTable<T>(props: ReportTableProps<T>): React.JSX.Element {
                   key={column.key}
                   scope='col'
                   aria-sort={ariaSort}
-                  className={cn('py-1.5 font-medium', column.align === 'end' ? 'text-right' : 'text-left')}
+                  className={cn('px-3 py-1.5 text-xs font-medium', column.align === 'end' ? 'text-right' : 'text-left')}
                 >
                   {sortable ? (
                     <button
@@ -93,7 +93,7 @@ export function ReportTable<T>(props: ReportTableProps<T>): React.JSX.Element {
                 <td
                   key={column.key}
                   className={cn(
-                    'py-1.5',
+                    'px-3 py-2',
                     column.align === 'end' ? 'text-right font-mono tabular-nums' : 'text-left'
                   )}
                 >

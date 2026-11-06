@@ -60,7 +60,7 @@ export function ReportChartCard(props: ReportChartCardProps): React.JSX.Element 
   let body: React.ReactNode
   if (props.isError) {
     body = (
-      <div role='alert' className='text-muted-foreground rounded-xl border border-dashed p-4 text-sm'>
+      <div role='alert' className='text-muted-foreground rounded-(--vf-radius-inner) border border-dashed p-4 text-sm'>
         {t('This chart could not be loaded.')}
       </div>
     )
@@ -78,8 +78,8 @@ export function ReportChartCard(props: ReportChartCardProps): React.JSX.Element 
           <dl className='mb-3 flex flex-wrap gap-x-6 gap-y-2'>
             {props.figures.map((figure) => (
               <div key={figure.label}>
-                <dt className='text-muted-foreground text-xs font-medium'>{figure.label}</dt>
-                <dd className='font-mono text-base font-semibold tabular-nums'>{figure.value}</dd>
+                <dt className='text-muted-foreground text-[11px] font-medium tracking-[0.05em] uppercase'>{figure.label}</dt>
+                <dd className='text-[18px] font-semibold tabular-nums'>{figure.value}</dd>
               </div>
             ))}
           </dl>

@@ -29,18 +29,18 @@ interface PanelShellProps {
 
 export function PanelShell(props: PanelShellProps): React.JSX.Element {
   return (
-    <section className='bg-card rounded-2xl border p-4 shadow-xs sm:p-5'>
+    <section className='bg-card rounded-lg border p-4 shadow-xs sm:p-5'>
       <div className='mb-4 flex flex-wrap items-start justify-between gap-2'>
         <div className='min-w-0'>
-          <h3 className='text-sm font-semibold sm:text-base'>{props.title}</h3>
+          <h3 className='text-sm leading-5 font-semibold'>{props.title}</h3>
           {props.description && (
-            <p className='text-muted-foreground text-xs sm:text-sm'>{props.description}</p>
+            <p className='text-muted-foreground text-xs'>{props.description}</p>
           )}
         </div>
         {props.actions}
       </div>
       {props.isEmpty ? (
-        <div className='text-muted-foreground rounded-xl border border-dashed p-4 text-sm'>
+        <div className='text-muted-foreground rounded-(--vf-radius-inner) border border-dashed p-4 text-sm'>
           {props.emptyText}
         </div>
       ) : (
@@ -62,7 +62,7 @@ export function EmptyOrLoading(props: EmptyOrLoadingProps): React.JSX.Element {
     return <div className='text-muted-foreground p-4 text-sm'>{props.loadingText ?? t('Loading…')}</div>
   }
   return (
-    <div className='text-muted-foreground rounded-xl border border-dashed p-4 text-sm'>
+    <div className='text-muted-foreground rounded-(--vf-radius-inner) border border-dashed p-4 text-sm'>
       {props.emptyText}
     </div>
   )

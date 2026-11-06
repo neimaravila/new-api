@@ -93,4 +93,21 @@ describe('ReportsSection summary query', () => {
     expect(getReportSummary).toHaveBeenCalledTimes(1)
     cleanup()
   })
+
+  it('marks the reports section with its finish scope', async () => {
+    useAuthStore.setState((state) => ({
+      auth: { ...state.auth, user: { id: 1, username: 'u', role: 1 } },
+    }))
+    getReportSummary.mockResolvedValue({ success: true, data: summary })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <I18nextProvider i18n={i18n}>
+          <ReportsSection />
+        </I18nextProvider>
+      </QueryClientProvider>
+    )
+    expect(view.container.querySelector('[data-visual-finish=reports]')).not.toBeNull()
+    cleanup()
+  })
 })

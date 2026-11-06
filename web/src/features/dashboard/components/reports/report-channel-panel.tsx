@@ -20,6 +20,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { TintBadge } from '@/components/finish'
 import { formatLatencyMs, formatNumber, formatQuota } from '@/lib/format'
 
 import { EmptyOrLoading, PanelShell } from './report-primitives'
@@ -55,11 +56,11 @@ export function ReportChannelPanel(props: ReportChannelPanelProps): React.JSX.El
         const value = formatPercent(row.error_rate)
         if (row.error_rate <= CHANNEL_ERROR_RATE_THRESHOLD) return value
         return (
-          <span className='text-destructive inline-flex items-center gap-1'>
+          <TintBadge tone='danger' dot>
             <AlertTriangle className='size-3' aria-hidden='true' />
             <span className='sr-only'>{degradedLabel}</span>
             {value}
-          </span>
+          </TintBadge>
         )
       },
     },
