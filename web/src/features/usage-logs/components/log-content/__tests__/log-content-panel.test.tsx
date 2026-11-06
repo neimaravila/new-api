@@ -755,3 +755,11 @@ it('scrolls Raw JSON inside its own block without widening the panel', async () 
   expect(block).not.toBeNull()
   expect(block).toHaveClass('max-w-full', 'min-w-0')
 })
+
+it('sizes the figure columns from the panel width instead of the viewport', async () => {
+  const { within: q } = await openRow(1, { logs: [makeLog()] })
+  await q.findByRole('tab', { name: /^Conversation/ })
+  const strip = screen.getByTestId('log-content-stats')
+  expect(strip).toHaveClass('@md:grid-cols-3', '@4xl:grid-cols-5')
+  expect(strip.className).not.toMatch(/(^|\s)(sm|lg):grid-cols/)
+})

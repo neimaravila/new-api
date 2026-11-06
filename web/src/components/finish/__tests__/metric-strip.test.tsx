@@ -56,4 +56,30 @@ describe('MetricStrip', () => {
     expect(container.querySelector('[data-slot=metric-unit]')).toBeNull()
     expect(screen.getByTestId('cost')).toHaveTextContent('••••')
   })
+
+  it('puts the full label in a title so a cut label stays readable', () => {
+    render(
+      <MetricStrip
+        items={[{ key: 'tin', label: 'Tokens de entrada', value: '1' }]}
+        size='md'
+        columnsClassName='grid-cols-1'
+      />
+    )
+    expect(screen.getByText('Tokens de entrada')).toHaveAttribute(
+      'title',
+      'Tokens de entrada'
+    )
+  })
+
+  it('makes the strip a size container so columns follow its width, not the viewport', () => {
+    render(
+      <MetricStrip
+        items={items}
+        size='md'
+        columnsClassName='grid-cols-5'
+        data-testid='strip'
+      />
+    )
+    expect(screen.getByTestId('strip').parentElement).toHaveClass('@container')
+  })
 })

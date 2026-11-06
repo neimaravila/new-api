@@ -93,7 +93,7 @@ export function LogContentStats(props: {
     <MetricStrip
       items={items}
       size='md'
-      columnsClassName='grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+      columnsClassName='grid-cols-2 @md:grid-cols-3 @4xl:grid-cols-5'
       data-testid='log-content-stats'
     />
   )

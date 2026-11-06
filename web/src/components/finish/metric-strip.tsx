@@ -50,56 +50,61 @@ export function MetricStrip(props: {
   'data-testid'?: string
 }) {
   return (
-    <div
-      data-slot='metric-strip'
-      data-testid={props['data-testid']}
-      className={cn(
-        'grid overflow-hidden rounded-(--vf-radius-inner) border bg-(--vf-surface)',
-        props.columnsClassName
-      )}
-    >
-      {props.items.map((item) => {
-        const { value, unit } = splitUnit(item.value)
-        return (
-          <div
-            key={item.key}
-            data-slot='metric-cell'
-            className={cn(
-              'min-w-0 shadow-[1px_0_0_var(--vf-divider),0_1px_0_var(--vf-divider)]',
-              CELL_SIZE[props.size]
-            )}
-          >
-            <div className='text-muted-foreground truncate text-[11px] font-medium tracking-[0.05em] uppercase'>
-              {item.label}
-            </div>
-            <span
-              data-slot='metric-value'
-              data-testid={item.testId}
+    <div data-slot='metric-strip-frame' className='@container'>
+      <div
+        data-slot='metric-strip'
+        data-testid={props['data-testid']}
+        className={cn(
+          'grid overflow-hidden rounded-(--vf-radius-inner) border bg-(--vf-surface)',
+          props.columnsClassName
+        )}
+      >
+        {props.items.map((item) => {
+          const { value, unit } = splitUnit(item.value)
+          return (
+            <div
+              key={item.key}
+              data-slot='metric-cell'
               className={cn(
-                'block truncate tabular-nums',
-                VALUE_SIZE[props.size],
-                item.mono && 'font-mono',
-                item.tone && TONE_TEXT_CLASS[item.tone]
+                'min-w-0 shadow-[1px_0_0_var(--vf-divider),0_1px_0_var(--vf-divider)]',
+                CELL_SIZE[props.size]
               )}
             >
-              {value}
-              {unit && (
-                <span
-                  data-slot='metric-unit'
-                  className='text-muted-foreground text-[0.6em]'
-                >
-                  {unit}
-                </span>
-              )}
-            </span>
-            {item.sub != null && (
-              <div className='text-muted-foreground truncate text-[11px]'>
-                {item.sub}
+              <div
+                title={item.label}
+                className='text-muted-foreground truncate text-[11px] font-medium tracking-[0.05em] uppercase'
+              >
+                {item.label}
               </div>
-            )}
-          </div>
-        )
-      })}
+              <span
+                data-slot='metric-value'
+                data-testid={item.testId}
+                className={cn(
+                  'block truncate tabular-nums',
+                  VALUE_SIZE[props.size],
+                  item.mono && 'font-mono',
+                  item.tone && TONE_TEXT_CLASS[item.tone]
+                )}
+              >
+                {value}
+                {unit && (
+                  <span
+                    data-slot='metric-unit'
+                    className='text-muted-foreground text-[0.6em]'
+                  >
+                    {unit}
+                  </span>
+                )}
+              </span>
+              {item.sub != null && (
+                <div className='text-muted-foreground truncate text-[11px]'>
+                  {item.sub}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
