@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   cascade,
+  colorDistance,
   contrast,
   opaque,
   over,
@@ -95,4 +96,30 @@ describe('text tokens reach WCAG AA on their surfaces', () => {
       }
     }
   )
+})
+
+describe('role tokens stay distinguishable', () => {
+  // Largest distance in OKLab at which two dots still read as the same color.
+  const MIN_DISTANCE = 0.06
+
+  it.each(variants)('tool and user dots differ in $name', (variant) => {
+    const vars = cascade(variant.preset, variant.dark)
+    expect(vars.get('--vf-role-tool-dot')).not.toBe(
+      vars.get('--vf-role-user-dot')
+    )
+    const tool = resolveColor('--vf-role-tool-dot', vars)
+    const user = resolveColor('--vf-role-user-dot', vars)
+    expect(
+      colorDistance(tool, user),
+      `tool vs user in ${variant.name}`
+    ).toBeGreaterThanOrEqual(MIN_DISTANCE)
+  })
+
+  it('separates tool from user in the lake-view preset by more than the warning color did', () => {
+    const vars = cascade('lake-view', false)
+    const user = resolveColor('--vf-role-user-dot', vars)
+    expect(
+      colorDistance(resolveColor('--vf-role-tool-dot', vars), user)
+    ).toBeGreaterThan(colorDistance(resolveColor('--chart-4', vars), user))
+  })
 })

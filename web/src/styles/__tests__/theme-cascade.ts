@@ -299,3 +299,14 @@ export function contrast(foreground: Rgb, background: Rgb): number {
   )
   return (light + 0.05) / (dark + 0.05)
 }
+
+/** Euclidean distance between two colors in OKLab. */
+export function colorDistance(a: Color, b: Color): number {
+  const lab = (color: Color) => {
+    const hue = ((color.hue ?? 0) * Math.PI) / 180
+    return [color.l, color.c * Math.cos(hue), color.c * Math.sin(hue)]
+  }
+  const [la, aa, ba] = lab(a)
+  const [lb, ab, bb] = lab(b)
+  return Math.hypot(la - lb, aa - ab, ba - bb)
+}

@@ -67,9 +67,9 @@ For commercial licensing, please contact support@quantumnous.com
   --vf-role-user-bg: color-mix(in oklab, var(--primary) var(--vf-tint-fill), transparent);
   --vf-role-user-border: color-mix(in oklab, var(--primary) var(--vf-tint-edge), transparent);
   --vf-role-user-dot: var(--primary);
-  --vf-role-tool-bg: color-mix(in oklab, var(--warning) var(--vf-tint-fill), transparent);
-  --vf-role-tool-border: color-mix(in oklab, var(--warning) var(--vf-tint-edge), transparent);
-  --vf-role-tool-dot: var(--warning);
+  --vf-role-tool-bg: color-mix(in oklab, var(--chart-2) var(--vf-tint-fill), transparent);
+  --vf-role-tool-border: color-mix(in oklab, var(--chart-2) var(--vf-tint-edge), transparent);
+  --vf-role-tool-dot: var(--chart-2);
   --vf-role-system-bg: color-mix(in oklab, var(--muted) 50%, transparent);
   --vf-role-system-border: var(--border);
   --vf-role-system-dot: var(--muted-foreground);
