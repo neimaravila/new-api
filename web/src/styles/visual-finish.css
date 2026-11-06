@@ -47,22 +47,22 @@ For commercial licensing, please contact support@quantumnous.com
 
   --vf-success-fill: color-mix(in oklab, var(--vf-success) var(--vf-badge-fill), transparent);
   --vf-success-edge: color-mix(in oklab, var(--vf-success) var(--vf-badge-edge), transparent);
-  --vf-success-text: color-mix(in oklch, var(--vf-success) 60%, var(--foreground));
+  --vf-success-text: color-mix(in oklch, var(--vf-success) 45%, var(--foreground));
   --vf-danger-fill: color-mix(in oklab, var(--vf-danger) var(--vf-badge-fill), transparent);
   --vf-danger-edge: color-mix(in oklab, var(--vf-danger) var(--vf-badge-edge), transparent);
-  --vf-danger-text: color-mix(in oklch, var(--vf-danger) 60%, var(--foreground));
+  --vf-danger-text: color-mix(in oklch, var(--vf-danger) 45%, var(--foreground));
   --vf-warning-fill: color-mix(in oklab, var(--vf-warning) var(--vf-badge-fill), transparent);
   --vf-warning-edge: color-mix(in oklab, var(--vf-warning) var(--vf-badge-edge), transparent);
-  --vf-warning-text: color-mix(in oklch, var(--vf-warning) 60%, var(--foreground));
+  --vf-warning-text: color-mix(in oklch, var(--vf-warning) 45%, var(--foreground));
   --vf-info-fill: color-mix(in oklab, var(--vf-info) var(--vf-badge-fill), transparent);
   --vf-info-edge: color-mix(in oklab, var(--vf-info) var(--vf-badge-edge), transparent);
-  --vf-info-text: color-mix(in oklch, var(--vf-info) 60%, var(--foreground));
+  --vf-info-text: color-mix(in oklch, var(--vf-info) 45%, var(--foreground));
   --vf-primary-fill: color-mix(in oklab, var(--vf-primary) var(--vf-badge-fill), transparent);
   --vf-primary-edge: color-mix(in oklab, var(--vf-primary) var(--vf-badge-edge), transparent);
-  --vf-primary-text: color-mix(in oklch, var(--vf-primary) 60%, var(--foreground));
+  --vf-primary-text: color-mix(in oklch, var(--vf-primary) 45%, var(--foreground));
   --vf-neutral-fill: color-mix(in oklab, var(--vf-neutral) var(--vf-badge-fill), transparent);
   --vf-neutral-edge: color-mix(in oklab, var(--vf-neutral) var(--vf-badge-edge), transparent);
-  --vf-neutral-text: color-mix(in oklch, var(--vf-neutral) 60%, var(--foreground));
+  --vf-neutral-text: color-mix(in oklch, var(--vf-neutral) 45%, var(--foreground));
 
   --vf-role-user-bg: color-mix(in oklab, var(--primary) var(--vf-tint-fill), transparent);
   --vf-role-user-border: color-mix(in oklab, var(--primary) var(--vf-tint-edge), transparent);
@@ -80,10 +80,10 @@ For commercial licensing, please contact support@quantumnous.com
   --vf-role-error-border: color-mix(in oklab, var(--destructive) var(--vf-tint-edge), transparent);
   --vf-role-error-dot: var(--destructive);
 
-  --vf-json-key: color-mix(in oklch, var(--chart-1) 55%, var(--foreground));
-  --vf-json-string: color-mix(in oklch, var(--chart-5) 55%, var(--foreground));
-  --vf-json-number: color-mix(in oklch, var(--chart-4) 55%, var(--foreground));
-  --vf-json-literal: color-mix(in oklch, var(--chart-3) 55%, var(--foreground));
+  --vf-json-key: color-mix(in oklch, var(--chart-1) 45%, var(--foreground));
+  --vf-json-string: color-mix(in oklch, var(--chart-5) 45%, var(--foreground));
+  --vf-json-number: color-mix(in oklch, var(--chart-4) 45%, var(--foreground));
+  --vf-json-literal: color-mix(in oklch, var(--chart-3) 45%, var(--foreground));
   --vf-json-punct: var(--muted-foreground);
 }
 
@@ -155,6 +155,18 @@ For commercial licensing, please contact support@quantumnous.com
   background: color-mix(in oklab, currentColor var(--vf-badge-fill), transparent);
   font-size: 11px;
   font-weight: 500;
+}
+
+[data-visual-finish='logs'] [data-slot='stream-label'][data-stream='true'] {
+  border-color: var(--vf-info-edge);
+  background: var(--vf-info-fill);
+  color: var(--vf-info-text);
+}
+
+[data-visual-finish='logs'] [data-slot='stream-label'][data-stream='false'] {
+  border-color: var(--vf-neutral-edge);
+  background: var(--vf-neutral-fill);
+  color: var(--vf-neutral-text);
 }
 
 /* Reports: controls */

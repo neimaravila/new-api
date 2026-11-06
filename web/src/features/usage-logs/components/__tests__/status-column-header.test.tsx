@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -22,8 +25,6 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table'
 import { render, renderHook, screen } from '@testing-library/react'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
 
 import { DataTableView } from '@/components/data-table'
@@ -61,9 +62,10 @@ it('hides the Status header text visually inside the logs scope', () => {
     resolve(__dirname, '../../../../styles/visual-finish.css'),
     'utf8'
   )
-  const rule = /\[data-visual-finish='logs'\] th\[data-column-id='status'\][^{]*\{([^}]*)\}/.exec(
-    css
-  )
+  const rule =
+    /\[data-visual-finish='logs'\] th\[data-column-id='status'\][^{]*\{([^}]*)\}/.exec(
+      css
+    )
   expect(rule).not.toBeNull()
   expect(rule?.[1]).toMatch(/position:\s*absolute/)
   expect(rule?.[1]).toMatch(/clip(-path)?:/)
