@@ -1938,6 +1938,7 @@
     "Detailed request logs for investigations.": "Detailed request logs for investigations.",
     "Details": "Details",
     "Timing, request and billing details": "Timing, request and billing details",
+    "{{count}} lines": "{{count}} lines",
     "Detect All Upstream Updates": "Detect All Upstream Updates",
     "Detect model updates": "Detect model updates",
     "Detected database": "Detected database",

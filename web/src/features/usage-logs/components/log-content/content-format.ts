@@ -47,6 +47,46 @@ export function prettyValue(value: unknown): string | null {
   }
 }
 
+export type TextSegment = { kind: 'prose' | 'code'; text: string }
+
+/** Splits text into prose and fenced code (``` at line start); an unclosed fence runs to the end. */
+export function splitFences(text: string): TextSegment[] {
+  const segments: TextSegment[] = []
+  let inCode = false
+  const push = (kind: TextSegment['kind'], chunk: string) => {
+    const last = segments.at(-1)
+    if (last && last.kind === kind) last.text += chunk
+    else segments.push({ kind, text: chunk })
+  }
+  for (const line of text.split(/(?<=\n)/)) {
+    if (!line) continue
+    const fence = line.startsWith('```')
+    if (!inCode && fence) {
+      inCode = true
+      push('code', line)
+    } else if (inCode) {
+      push('code', line)
+      if (fence) inCode = false
+    } else {
+      push('prose', line)
+    }
+  }
+  return segments
+}
+
+/** True for text that is a JSON object or array within the pretty-print size limit. */
+export function looksLikeJson(text: string): boolean {
+  if (text.length > PRETTY_MAX_CHARS) return false
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
+  try {
+    JSON.parse(trimmed)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Byte sizes in the interface language, with translated units. */
 export function useFormatBytes(): (bytes: number) => string {
   const { t, i18n } = useTranslation()

@@ -1938,6 +1938,7 @@
     "Detailed request logs for investigations.": "Journaux détaillés des requêtes pour les enquêtes.",
     "Details": "Détails",
     "Timing, request and billing details": "Durée, requête et détails de facturation",
+    "{{count}} lines": "{{count}} lignes",
     "Detect All Upstream Updates": "Détecter toutes les mises à jour upstream",
     "Detect model updates": "Détecter les nouveaux modèles",
     "Detected database": "Base de données détectée",

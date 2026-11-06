@@ -1938,6 +1938,7 @@
     "Detailed request logs for investigations.": "Nhật ký yêu cầu chi tiết cho các cuộc điều tra.",
     "Details": "Chi tiết",
     "Timing, request and billing details": "Thời gian, yêu cầu và chi tiết thanh toán",
+    "{{count}} lines": "{{count}} dòng",
     "Detect All Upstream Updates": "Phát hiện Tất cả Cập nhật Upstream",
     "Detect model updates": "Phát hiện cập nhật mô hình",
     "Detected database": "Đã phát hiện cơ sở dữ liệu",

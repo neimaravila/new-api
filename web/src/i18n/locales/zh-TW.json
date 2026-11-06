@@ -1938,6 +1938,7 @@
     "Detailed request logs for investigations.": "用於調查的詳細請求日誌。",
     "Details": "詳情",
     "Timing, request and billing details": "耗時、請求與計費詳情",
+    "{{count}} lines": "{{count}} 行",
     "Detect All Upstream Updates": "偵測所有上游更新",
     "Detect model updates": "偵測模型更新",
     "Detected database": "偵測到的資料庫",

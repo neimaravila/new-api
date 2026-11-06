@@ -78,8 +78,8 @@ it.each([
     'assistant',
   ])
   expect(screen.getByText('You are a helpful assistant.')).toBeVisible()
-  expect(screen.getByText(/Tool call: get_weather/)).toBeVisible()
-  expect(screen.getByText(/"city": "Lisbon"/)).toBeVisible()
+  expect(screen.getByText('get_weather')).toBeVisible()
+  expect(screen.getByText('"Lisbon"')).toBeVisible()
   expect(screen.getByText(/Tool result/)).toBeVisible()
   expect(screen.getByText('Image · image/png · 2 KB')).toBeVisible()
   expect(screen.getByText(/A cat on a sofa/)).toBeVisible()
@@ -326,6 +326,111 @@ it('shows huge or deeply nested arguments raw without failing', () => {
       })}
     />
   )
-  expect(screen.getByText(/Tool call: big/)).toBeVisible()
-  expect(screen.getByText(/Tool call: deep/)).toBeVisible()
+  expect(screen.getByText('big')).toBeVisible()
+  expect(screen.getByText('deep')).toBeVisible()
+})
+
+function single(blocks: unknown[], role = 'user') {
+  return makeView(openaiFixture, {
+    conversation: conversation([{ role, source: 'request', blocks }]),
+  })
+}
+
+it('renders user and assistant text in the prose font', () => {
+  render(<ConversationTab view={makeView()} />)
+  const el = screen.getByText(
+    'What is in this picture, and what is the weather in Lisbon?'
+  )
+  expect(el).toHaveAttribute('data-text-style', 'prose')
+  expect(el).toHaveClass('font-sans')
+  expect(el).not.toHaveClass('font-mono')
+})
+
+it('renders a fenced code segment inside prose in mono', () => {
+  render(
+    <ConversationTab
+      view={single([{ type: 'text', text: 'before\n```js\nx=1\n```\nafter' }])}
+    />
+  )
+  const mono = screen.getByText(/x=1/)
+  expect(mono).toHaveAttribute('data-text-style', 'mono')
+  expect(screen.getByText(/before/)).toHaveAttribute('data-text-style', 'prose')
+  expect(screen.getByText(/after/)).toHaveAttribute('data-text-style', 'prose')
+})
+
+it('renders tool call arguments as highlighted JSON', () => {
+  render(<ConversationTab view={makeView()} />)
+  const box = screen.getByTestId('log-content-tool-call')
+  expect(
+    box.querySelector('[data-text-style=json][data-highlighted=true]')
+  ).not.toBeNull()
+  expect(within(box).getByText('get_weather')).toHaveClass('font-mono')
+})
+
+it('renders a JSON tool result as JSON and a plain one in mono', () => {
+  const { container } = render(
+    <ConversationTab
+      view={single(
+        [
+          { type: 'tool_result', text: '{"temp":21}' },
+          { type: 'tool_result', text: 'plain result' },
+        ],
+        'tool'
+      )}
+    />
+  )
+  expect(container.querySelector('[data-text-style=json]')).not.toBeNull()
+  expect(screen.getByText('plain result')).toHaveAttribute(
+    'data-text-style',
+    'mono'
+  )
+})
+
+it('gives each role its own style and falls back to system', () => {
+  const messages = [
+    { role: 'user', source: 'request', blocks: [{ type: 'text', text: 'u' }] },
+    {
+      role: 'developer',
+      source: 'request',
+      blocks: [{ type: 'text', text: 'd' }],
+    },
+    { role: 'weird', source: 'request', blocks: [{ type: 'text', text: 'w' }] },
+    {
+      role: 'assistant',
+      source: 'response',
+      blocks: [{ type: 'error', text: 'e' }],
+    },
+  ]
+  render(
+    <ConversationTab
+      view={makeView(openaiFixture, { conversation: conversation(messages) })}
+    />
+  )
+  const [user, dev, weird, err] = screen.getAllByTestId('log-content-message')
+  expect(user).toHaveClass('bg-(--vf-role-user-bg)')
+  expect(dev).toHaveClass('bg-(--vf-role-system-bg)')
+  expect(weird).toHaveClass('bg-(--vf-role-system-bg)')
+  expect(err).toHaveClass('bg-(--vf-role-error-bg)')
+})
+
+it('shows the line count beside the role', () => {
+  render(<ConversationTab view={single([{ type: 'text', text: 'a\nb\nc' }])} />)
+  expect(screen.getByText('3 lines')).toBeVisible()
+})
+
+it('keeps HTML in message text literal', () => {
+  const { container } = render(
+    <ConversationTab view={single([{ type: 'text', text: '<b>x</b>' }])} />
+  )
+  expect(container.querySelector('b')).toBeNull()
+  expect(screen.getByText('<b>x</b>')).toBeVisible()
+})
+
+it('wraps a long unbroken token inside the box', () => {
+  render(
+    <ConversationTab view={single([{ type: 'text', text: 'x'.repeat(500) }])} />
+  )
+  expect(screen.getByText('x'.repeat(500))).toHaveClass(
+    '[overflow-wrap:anywhere]'
+  )
 })

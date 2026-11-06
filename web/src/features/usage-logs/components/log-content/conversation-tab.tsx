@@ -97,7 +97,7 @@ export function ConversationTab(props: { view: LogContentView }) {
               size='xs'
               variant={activeRole === r ? 'default' : 'outline'}
               aria-pressed={activeRole === r}
-              className='capitalize'
+              className='rounded-(--vf-radius-badge) capitalize'
               onClick={() => {
                 setRole(activeRole === r ? null : r)
                 setRevealed(0)
@@ -131,9 +131,15 @@ export function ConversationTab(props: { view: LogContentView }) {
           {t('Show {{count}} earlier messages', { count: nextPage })}
         </Button>
       )}
-      {[...visibleRequest, ...responseMessages].map((entry) => (
-        <MessageBlock key={entry.position} message={entry.message} />
-      ))}
+      <div className='relative space-y-3 pl-5'>
+        <span
+          aria-hidden='true'
+          className='absolute inset-y-0 left-[2px] w-px bg-(--vf-divider)'
+        />
+        {[...visibleRequest, ...responseMessages].map((entry) => (
+          <MessageBlock key={entry.position} message={entry.message} />
+        ))}
+      </div>
       {filtered.length === 0 && (
         <p className='text-muted-foreground text-sm'>
           {t('No messages to show')}
